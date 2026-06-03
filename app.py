@@ -132,7 +132,7 @@ def logout():
     return redirect(url_for("login"))
 
 def calcular_alunos_info(db, turma):
-    """Devolve lista de alunos com média para uma turma."""
+    """Devolve lista de alunos com média e nº de negativas para uma turma."""
     alunos = db.execute(
         "SELECT * FROM alunos WHERE turma=? ORDER BY nome", (turma,)
     ).fetchall()
@@ -144,6 +144,7 @@ def calcular_alunos_info(db, turma):
         ).fetchall()
         ultimo_periodo = periodos[0]["periodo"] if periodos else None
         media = None
+        num_negas = 0
         if ultimo_periodo:
             notas = db.execute(
                 "SELECT nota FROM notas WHERE aluno_id=? AND periodo=? AND nota IS NOT NULL",
@@ -151,11 +152,59 @@ def calcular_alunos_info(db, turma):
             ).fetchall()
             vals = [n["nota"] for n in notas if n["nota"] is not None]
             media = round(sum(vals) / len(vals), 1) if vals else None
+            num_negas = sum(1 for v in vals if v < 10)
         alunos_info.append({
             "id": a["id"], "numero": a["numero"], "nome": a["nome"],
-            "turma": a["turma"], "media": media, "periodo": ultimo_periodo
+            "turma": a["turma"], "media": media, "periodo": ultimo_periodo,
+            "num_negas": num_negas
         })
     return alunos_info
+
+def calcular_stats_turma(db, turma, periodo_sel=None):
+    """Calcula médias por disciplina e comparação entre períodos para uma turma."""
+    alunos = db.execute("SELECT id FROM alunos WHERE turma=?", (turma,)).fetchall()
+    ids = [a["id"] for a in alunos]
+    if not ids:
+        return {}, [], None, []
+
+    periodos_disponiveis = [r["periodo"] for r in db.execute(
+        f"SELECT DISTINCT periodo FROM notas WHERE aluno_id IN ({','.join('?'*len(ids))}) ORDER BY periodo",
+        ids
+    ).fetchall()]
+
+    if not periodo_sel or periodo_sel not in periodos_disponiveis:
+        periodo_sel = periodos_disponiveis[-1] if periodos_disponiveis else None
+
+    # Médias por disciplina no período seleccionado
+    medias_disciplinas = []
+    if periodo_sel:
+        rows = db.execute(
+            f"SELECT disciplina, AVG(nota) as media FROM notas "
+            f"WHERE aluno_id IN ({','.join('?'*len(ids))}) AND periodo=? AND nota IS NOT NULL "
+            f"GROUP BY disciplina ORDER BY disciplina",
+            ids + [periodo_sel]
+        ).fetchall()
+        medias_disciplinas = [(r["disciplina"], round(r["media"], 1)) for r in rows]
+
+    # Comparação 1º vs 2º semestre
+    comparacao = []
+    if len(periodos_disponiveis) >= 2:
+        p1, p2 = periodos_disponiveis[0], periodos_disponiveis[1]
+        discs1 = {r["disciplina"]: r["media"] for r in db.execute(
+            f"SELECT disciplina, AVG(nota) as media FROM notas "
+            f"WHERE aluno_id IN ({','.join('?'*len(ids))}) AND periodo=? AND nota IS NOT NULL GROUP BY disciplina",
+            ids + [p1]
+        ).fetchall()}
+        discs2 = {r["disciplina"]: r["media"] for r in db.execute(
+            f"SELECT disciplina, AVG(nota) as media FROM notas "
+            f"WHERE aluno_id IN ({','.join('?'*len(ids))}) AND periodo=? AND nota IS NOT NULL GROUP BY disciplina",
+            ids + [p2]
+        ).fetchall()}
+        for disc in set(discs1) & set(discs2):
+            comparacao.append((disc, round(discs1[disc], 1), round(discs2[disc], 1),
+                                round(discs2[disc] - discs1[disc], 1)))
+
+    return medias_disciplinas, periodos_disponiveis, periodo_sel, comparacao
 
 @app.route("/dashboard")
 @login_required
@@ -171,18 +220,25 @@ def dashboard():
         turmas_str = session.get("turma") or ""
         turmas_lista = [t.strip() for t in turmas_str.split(",") if t.strip()]
 
-        if len(turmas_lista) == 1:
-            # Uma só turma — vista normal
-            alunos_info = calcular_alunos_info(db, turmas_lista[0])
-            return render_template("dashboard.html", alunos=alunos_info, turma=turmas_lista[0])
-        else:
-            # Múltiplas turmas — mostrar selector
-            turma_sel = request.args.get("turma", turmas_lista[0] if turmas_lista else "")
-            if turma_sel not in turmas_lista:
-                turma_sel = turmas_lista[0] if turmas_lista else ""
-            alunos_info = calcular_alunos_info(db, turma_sel) if turma_sel else []
-            return render_template("dashboard.html", alunos=alunos_info, turma=turma_sel,
-                                   turmas_multiplas=turmas_lista)
+        turma_sel = request.args.get("turma", turmas_lista[0] if turmas_lista else "")
+        if turma_sel not in turmas_lista:
+            turma_sel = turmas_lista[0] if turmas_lista else ""
+        periodo_sel = request.args.get("periodo", None)
+        if periodo_sel:
+            try: periodo_sel = int(periodo_sel)
+            except: periodo_sel = None
+
+        alunos_info = calcular_alunos_info(db, turma_sel) if turma_sel else []
+        medias_disc, periodos_disp, periodo_sel, comparacao = calcular_stats_turma(db, turma_sel, periodo_sel)
+
+        kwargs = dict(alunos=alunos_info, turma=turma_sel,
+                      medias_disciplinas=medias_disc,
+                      periodos_disponiveis=periodos_disp,
+                      periodo_sel=periodo_sel,
+                      comparacao_periodos=comparacao)
+        if len(turmas_lista) > 1:
+            kwargs["turmas_multiplas"] = turmas_lista
+        return render_template("dashboard.html", **kwargs)
 
 @app.route("/aluno/<int:aluno_id>")
 @login_required
@@ -198,7 +254,7 @@ def aluno(aluno_id):
         flash("Não tem permissão para ver este aluno.", "danger")
         return redirect(url_for("dashboard"))
 
-    # Notas organizadas por disciplina e período
+    # Notas do ano actual
     rows = db.execute(
         "SELECT disciplina, periodo, nota, observacoes FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
         (aluno_id,)
@@ -212,10 +268,31 @@ def aluno(aluno_id):
         disciplinas[d]["notas"][r["periodo"]] = r["nota"]
         if r["observacoes"]:
             disciplinas[d]["obs"][r["periodo"]] = r["observacoes"]
+    periodos = sorted({r["periodo"] for r in rows}) if rows else []
 
-    periodos = sorted({r["periodo"] for r in rows}) if rows else [1, 2, 3]
+    # Anos anteriores (mesmo número de aluno, anos letivos diferentes)
+    anos_anteriores = {}
+    if a["numero"]:
+        outros = db.execute(
+            "SELECT id, ano_letivo FROM alunos WHERE numero=? AND ano_letivo!=? ORDER BY ano_letivo DESC",
+            (a["numero"], a["ano_letivo"])
+        ).fetchall()
+        for outro in outros:
+            rows_ant = db.execute(
+                "SELECT disciplina, periodo, nota FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
+                (outro["id"],)
+            ).fetchall()
+            if rows_ant:
+                ano = outro["ano_letivo"]
+                anos_anteriores[ano] = {}
+                for r in rows_ant:
+                    d = r["disciplina"]
+                    if d not in anos_anteriores[ano]:
+                        anos_anteriores[ano][d] = {"notas": {}}
+                    anos_anteriores[ano][d]["notas"][r["periodo"]] = r["nota"]
 
-    return render_template("aluno.html", aluno=a, disciplinas=disciplinas, periodos=periodos)
+    return render_template("aluno.html", aluno=a, disciplinas=disciplinas,
+                           periodos=periodos, anos_anteriores=anos_anteriores)
 
 # ─── Admin routes ──────────────────────────────────────────────────────────────
 
@@ -421,34 +498,22 @@ def importar_excel():
 
     return render_template("importar.html")
 
-@app.route("/admin/turma/<turma>")
+@app.route("/admin/turma/<path:turma>")
 @login_required
 @admin_required
 def ver_turma(turma):
     db = get_db()
-    alunos = db.execute(
-        "SELECT * FROM alunos WHERE turma=? ORDER BY nome", (turma,)
-    ).fetchall()
-    alunos_info = []
-    for a in alunos:
-        periodos = db.execute(
-            "SELECT DISTINCT periodo FROM notas WHERE aluno_id=? ORDER BY periodo DESC",
-            (a["id"],)
-        ).fetchall()
-        ultimo_periodo = periodos[0]["periodo"] if periodos else None
-        media = None
-        if ultimo_periodo:
-            notas = db.execute(
-                "SELECT nota FROM notas WHERE aluno_id=? AND periodo=? AND nota IS NOT NULL",
-                (a["id"], ultimo_periodo)
-            ).fetchall()
-            vals = [n["nota"] for n in notas]
-            media = round(sum(vals) / len(vals), 1) if vals else None
-        alunos_info.append({
-            "id": a["id"], "numero": a["numero"], "nome": a["nome"],
-            "turma": a["turma"], "media": media, "periodo": ultimo_periodo
-        })
-    return render_template("dashboard.html", alunos=alunos_info, turma=turma)
+    periodo_sel = request.args.get("periodo", None)
+    if periodo_sel:
+        try: periodo_sel = int(periodo_sel)
+        except: periodo_sel = None
+    alunos_info = calcular_alunos_info(db, turma)
+    medias_disc, periodos_disp, periodo_sel, comparacao = calcular_stats_turma(db, turma, periodo_sel)
+    return render_template("dashboard.html", alunos=alunos_info, turma=turma,
+                           medias_disciplinas=medias_disc,
+                           periodos_disponiveis=periodos_disp,
+                           periodo_sel=periodo_sel,
+                           comparacao_periodos=comparacao)
 
 # ─── Importar notas via web (admin) ───────────────────────────────────────────
 

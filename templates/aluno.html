@@ -4,7 +4,7 @@
 {% block content %}
 <div class="px-3">
 
-  <!-- Cabeçalho do aluno -->
+  <!-- Cabeçalho -->
   <div class="mb-4 d-flex align-items-start justify-content-between flex-wrap gap-3">
     <div>
       <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary mb-2">
@@ -18,26 +18,21 @@
       </div>
     </div>
 
-    <!-- Resumo de médias por período -->
+    <!-- Médias por período -->
     {% if disciplinas %}
-    <div class="d-flex gap-3">
+    <div class="d-flex gap-3 flex-wrap">
       {% for p in periodos %}
         {% set notas_p = [] %}
         {% for d, info in disciplinas.items() %}
-          {% if info.notas.get(p) is not none %}
-            {% set _ = notas_p.append(info.notas[p]) %}
-          {% endif %}
+          {% if info.notas.get(p) is not none %}{% set _ = notas_p.append(info.notas[p]) %}{% endif %}
         {% endfor %}
         {% if notas_p %}
           {% set media_p = (notas_p | sum) / (notas_p | length) %}
           <div class="text-center">
             <div class="nota-badge
-              {% if media_p < 10 %}nota-neg
-              {% elif media_p < 14 %}nota-med
-              {% elif media_p < 17 %}nota-bom
-              {% else %}nota-exc{% endif %}
+              {% if media_p < 10 %}nota-neg{% elif media_p < 14 %}nota-med{% elif media_p < 17 %}nota-bom{% else %}nota-exc{% endif %}
               media-grande">{{ "%.1f"|format(media_p) }}</div>
-            <div class="text-muted mt-1" style="font-size:.8rem">Média {{ p }}º P.</div>
+            <div class="text-muted mt-1" style="font-size:.8rem">Média {{ p }}º S.</div>
           </div>
         {% endif %}
       {% endfor %}
@@ -52,10 +47,59 @@
   </div>
   {% else %}
 
-  <!-- Tabela de notas -->
+  <!-- ── RESUMO PARA REUNIÃO ─────────────────────────────────────── -->
+  {% set negas = [] %}
+  {% set em_risco = [] %}
+  {% for d, info in disciplinas.items() %}
+    {% set ultimo_p = periodos[-1] if periodos else none %}
+    {% if ultimo_p and info.notas.get(ultimo_p) is not none %}
+      {% set n = info.notas[ultimo_p] %}
+      {% if n < 10 %}{% set _ = negas.append((d, n)) %}
+      {% elif n < 12 %}{% set _ = em_risco.append((d, n)) %}{% endif %}
+    {% endif %}
+  {% endfor %}
+
+  {% if negas or em_risco %}
+  <div class="card border-0 shadow-sm mb-4" style="border-left: 4px solid #dc3545 !important;">
+    <div class="card-body py-3">
+      <h6 class="fw-bold mb-2"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Resumo para Reunião</h6>
+      <div class="d-flex flex-wrap gap-4">
+        {% if negas %}
+        <div>
+          <div class="text-danger fw-semibold mb-1" style="font-size:.85rem">NEGATIVAS</div>
+          {% for d, n in negas | sort(attribute=1) %}
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="nota-badge nota-neg">{{ "%.0f"|format(n) }}</span>
+            <span style="font-size:.9rem">{{ d }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if em_risco %}
+        <div>
+          <div class="text-warning fw-semibold mb-1" style="font-size:.85rem">EM RISCO (10-11)</div>
+          {% for d, n in em_risco | sort(attribute=1) %}
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="nota-badge nota-med">{{ "%.0f"|format(n) }}</span>
+            <span style="font-size:.9rem">{{ d }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-success border-0 shadow-sm mb-4 py-2">
+    <i class="bi bi-check-circle-fill me-2"></i>
+    Sem disciplinas negativas nem em risco no último semestre.
+  </div>
+  {% endif %}
+
+  <!-- ── TABELA NOTAS + MÉDIA + BARRA ──────────────────────────────── -->
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white py-3">
-      <h5 class="mb-0 fw-semibold"><i class="bi bi-table me-2 text-primary"></i>Notas por disciplina e período</h5>
+      <h5 class="mb-0 fw-semibold"><i class="bi bi-table me-2 text-primary"></i>Notas por disciplina</h5>
     </div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -64,61 +108,64 @@
             <tr>
               <th class="ps-4 py-3">Disciplina</th>
               {% for p in periodos %}
-              <th class="text-center py-3">{{ p }}º Período</th>
+              <th class="text-center py-3">{{ p }}º Sem.</th>
               {% endfor %}
-              <th class="text-center py-3">Progressão</th>
+              <th class="text-center py-3">Média</th>
+              <th class="py-3" style="min-width:120px">Evolução</th>
             </tr>
           </thead>
           <tbody>
             {% for disc, info in disciplinas.items() | sort %}
-            {% set notas_disc = [] %}
+            {% set notas_vals = [] %}
             {% for p in periodos %}
-              {% if info.notas.get(p) is not none %}{% set _ = notas_disc.append(info.notas[p]) %}{% endif %}
+              {% if info.notas.get(p) is not none %}{% set _ = notas_vals.append(info.notas[p]) %}{% endif %}
             {% endfor %}
+            {% set media_disc = (notas_vals | sum) / (notas_vals | length) if notas_vals else none %}
             <tr>
               <td class="ps-4 fw-medium">{{ disc }}</td>
               {% for p in periodos %}
               {% set n = info.notas.get(p) %}
               <td class="text-center">
                 {% if n is not none %}
-                <span class="nota-badge
-                  {% if n < 10 %}nota-neg
-                  {% elif n < 14 %}nota-med
-                  {% elif n < 17 %}nota-bom
-                  {% else %}nota-exc{% endif %}
-                  ">{{ "%.0f"|format(n) }}</span>
-                {% else %}
-                <span class="nota-badge nota-nd">—</span>
-                {% endif %}
+                <span class="nota-badge {% if n < 10 %}nota-neg{% elif n < 14 %}nota-med{% elif n < 17 %}nota-bom{% else %}nota-exc{% endif %}">
+                  {{ "%.0f"|format(n) }}</span>
+                {% else %}<span class="nota-badge nota-nd">—</span>{% endif %}
               </td>
               {% endfor %}
-              <!-- Seta de progressão -->
+              <!-- Média -->
               <td class="text-center">
-                {% if notas_disc | length >= 2 %}
-                  {% set diff = notas_disc[-1] - notas_disc[-2] %}
-                  {% if diff > 0 %}
-                    <i class="bi bi-arrow-up-circle-fill text-success"></i>
-                  {% elif diff < 0 %}
-                    <i class="bi bi-arrow-down-circle-fill text-danger"></i>
-                  {% else %}
-                    <i class="bi bi-dash-circle text-secondary"></i>
+                {% if media_disc is not none %}
+                <span class="nota-badge {% if media_disc < 10 %}nota-neg{% elif media_disc < 14 %}nota-med{% elif media_disc < 17 %}nota-bom{% else %}nota-exc{% endif %} fw-bold">
+                  {{ "%.1f"|format(media_disc) }}</span>
+                {% else %}<span class="nota-badge nota-nd">—</span>{% endif %}
+              </td>
+              <!-- Barra de evolução -->
+              <td class="pe-3">
+                {% if notas_vals | length >= 1 %}
+                <div class="d-flex align-items-center gap-1">
+                  {% for v in notas_vals %}
+                  <div style="
+                    height:22px; width:{{ [v * 2, 40] | min }}px; min-width:18px;
+                    border-radius:4px; font-size:.7rem; display:flex; align-items:center; justify-content:center;
+                    font-weight:600; color:white;
+                    background: {% if v < 10 %}#ef4444{% elif v < 14 %}#f59e0b{% elif v < 17 %}#10b981{% else %}#3b82f6{% endif %}">
+                    {{ "%.0f"|format(v) }}
+                  </div>
+                  {% endfor %}
+                  {% if notas_vals | length >= 2 %}
+                    {% set diff = notas_vals[-1] - notas_vals[-2] %}
+                    {% if diff > 0 %}<i class="bi bi-arrow-up-short text-success fs-5"></i>
+                    {% elif diff < 0 %}<i class="bi bi-arrow-down-short text-danger fs-5"></i>
+                    {% else %}<i class="bi bi-dash text-secondary"></i>{% endif %}
                   {% endif %}
-                {% else %}
-                  <span class="text-muted">—</span>
+                </div>
                 {% endif %}
               </td>
             </tr>
-            <!-- Linha de observações se existir -->
-            {% set obs_list = [] %}
-            {% for p in periodos %}
-              {% if info.obs.get(p) %}{% set _ = obs_list.append((p, info.obs[p])) %}{% endif %}
-            {% endfor %}
-            {% if obs_list %}
+            {% if info.obs %}
             <tr class="table-light">
-              <td class="ps-5 text-muted fst-italic" colspan="{{ periodos|length + 2 }}" style="font-size:.88rem">
-                {% for p, o in obs_list %}
-                <span class="me-3"><strong>{{ p }}º P.:</strong> {{ o }}</span>
-                {% endfor %}
+              <td class="ps-5 text-muted fst-italic" colspan="{{ periodos|length + 3 }}" style="font-size:.85rem">
+                {% for p, o in info.obs.items() %}<span class="me-3"><strong>{{ p }}º S.:</strong> {{ o }}</span>{% endfor %}
               </td>
             </tr>
             {% endif %}
@@ -129,16 +176,64 @@
     </div>
   </div>
 
+  <!-- ── ANOS ANTERIORES ────────────────────────────────────────────── -->
+  {% if anos_anteriores %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-semibold"><i class="bi bi-clock-history me-2 text-primary"></i>Anos anteriores</h5>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-notas table-hover mb-0">
+          <thead>
+            <tr>
+              <th class="ps-4">Ano letivo</th>
+              <th>Disciplina</th>
+              {% for p in [1,2] %}<th class="text-center">{{ p }}º Sem.</th>{% endfor %}
+              <th class="text-center">Média</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ano, discs in anos_anteriores.items() | sort(reverse=true) %}
+            {% for disc, info in discs.items() | sort %}
+            {% set vals = info.notas.values() | list %}
+            {% set vals_num = vals | select("ne", none) | list %}
+            {% set media_a = (vals_num | sum) / (vals_num | length) if vals_num else none %}
+            <tr>
+              {% if loop.first %}<td class="ps-4 fw-semibold" rowspan="{{ discs | length }}">{{ ano }}</td>{% endif %}
+              <td>{{ disc }}</td>
+              {% for p in [1,2] %}
+              {% set n = info.notas.get(p) %}
+              <td class="text-center">
+                {% if n is not none %}
+                <span class="nota-badge {% if n < 10 %}nota-neg{% elif n < 14 %}nota-med{% elif n < 17 %}nota-bom{% else %}nota-exc{% endif %}">{{ "%.0f"|format(n) }}</span>
+                {% else %}<span class="nota-badge nota-nd">—</span>{% endif %}
+              </td>
+              {% endfor %}
+              <td class="text-center">
+                {% if media_a is not none %}
+                <span class="nota-badge {% if media_a < 10 %}nota-neg{% elif media_a < 14 %}nota-med{% elif media_a < 17 %}nota-bom{% else %}nota-exc{% endif %} fw-bold">{{ "%.1f"|format(media_a) }}</span>
+                {% else %}<span class="nota-badge nota-nd">—</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Legenda -->
   <div class="d-flex flex-wrap gap-2 mb-4 align-items-center">
     <small class="text-muted me-2">Legenda:</small>
-    <span class="nota-badge nota-neg">< 10  Negativa</span>
-    <span class="nota-badge nota-med">10–13  Suficiente</span>
-    <span class="nota-badge nota-bom">14–16  Bom</span>
-    <span class="nota-badge nota-exc">≥ 17  Muito Bom</span>
+    <span class="nota-badge nota-neg">< 10 Negativa</span>
+    <span class="nota-badge nota-med">10–13 Suficiente</span>
+    <span class="nota-badge nota-bom">14–16 Bom</span>
+    <span class="nota-badge nota-exc">≥ 17 Muito Bom</span>
   </div>
 
   {% endif %}
-
 </div>
 {% endblock %}
