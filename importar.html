@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Importar Excel{% endblock %}
+
+{% block content %}
+<div class="px-3" style="max-width:700px">
+  <h2 class="fw-bold mb-4"><i class="bi bi-file-earmark-arrow-up me-2 text-primary"></i>Importar Avaliações (Excel)</h2>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro Excel (.xlsx)</label>
+          <input type="file" name="ficheiro" class="form-control" accept=".xlsx,.xls" required>
+          <div class="form-text">O ficheiro deve ter cabeçalhos na primeira linha.</div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Período</label>
+            <select name="periodo" class="form-select">
+              <option value="1">1º Período</option>
+              <option value="2">2º Período</option>
+              <option value="3">3º Período</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Ano Letivo</label>
+            <input type="text" name="ano_letivo" class="form-control" value="2025/2026">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-upload me-1"></i>Importar
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Instruções -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white">
+      <h6 class="fw-semibold mb-0"><i class="bi bi-info-circle me-2 text-primary"></i>Formato esperado do Excel</h6>
+    </div>
+    <div class="card-body">
+      <p class="mb-2">A <strong>primeira linha</strong> deve ter os cabeçalhos. Colunas reconhecidas automaticamente:</p>
+      <table class="table table-sm table-bordered">
+        <thead class="table-light"><tr><th>Coluna</th><th>Exemplos de nome aceite</th></tr></thead>
+        <tbody>
+          <tr><td>Nº do aluno</td><td><code>numero</code>, <code>nº</code>, <code>num</code></td></tr>
+          <tr><td>Nome</td><td><code>nome</code>, <code>name</code></td></tr>
+          <tr><td>Turma</td><td><code>turma</code>, <code>classe</code></td></tr>
+          <tr><td>Disciplinas</td><td>Qualquer outro cabeçalho (ex: <code>Matemática</code>, <code>Português</code>)</td></tr>
+          <tr><td>Observações</td><td><code>Matemática_obs</code> ou colunas com <em>obs</em> no nome</td></tr>
+        </tbody>
+      </table>
+      <p class="mb-0 text-muted" style="font-size:.88rem">Podem existir várias turmas no mesmo ficheiro — o portal separa-as automaticamente pela coluna Turma.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

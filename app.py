@@ -1,0 +1,583 @@
+import os
+import sqlite3
+import secrets
+from functools import wraps
+from datetime import datetime
+
+from flask import (Flask, render_template, request, redirect, url_for,
+                   session, flash, g, jsonify)
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import openpyxl
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+
+DATABASE = os.environ.get("DATABASE", "portal.db")
+UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Inicializar BD ao arrancar (funciona com gunicorn e python app.py)
+# Chamado depois de 'app' ser criado, via with app.app_context()
+def _auto_init():
+    with app.app_context():
+        init_db()
+
+import atexit as _atexit
+
+# ─── DB ────────────────────────────────────────────────────────────────────────
+
+def get_db():
+    if "db" not in g:
+        g.db = sqlite3.connect(DATABASE)
+        g.db.row_factory = sqlite3.Row
+        g.db.execute("PRAGMA foreign_keys = ON")
+    return g.db
+
+@app.teardown_appcontext
+def close_db(e=None):
+    db = g.pop("db", None)
+    if db:
+        db.close()
+
+def init_db():
+    db = sqlite3.connect(DATABASE)
+    db.row_factory = sqlite3.Row
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            email     TEXT UNIQUE NOT NULL,
+            password  TEXT NOT NULL,
+            nome      TEXT NOT NULL,
+            turma     TEXT,          -- NULL = admin
+            role      TEXT NOT NULL DEFAULT 'diretor'  -- 'admin' | 'diretor'
+        );
+
+        CREATE TABLE IF NOT EXISTS alunos (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero     TEXT NOT NULL,
+            nome       TEXT NOT NULL,
+            turma      TEXT NOT NULL,
+            ano_letivo TEXT NOT NULL DEFAULT '2025/2026',
+            UNIQUE(numero, ano_letivo)
+        );
+
+        CREATE TABLE IF NOT EXISTS notas (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id     INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            disciplina   TEXT NOT NULL,
+            periodo      INTEGER NOT NULL,  -- 1, 2 ou 3
+            nota         REAL,
+            observacoes  TEXT
+        );
+    """)
+    db.commit()
+    # Create default admin if not exists
+    cur = db.execute("SELECT id FROM users WHERE role='admin'")
+    if not cur.fetchone():
+        db.execute(
+            "INSERT INTO users (email, password, nome, role) VALUES (?,?,?,?)",
+            ("admin@escola.pt", generate_password_hash("admin123"), "Administrador", "admin")
+        )
+        db.commit()
+    db.close()
+
+# ─── Auth helpers ──────────────────────────────────────────────────────────────
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if session.get("role") != "admin":
+            flash("Acesso restrito a administradores.", "danger")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated
+
+# ─── Routes ────────────────────────────────────────────────────────────────────
+
+@app.route("/")
+def index():
+    if "user_id" in session:
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login"))
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"].strip().lower()
+        password = request.form["password"]
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        if user and check_password_hash(user["password"], password):
+            session.clear()
+            session["user_id"] = user["id"]
+            session["nome"] = user["nome"]
+            session["role"] = user["role"]
+            session["turma"] = user["turma"]
+            return redirect(url_for("dashboard"))
+        flash("Email ou password incorretos.", "danger")
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+def calcular_alunos_info(db, turma):
+    """Devolve lista de alunos com média para uma turma."""
+    alunos = db.execute(
+        "SELECT * FROM alunos WHERE turma=? ORDER BY nome", (turma,)
+    ).fetchall()
+    alunos_info = []
+    for a in alunos:
+        periodos = db.execute(
+            "SELECT DISTINCT periodo FROM notas WHERE aluno_id=? ORDER BY periodo DESC",
+            (a["id"],)
+        ).fetchall()
+        ultimo_periodo = periodos[0]["periodo"] if periodos else None
+        media = None
+        if ultimo_periodo:
+            notas = db.execute(
+                "SELECT nota FROM notas WHERE aluno_id=? AND periodo=? AND nota IS NOT NULL",
+                (a["id"], ultimo_periodo)
+            ).fetchall()
+            vals = [n["nota"] for n in notas if n["nota"] is not None]
+            media = round(sum(vals) / len(vals), 1) if vals else None
+        alunos_info.append({
+            "id": a["id"], "numero": a["numero"], "nome": a["nome"],
+            "turma": a["turma"], "media": media, "periodo": ultimo_periodo
+        })
+    return alunos_info
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    db = get_db()
+    if session["role"] == "admin":
+        turmas = db.execute(
+            "SELECT turma, COUNT(*) as total FROM alunos GROUP BY turma ORDER BY turma"
+        ).fetchall()
+        return render_template("dashboard_admin.html", turmas=turmas)
+    else:
+        # turma pode ser "12A1 AV" ou "12A1 AV,12A1 CT,12A1 SE"
+        turmas_str = session.get("turma") or ""
+        turmas_lista = [t.strip() for t in turmas_str.split(",") if t.strip()]
+
+        if len(turmas_lista) == 1:
+            # Uma só turma — vista normal
+            alunos_info = calcular_alunos_info(db, turmas_lista[0])
+            return render_template("dashboard.html", alunos=alunos_info, turma=turmas_lista[0])
+        else:
+            # Múltiplas turmas — mostrar selector
+            turma_sel = request.args.get("turma", turmas_lista[0] if turmas_lista else "")
+            if turma_sel not in turmas_lista:
+                turma_sel = turmas_lista[0] if turmas_lista else ""
+            alunos_info = calcular_alunos_info(db, turma_sel) if turma_sel else []
+            return render_template("dashboard.html", alunos=alunos_info, turma=turma_sel,
+                                   turmas_multiplas=turmas_lista)
+
+@app.route("/aluno/<int:aluno_id>")
+@login_required
+def aluno(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        flash("Aluno não encontrado.", "danger")
+        return redirect(url_for("dashboard"))
+    # Verificar permissão (suporta múltiplas turmas)
+    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and a["turma"] not in turmas_user:
+        flash("Não tem permissão para ver este aluno.", "danger")
+        return redirect(url_for("dashboard"))
+
+    # Notas organizadas por disciplina e período
+    rows = db.execute(
+        "SELECT disciplina, periodo, nota, observacoes FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
+        (aluno_id,)
+    ).fetchall()
+
+    disciplinas = {}
+    for r in rows:
+        d = r["disciplina"]
+        if d not in disciplinas:
+            disciplinas[d] = {"notas": {}, "obs": {}}
+        disciplinas[d]["notas"][r["periodo"]] = r["nota"]
+        if r["observacoes"]:
+            disciplinas[d]["obs"][r["periodo"]] = r["observacoes"]
+
+    periodos = sorted({r["periodo"] for r in rows}) if rows else [1, 2, 3]
+
+    return render_template("aluno.html", aluno=a, disciplinas=disciplinas, periodos=periodos)
+
+# ─── Admin routes ──────────────────────────────────────────────────────────────
+
+@app.route("/admin")
+@login_required
+@admin_required
+def admin_panel():
+    db = get_db()
+    users = db.execute("SELECT * FROM users ORDER BY role, turma, nome").fetchall()
+    return render_template("admin.html", users=users)
+
+@app.route("/admin/criar_utilizador", methods=["POST"])
+@login_required
+@admin_required
+def criar_utilizador():
+    email = request.form["email"].strip().lower()
+    nome = request.form["nome"].strip()
+    turma = request.form["turma"].strip().upper()
+    password = request.form["password"]
+    role = request.form.get("role", "diretor")
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO users (email, password, nome, turma, role) VALUES (?,?,?,?,?)",
+            (email, generate_password_hash(password), nome, turma or None, role)
+        )
+        db.commit()
+        flash(f"Utilizador {nome} criado com sucesso.", "success")
+    except sqlite3.IntegrityError:
+        flash("Email já existe.", "danger")
+    return redirect(url_for("admin_panel"))
+
+@app.route("/admin/editar_utilizador/<int:uid>", methods=["POST"])
+@login_required
+@admin_required
+def editar_utilizador(uid):
+    db = get_db()
+    nome = request.form["nome"].strip()
+    turma = request.form["turma"].strip().upper()
+    role = request.form.get("role", "diretor")
+    nova_pass = request.form.get("nova_password", "").strip()
+    if nova_pass:
+        db.execute(
+            "UPDATE users SET nome=?, turma=?, role=?, password=? WHERE id=?",
+            (nome, turma or None, role, generate_password_hash(nova_pass), uid)
+        )
+    else:
+        db.execute(
+            "UPDATE users SET nome=?, turma=?, role=? WHERE id=?",
+            (nome, turma or None, role, uid)
+        )
+    db.commit()
+    flash("Utilizador atualizado.", "success")
+    return redirect(url_for("admin_panel"))
+
+@app.route("/admin/apagar_utilizador/<int:uid>", methods=["POST"])
+@login_required
+@admin_required
+def apagar_utilizador(uid):
+    db = get_db()
+    db.execute("DELETE FROM users WHERE id=?", (uid,))
+    db.commit()
+    flash("Utilizador removido.", "success")
+    return redirect(url_for("admin_panel"))
+
+@app.route("/admin/importar", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_excel():
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        ano = request.form.get("ano_letivo", "2025/2026")
+        periodo = int(request.form.get("periodo", 1))
+        if not f or not f.filename.endswith((".xlsx", ".xls")):
+            flash("Por favor carregue um ficheiro Excel (.xlsx).", "danger")
+            return redirect(url_for("importar_excel"))
+
+        filename = secure_filename(f.filename)
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        f.save(path)
+
+        try:
+            wb = openpyxl.load_workbook(path, data_only=True)
+            ws = wb.active
+            headers = [str(c.value).strip() if c.value else "" for c in ws[1]]
+
+            # Detetar colunas obrigatórias (case-insensitive)
+            # Suporta prefixos como "Aluno: Nome", "Aluno: Turma", etc.
+            import re as _re
+            def _strip_prefix(h):
+                return _re.sub(r'^[^:]+:\s*', '', h).strip().lower()
+
+            h_lower   = [h.lower() for h in headers]
+            h_stripped = [_strip_prefix(h) for h in headers]
+
+            def col_idx(names):
+                for n in names:
+                    nl = n.lower()
+                    # tenta match exacto primeiro
+                    for i, h in enumerate(h_lower):
+                        if nl == h:
+                            return i
+                    # depois sem prefixo
+                    for i, h in enumerate(h_stripped):
+                        if nl == h or h.startswith(nl):
+                            return i
+                return None
+
+            idx_num   = col_idx(["numero interno", "numero", "nº", "n.º", "num"])
+            idx_nome  = col_idx(["nome", "name"])
+            idx_turma = col_idx(["turma", "classe", "class"])
+
+            if idx_nome is None or idx_turma is None:
+                flash("Colunas 'Nome' e 'Turma' não encontradas no ficheiro.", "danger")
+                return redirect(url_for("importar_excel"))
+
+            # Colunas de disciplinas = todas as restantes (exceto as de controlo)
+            skip = {idx_num, idx_nome, idx_turma}
+            # Colunas que podem ser observações: terminam em "_obs" ou "observ"
+            disc_cols = []
+            for i, h in enumerate(headers):
+                if i in skip or not h:
+                    continue
+                disc_cols.append((i, h))
+
+            db = get_db()
+            count_alunos = 0
+            count_notas = 0
+
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                nome_val = row[idx_nome] if idx_nome is not None else None
+                if not nome_val:
+                    continue
+                turma_val = str(row[idx_turma]).strip().upper() if row[idx_turma] else ""
+                num_val = str(row[idx_num]).strip() if idx_num is not None and row[idx_num] else ""
+
+                # Inserir/ignorar aluno
+                cur = db.execute(
+                    "INSERT OR IGNORE INTO alunos (numero, nome, turma, ano_letivo) VALUES (?,?,?,?)",
+                    (num_val, str(nome_val).strip(), turma_val, ano)
+                )
+                if cur.rowcount == 0:
+                    # já existe, atualizar nome/turma
+                    db.execute(
+                        "UPDATE alunos SET nome=?, turma=? WHERE numero=? AND ano_letivo=?",
+                        (str(nome_val).strip(), turma_val, num_val, ano)
+                    )
+                else:
+                    count_alunos += 1
+
+                aluno_row = db.execute(
+                    "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?", (num_val, ano)
+                ).fetchone()
+                if not aluno_row:
+                    continue
+                aluno_id = aluno_row["id"]
+
+                for col_i, disc_name in disc_cols:
+                    val = row[col_i]
+                    # Detetar se é observação (coluna seguinte pode ser _obs)
+                    is_obs = any(k in disc_name.lower() for k in ["obs", "observ", "nota_text", "descrit"])
+                    if is_obs:
+                        continue  # tratadas em conjunto com a nota
+
+                    nota_num = None
+                    try:
+                        nota_num = float(val) if val is not None and str(val).strip() != "" else None
+                    except (ValueError, TypeError):
+                        nota_num = None
+
+                    # Procurar coluna de observações correspondente
+                    obs_text = None
+                    obs_col_name = disc_name + "_obs"
+                    for oi, oh in disc_cols:
+                        if oh.lower() == obs_col_name.lower() or (disc_name.lower() in oh.lower() and "obs" in oh.lower()):
+                            obs_text = str(row[oi]).strip() if row[oi] else None
+                            break
+
+                    # Upsert nota
+                    existing = db.execute(
+                        "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+                        (aluno_id, disc_name, periodo)
+                    ).fetchone()
+                    if existing:
+                        db.execute(
+                            "UPDATE notas SET nota=?, observacoes=? WHERE id=?",
+                            (nota_num, obs_text, existing["id"])
+                        )
+                    else:
+                        db.execute(
+                            "INSERT INTO notas (aluno_id, disciplina, periodo, nota, observacoes) VALUES (?,?,?,?,?)",
+                            (aluno_id, disc_name, periodo, nota_num, obs_text)
+                        )
+                    count_notas += 1
+
+            db.commit()
+            flash(f"Importação concluída: {count_alunos} alunos novos, {count_notas} notas processadas.", "success")
+
+        except Exception as e:
+            flash(f"Erro ao processar ficheiro: {e}", "danger")
+
+        return redirect(url_for("importar_excel"))
+
+    return render_template("importar.html")
+
+@app.route("/admin/turma/<turma>")
+@login_required
+@admin_required
+def ver_turma(turma):
+    db = get_db()
+    alunos = db.execute(
+        "SELECT * FROM alunos WHERE turma=? ORDER BY nome", (turma,)
+    ).fetchall()
+    alunos_info = []
+    for a in alunos:
+        periodos = db.execute(
+            "SELECT DISTINCT periodo FROM notas WHERE aluno_id=? ORDER BY periodo DESC",
+            (a["id"],)
+        ).fetchall()
+        ultimo_periodo = periodos[0]["periodo"] if periodos else None
+        media = None
+        if ultimo_periodo:
+            notas = db.execute(
+                "SELECT nota FROM notas WHERE aluno_id=? AND periodo=? AND nota IS NOT NULL",
+                (a["id"], ultimo_periodo)
+            ).fetchall()
+            vals = [n["nota"] for n in notas]
+            media = round(sum(vals) / len(vals), 1) if vals else None
+        alunos_info.append({
+            "id": a["id"], "numero": a["numero"], "nome": a["nome"],
+            "turma": a["turma"], "media": media, "periodo": ultimo_periodo
+        })
+    return render_template("dashboard.html", alunos=alunos_info, turma=turma)
+
+# ─── Importar notas via web (admin) ───────────────────────────────────────────
+
+@app.route("/admin/importar-notas", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_notas_web():
+    """Importa ficheiros de Avaliação Contínua (formato Grelha)."""
+    if request.method == "POST":
+        ficheiros = request.files.getlist("ficheiros")
+        semestre  = int(request.form.get("semestre", 1))
+        ano       = request.form.get("ano_letivo", "2025/2026")
+
+        if not ficheiros or all(f.filename == "" for f in ficheiros):
+            flash("Selecione pelo menos um ficheiro.", "danger")
+            return redirect(url_for("importar_notas_web"))
+
+        import re as _re, unicodedata as _uc
+
+        def _normalizar(s):
+            s = _uc.normalize("NFKD", str(s or ""))
+            s = s.encode("ascii", "ignore").decode()
+            return _re.sub(r"\s+", " ", s).strip().lower()
+
+        def _parse_nota(v):
+            if v is None: return None
+            s = str(v).strip()
+            if s in ("-", "", "NP", "NP.", "NE", "NA", "—"): return None
+            try: return float(s)
+            except: return None
+
+        def _extrair_turma(val):
+            s = str(val).strip()
+            return s.split(" - ", 1)[1].strip() if " - " in s else s
+
+        db = get_db()
+        # Cache alunos
+        alunos_cache = {}
+        for a in db.execute("SELECT id, nome, turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall():
+            alunos_cache[(_normalizar(a["nome"]), a["turma"])] = a["id"]
+        alunos_por_nome = {}
+        for (n, t), aid in alunos_cache.items():
+            alunos_por_nome.setdefault(n, []).append((t, aid))
+
+        total_notas = 0
+        nao_enc     = set()
+
+        for f in ficheiros:
+            if not f.filename.endswith((".xlsx", ".xls")):
+                continue
+            path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+            f.save(path)
+
+            wb   = openpyxl.load_workbook(path, data_only=True)
+            ws   = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+
+            header_idx = None
+            for i, row in enumerate(rows):
+                if row[0] and "Nome" in str(row[0]) and "Turma" in str(row[0]):
+                    header_idx = i; break
+            if header_idx is None:
+                flash(f"Estrutura não reconhecida: {f.filename}", "warning")
+                continue
+
+            disc_row = rows[header_idx - 2]
+            np_row   = rows[header_idx]
+            disc_cols_sorted = sorted([i for i, v in enumerate(disc_row)
+                                       if v and str(v).strip()
+                                       and "Nome" not in str(v)
+                                       and "Número" not in str(v)])
+            disc_np_map = {}
+            for idx, dc in enumerate(disc_cols_sorted):
+                end = disc_cols_sorted[idx+1] if idx+1 < len(disc_cols_sorted) else len(np_row)
+                dname = str(disc_row[dc]).strip()
+                for c in range(dc, min(end, len(np_row))):
+                    if np_row[c] and str(np_row[c]).strip() == "NP.":
+                        disc_np_map[dname] = c; break
+
+            turma_atual = None
+            for row in rows[header_idx + 2:]:
+                if row[0] and str(row[0]).strip():
+                    turma_atual = _extrair_turma(row[0])
+                nome_val = row[7] if len(row) > 7 else None
+                if not nome_val or not str(nome_val).strip(): continue
+                nome_n = _normalizar(str(nome_val))
+
+                aluno_id = alunos_cache.get((nome_n, turma_atual))
+                if aluno_id is None and nome_n in alunos_por_nome:
+                    cands = alunos_por_nome[nome_n]
+                    aluno_id = cands[0][1] if len(cands) == 1 else None
+                if aluno_id is None:
+                    nao_enc.add(f"{nome_val} ({turma_atual})")
+                    continue
+
+                for disc, col_np in disc_np_map.items():
+                    nota = _parse_nota(row[col_np] if col_np < len(row) else None)
+                    if nota is None: continue
+                    ex = db.execute(
+                        "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+                        (aluno_id, disc, semestre)
+                    ).fetchone()
+                    if ex:
+                        db.execute("UPDATE notas SET nota=? WHERE id=?", (nota, ex["id"]))
+                    else:
+                        db.execute(
+                            "INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,?,?)",
+                            (aluno_id, disc, semestre, nota)
+                        )
+                    total_notas += 1
+
+        db.commit()
+        msg = f"Importação concluída: {total_notas} notas carregadas."
+        if nao_enc:
+            msg += f" {len(nao_enc)} aluno(s) não encontrado(s)."
+        flash(msg, "success" if not nao_enc else "warning")
+        return redirect(url_for("importar_notas_web"))
+
+    return render_template("importar_notas.html")
+
+
+# ─── Run ───────────────────────────────────────────────────────────────────────
+
+# Garantir que a BD existe ao arrancar (gunicorn ou python app.py)
+try:
+    init_db()
+except Exception as _e:
+    print(f"[AVISO] init_db: {_e}")
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
