@@ -150,23 +150,36 @@
       z-index:300; display:flex; flex-direction:column;
     }
     .slide-full-header {
-      background:var(--azul); padding:.6rem 1.5rem;
+      background:var(--azul); padding:.6rem 2rem;
       display:flex; align-items:center; justify-content:space-between;
       border-bottom:2px solid var(--azul2); flex-shrink:0;
     }
     .slide-full-body {
-      flex:1; display:flex; flex-direction:column; align-items:center;
-      justify-content:center; padding:3rem; overflow-y:auto;
+      flex:1; display:flex; flex-direction:column;
+      padding:2rem 3rem; overflow-y:auto;
     }
-    .slide-titulo-grande { font-size:2.5rem; font-weight:900; color:white; margin-bottom:1.5rem; text-align:center; }
-    .slide-texto { font-size:1.4rem; color:rgba(255,255,255,.85); line-height:1.7; max-width:800px; text-align:center; white-space:pre-wrap; }
-    .slide-lista { list-style:none; padding:0; max-width:700px; width:100%; }
+    .slide-titulo-grande {
+      font-size:2.2rem; font-weight:900; color:white;
+      margin-bottom:1.5rem; text-align:left; line-height:1.2;
+    }
+    .slide-conteudo { flex:1; }
+    .slide-texto {
+      font-size:1.3rem; color:rgba(255,255,255,.88);
+      line-height:1.75; text-align:left; white-space:pre-wrap;
+    }
+    /* Rich text from Quill */
+    .slide-rich { font-size:1.3rem; color:rgba(255,255,255,.88); line-height:1.75; }
+    .slide-rich p { margin-bottom:.6rem; }
+    .slide-rich strong, .slide-rich b { color:white; }
+    .slide-rich ul, .slide-rich ol { padding-left:1.5rem; margin-bottom:.6rem; }
+    .slide-rich li { margin-bottom:.4rem; }
+    .slide-lista { list-style:none; padding:0; width:100%; }
     .slide-lista li {
       display:flex; align-items:flex-start; gap:.8rem;
-      font-size:1.4rem; color:rgba(255,255,255,.85); margin-bottom:.9rem;
+      font-size:1.3rem; color:rgba(255,255,255,.85); margin-bottom:.8rem;
     }
-    .slide-lista li::before { content:'▸'; color:var(--azul2); flex-shrink:0; margin-top:.1rem; }
-    .slide-img { max-height:55vh; max-width:100%; border-radius:8px; object-fit:contain; margin-bottom:1.5rem; }
+    .slide-lista li::before { content:'▸'; color:var(--azul2); flex-shrink:0; margin-top:.15rem; }
+    .slide-img { max-height:50vh; max-width:60%; border-radius:8px; object-fit:contain; margin-bottom:1.5rem; align-self:flex-start; }
     .slide-nav-bar {
       background:#0a1628; border-top:1px solid var(--borda);
       padding:.7rem 2rem; display:flex; align-items:center;
@@ -610,15 +623,18 @@ function abrirSlide(i) {
 
 function renderSlideConteudo(s, i) {
   const body = document.getElementById('slide-full-body');
-  let html = '';
+  // Título sempre no topo, não repetido no corpo
+  let html = `<div class="slide-titulo-grande">${s.titulo || ''}</div><div class="slide-conteudo">`;
   if (s.imagem_url) html += `<img src="${s.imagem_url}" class="slide-img" alt="">`;
-  if (s.titulo) html += `<div class="slide-titulo-grande">${s.titulo}</div>`;
   if (s.tipo === 'lista' && s.conteudo) {
     const linhas = s.conteudo.split('\n').filter(l => l.trim());
     html += `<ul class="slide-lista">${linhas.map(l => `<li>${l.trim()}</li>`).join('')}</ul>`;
+  } else if (s.tipo === 'rich' && s.conteudo) {
+    html += `<div class="slide-rich">${s.conteudo}</div>`;
   } else if (s.conteudo) {
     html += `<div class="slide-texto">${s.conteudo}</div>`;
   }
+  html += '</div>';
   body.innerHTML = html;
 
   document.getElementById('slide-idx').textContent = `${i+1} / ${SLIDES.length}`;

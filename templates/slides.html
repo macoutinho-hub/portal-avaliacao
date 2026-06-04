@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Slides — {{ turma }}{% endblock %}
+{% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+<style>
+  .ql-toolbar { background:#f8f9fb; border-radius:6px 6px 0 0 !important; }
+  .ql-container { border-radius:0 0 6px 6px !important; min-height:140px; font-size:1rem; }
+  .ql-editor { min-height:130px; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="px-3">
   <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
@@ -54,7 +62,8 @@
       <div class="modal fade" id="edit-{{ s.id }}" tabindex="-1">
         <div class="modal-dialog modal-lg">
           <div class="modal-content">
-            <form method="post" action="{{ url_for('editar_slide', turma=turma, slide_id=s.id) }}" enctype="multipart/form-data">
+            <form method="post" action="{{ url_for('editar_slide', turma=turma, slide_id=s.id) }}"
+                  enctype="multipart/form-data" id="edit-form-{{ s.id }}">
               <div class="modal-header" style="background:#0E4D7D;color:white">
                 <h5 class="modal-title">Editar Slide {{ loop.index }}</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -66,8 +75,9 @@
                 </div>
                 <div class="col-md-4">
                   <label class="form-label fw-semibold">Tipo</label>
-                  <select name="tipo" class="form-select">
-                    <option value="texto" {% if s.tipo=='texto' %}selected{% endif %}>Texto</option>
+                  <select name="tipo" id="tipo-edit-{{ s.id }}" class="form-select"
+                          onchange="toggleEditor('edit-{{ s.id }}', this.value)">
+                    <option value="rich" {% if s.tipo in ('rich','texto') %}selected{% endif %}>Texto formatado</option>
                     <option value="lista" {% if s.tipo=='lista' %}selected{% endif %}>Lista de pontos</option>
                     <option value="imagem" {% if s.tipo=='imagem' %}selected{% endif %}>Imagem + texto</option>
                   </select>
@@ -76,9 +86,15 @@
                   <label class="form-label fw-semibold">Ordem</label>
                   <input type="number" name="ordem" class="form-control" value="{{ s.ordem }}" min="0">
                 </div>
-                <div class="col-12">
-                  <label class="form-label fw-semibold">Conteúdo <small class="text-muted">(para lista: um ponto por linha)</small></label>
-                  <textarea name="conteudo" class="form-control" rows="5">{{ s.conteudo }}</textarea>
+                <div class="col-12 {% if s.tipo=='lista' %}d-none{% endif %}" id="editor-rich-edit-{{ s.id }}">
+                  <label class="form-label fw-semibold">Conteúdo</label>
+                  <div id="quill-edit-{{ s.id }}" style="background:white"></div>
+                  <input type="hidden" name="conteudo" id="conteudo-edit-{{ s.id }}">
+                </div>
+                <div class="col-12 {% if s.tipo!='lista' %}d-none{% endif %}" id="editor-lista-edit-{{ s.id }}">
+                  <label class="form-label fw-semibold">Pontos <small class="text-muted">(um por linha)</small></label>
+                  <textarea class="form-control" rows="5"
+                            oninput="document.getElementById('conteudo-edit-{{ s.id }}').value=this.value">{{ s.conteudo if s.tipo=='lista' else '' }}</textarea>
                 </div>
                 <div class="col-12">
                   <label class="form-label fw-semibold">Substituir imagem</label>
@@ -114,15 +130,21 @@
             </div>
             <div class="mb-3">
               <label class="form-label fw-semibold">Tipo</label>
-              <select name="tipo" class="form-select">
-                <option value="texto">Texto livre</option>
+              <select name="tipo" id="tipo-novo" class="form-select" onchange="toggleEditor('novo', this.value)">
+                <option value="rich">Texto formatado</option>
                 <option value="lista">Lista de pontos</option>
                 <option value="imagem">Imagem + texto</option>
               </select>
             </div>
-            <div class="mb-3">
-              <label class="form-label fw-semibold">Conteúdo <small class="text-muted">(lista: um ponto por linha)</small></label>
-              <textarea name="conteudo" class="form-control" rows="5" placeholder="Escreva aqui..."></textarea>
+            <div class="mb-3" id="editor-rich-novo">
+              <label class="form-label fw-semibold">Conteúdo</label>
+              <div id="quill-novo" style="background:white"></div>
+              <input type="hidden" name="conteudo" id="conteudo-novo">
+            </div>
+            <div class="mb-3 d-none" id="editor-lista-novo">
+              <label class="form-label fw-semibold">Pontos <small class="text-muted">(um por linha)</small></label>
+              <textarea class="form-control" rows="5" placeholder="Corrida do mar&#10;Caminho de Santiago&#10;Dia +"
+                        oninput="document.getElementById('conteudo-novo').value=this.value"></textarea>
             </div>
             <div class="mb-4">
               <label class="form-label fw-semibold">Imagem (opcional)</label>
@@ -137,4 +159,46 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script>
+const toolbarOpts = [
+  [{ 'font': [] }, { 'size': ['small', false, 'large', 'huge'] }],
+  ['bold', 'italic', 'underline'],
+  [{ 'color': [] }],
+  [{ 'align': [] }],
+  [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+  ['clean']
+];
+
+const quillNovo = new Quill('#quill-novo', { theme: 'snow', modules: { toolbar: toolbarOpts } });
+
+document.querySelector('form[action*="criar_slide"]').addEventListener('submit', () => {
+  if (document.getElementById('tipo-novo').value === 'rich')
+    document.getElementById('conteudo-novo').value = quillNovo.root.innerHTML;
+});
+
+function toggleEditor(id, tipo) {
+  const rich  = document.getElementById(`editor-rich-${id}`);
+  const lista = document.getElementById(`editor-lista-${id}`);
+  if (rich)  rich.classList.toggle('d-none',  tipo !== 'rich');
+  if (lista) lista.classList.toggle('d-none', tipo !== 'lista');
+}
+
+{% for s in slides %}
+(function() {
+  const el = document.getElementById('quill-edit-{{ s.id }}');
+  if (!el) return;
+  const q = new Quill(el, { theme: 'snow', modules: { toolbar: toolbarOpts } });
+  q.root.innerHTML = {{ s.conteudo | tojson }};
+  const form = document.getElementById('edit-form-{{ s.id }}');
+  if (form) form.addEventListener('submit', () => {
+    if (document.getElementById('tipo-edit-{{ s.id }}').value === 'rich')
+      document.getElementById('conteudo-edit-{{ s.id }}').value = q.root.innerHTML;
+  });
+})();
+{% endfor %}
+</script>
 {% endblock %}
