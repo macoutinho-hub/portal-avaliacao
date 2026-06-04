@@ -1399,14 +1399,13 @@ def importar_notas_web():
                     nao_enc.add(f"{nome_str} ({turma_val})")
                     continue
 
-                # Guardar BI se disponível (normalizado: primeiros 8 dígitos)
+                # Guardar BI (normalizado: primeiros 8 dígitos — sempre actualizar)
                 if idx_bi is not None and row[idx_bi]:
                     bi_digits = _re.sub(r'[^0-9]', '', str(row[idx_bi]))
-                    bi_val = bi_digits[:8]  # primeiros 8 dígitos = número do BI
+                    bi_val = bi_digits[:8]
                     if bi_val:
                         try:
-                            db.execute("UPDATE alunos SET bi=? WHERE id=? AND (bi IS NULL OR bi='')",
-                                       (bi_val, aluno_id))
+                            db.execute("UPDATE alunos SET bi=? WHERE id=?", (bi_val, aluno_id))
                         except Exception:
                             pass
 
