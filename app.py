@@ -203,6 +203,35 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
+@app.route("/alterar-password", methods=["GET", "POST"])
+@login_required
+def alterar_password():
+    if request.method == "POST":
+        atual    = request.form.get("password_atual", "")
+        nova     = request.form.get("nova_password", "")
+        confirma = request.form.get("confirmar_password", "")
+
+        if nova != confirma:
+            flash("As passwords não coincidem.", "danger")
+            return redirect(url_for("alterar_password"))
+        if len(nova) < 6:
+            flash("A nova password deve ter pelo menos 6 caracteres.", "danger")
+            return redirect(url_for("alterar_password"))
+
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        if not check_password_hash(user["password"], atual):
+            flash("Password actual incorrecta.", "danger")
+            return redirect(url_for("alterar_password"))
+
+        db.execute("UPDATE users SET password=? WHERE id=?",
+                   (generate_password_hash(nova), session["user_id"]))
+        db.commit()
+        flash("Password alterada com sucesso.", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("alterar_password.html")
+
 def calcular_alunos_info(db, turma, ano=None):
     """Devolve lista de alunos com média e nº de negativas para uma turma (base)."""
     if ano is None:
