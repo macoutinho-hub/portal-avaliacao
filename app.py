@@ -102,6 +102,17 @@ def init_db():
         );
     """)
     db.executescript("""
+        CREATE TABLE IF NOT EXISTS slides_turma (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            turma     TEXT NOT NULL,
+            titulo    TEXT NOT NULL DEFAULT '',
+            conteudo  TEXT NOT NULL DEFAULT '',
+            tipo      TEXT NOT NULL DEFAULT 'texto',  -- 'texto' | 'lista' | 'imagem'
+            imagem    TEXT,          -- path relativo ao FOTOS_FOLDER
+            ordem     INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS auto_avaliacao (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             aluno_id   INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
@@ -1495,6 +1506,115 @@ def importar_excel():
 
     return render_template("importar.html")
 
+# ─── Slides de turma ──────────────────────────────────────────────────────────
+
+SLIDES_FOLDER = os.environ.get("SLIDES_FOLDER",
+    os.path.join(os.path.dirname(DATABASE) if os.path.dirname(DATABASE) else ".", "slides"))
+os.makedirs(SLIDES_FOLDER, exist_ok=True)
+
+def _check_turma_perm(turma):
+    tb = base_turma(turma)
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    return session["role"] == "admin" or tb in turmas_user
+
+@app.route("/turma/<path:turma>/slides", methods=["GET"])
+@login_required
+def gerir_slides(turma):
+    if not _check_turma_perm(turma):
+        flash("Sem permissão.", "danger"); return redirect(url_for("dashboard"))
+    db = get_db()
+    tb = base_turma(turma)
+    slides = db.execute(
+        "SELECT * FROM slides_turma WHERE turma=? ORDER BY ordem, id", (tb,)
+    ).fetchall()
+    return render_template("slides.html", turma=tb, slides=slides)
+
+@app.route("/turma/<path:turma>/slides/criar", methods=["POST"])
+@login_required
+def criar_slide(turma):
+    if not _check_turma_perm(turma):
+        return redirect(url_for("dashboard"))
+    db = get_db()
+    tb = base_turma(turma)
+    titulo   = request.form.get("titulo", "").strip()
+    conteudo = request.form.get("conteudo", "").strip()
+    tipo     = request.form.get("tipo", "texto")
+    imagem   = None
+
+    f = request.files.get("imagem")
+    if f and f.filename:
+        ext = os.path.splitext(f.filename)[1].lower()
+        nome = f"slide_{tb}_{int(os.times()[4]*1000)}{ext}".replace(" ", "_")
+        f.save(os.path.join(SLIDES_FOLDER, nome))
+        imagem = nome
+
+    from datetime import datetime as _dt
+    max_ord = db.execute("SELECT MAX(ordem) FROM slides_turma WHERE turma=?", (tb,)).fetchone()[0]
+    db.execute(
+        "INSERT INTO slides_turma (turma, titulo, conteudo, tipo, imagem, ordem, updated_at) VALUES (?,?,?,?,?,?,?)",
+        (tb, titulo, conteudo, tipo, imagem, (max_ord or 0) + 1, _dt.now().strftime("%Y-%m-%d %H:%M"))
+    )
+    db.commit()
+    flash("Slide criado.", "success")
+    return redirect(url_for("gerir_slides", turma=tb))
+
+@app.route("/turma/<path:turma>/slides/<int:slide_id>/editar", methods=["POST"])
+@login_required
+def editar_slide(turma, slide_id):
+    if not _check_turma_perm(turma):
+        return redirect(url_for("dashboard"))
+    db = get_db()
+    tb = base_turma(turma)
+    titulo   = request.form.get("titulo", "").strip()
+    conteudo = request.form.get("conteudo", "").strip()
+    tipo     = request.form.get("tipo", "texto")
+    ordem    = int(request.form.get("ordem", 0))
+
+    f = request.files.get("imagem")
+    imagem_update = ""
+    if f and f.filename:
+        ext = os.path.splitext(f.filename)[1].lower()
+        nome = f"slide_{tb}_{slide_id}{ext}".replace(" ", "_")
+        f.save(os.path.join(SLIDES_FOLDER, nome))
+        imagem_update = nome
+
+    from datetime import datetime as _dt
+    if imagem_update:
+        db.execute(
+            "UPDATE slides_turma SET titulo=?, conteudo=?, tipo=?, imagem=?, ordem=?, updated_at=? WHERE id=? AND turma=?",
+            (titulo, conteudo, tipo, imagem_update, ordem, _dt.now().strftime("%Y-%m-%d %H:%M"), slide_id, tb)
+        )
+    else:
+        db.execute(
+            "UPDATE slides_turma SET titulo=?, conteudo=?, tipo=?, ordem=?, updated_at=? WHERE id=? AND turma=?",
+            (titulo, conteudo, tipo, ordem, _dt.now().strftime("%Y-%m-%d %H:%M"), slide_id, tb)
+        )
+    db.commit()
+    flash("Slide actualizado.", "success")
+    return redirect(url_for("gerir_slides", turma=tb))
+
+@app.route("/turma/<path:turma>/slides/<int:slide_id>/apagar", methods=["POST"])
+@login_required
+def apagar_slide(turma, slide_id):
+    if not _check_turma_perm(turma):
+        return redirect(url_for("dashboard"))
+    db = get_db()
+    tb = base_turma(turma)
+    db.execute("DELETE FROM slides_turma WHERE id=? AND turma=?", (slide_id, tb))
+    db.commit()
+    flash("Slide removido.", "success")
+    return redirect(url_for("gerir_slides", turma=tb))
+
+@app.route("/slide-img/<filename>")
+@login_required
+def slide_img(filename):
+    from flask import send_file
+    path = os.path.join(SLIDES_FOLDER, filename)
+    if os.path.exists(path):
+        return send_file(path)
+    return "", 404
+
+
 @app.route("/apresentacao/<path:turma>")
 @login_required
 def apresentacao(turma):
@@ -1642,10 +1762,21 @@ def apresentacao(turma):
             "notas_reuniao": notas_r, "negas": negas,
         })
 
+    slides = db.execute(
+        "SELECT id, titulo, conteudo, tipo, imagem FROM slides_turma WHERE turma=? ORDER BY ordem, id",
+        (tb,)
+    ).fetchall()
+    slides_json = json.dumps([{
+        "titulo": s["titulo"], "conteudo": s["conteudo"],
+        "tipo": s["tipo"],
+        "imagem_url": url_for("slide_img", filename=s["imagem"]) if s["imagem"] else None
+    } for s in slides])
+
     return render_template("apresentacao.html",
                            turma=turma,
                            alunos=alunos,
-                           alunos_json=json.dumps(alunos_json))
+                           alunos_json=json.dumps(alunos_json),
+                           slides_json=slides_json)
 
 
 @app.route("/admin/turma/<path:turma>")

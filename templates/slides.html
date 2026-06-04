@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Slides — {{ turma }}{% endblock %}
+{% block content %}
+<div class="px-3">
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <a href="{{ url_for('ver_turma', turma=turma) }}" class="btn btn-sm btn-outline-secondary mb-2">
+        <i class="bi bi-arrow-left me-1"></i>Voltar à turma
+      </a>
+      <h2 class="fw-bold mb-0"><i class="bi bi-collection-play me-2 text-primary"></i>Slides — Turma {{ turma }}</h2>
+      <p class="text-muted">Informação geral da turma para projeção na reunião</p>
+    </div>
+    <a href="{{ url_for('apresentacao', turma=turma) }}" class="btn btn-primary" target="_blank">
+      <i class="bi bi-projector me-1"></i>Modo Reunião
+    </a>
+  </div>
+
+  <div class="row g-4">
+    <!-- Lista de slides existentes -->
+    <div class="col-lg-7">
+      {% if not slides %}
+      <div class="text-center py-5 text-muted border rounded">
+        <i class="bi bi-collection display-4"></i>
+        <p class="mt-3">Ainda não há slides. Crie o primeiro à direita.</p>
+      </div>
+      {% else %}
+      {% for s in slides %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+          <span class="fw-semibold">
+            <span class="badge bg-secondary me-2">{{ loop.index }}</span>
+            {{ s.titulo or '(sem título)' }}
+            <small class="text-muted ms-2">{{ s.tipo }}</small>
+          </span>
+          <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#edit-{{ s.id }}">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <form method="post" action="{{ url_for('apagar_slide', turma=turma, slide_id=s.id) }}"
+                  onsubmit="return confirm('Apagar slide?')" class="d-inline">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </div>
+        </div>
+        <div class="card-body py-2">
+          {% if s.tipo == 'imagem' and s.imagem %}
+          <img src="{{ url_for('slide_img', filename=s.imagem) }}" style="max-height:80px; object-fit:contain" class="me-3">
+          {% endif %}
+          <small class="text-muted">{{ s.conteudo[:120] }}{% if s.conteudo|length > 120 %}…{% endif %}</small>
+        </div>
+      </div>
+
+      <!-- Modal editar -->
+      <div class="modal fade" id="edit-{{ s.id }}" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <form method="post" action="{{ url_for('editar_slide', turma=turma, slide_id=s.id) }}" enctype="multipart/form-data">
+              <div class="modal-header" style="background:#0E4D7D;color:white">
+                <h5 class="modal-title">Editar Slide {{ loop.index }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body row g-3">
+                <div class="col-12">
+                  <label class="form-label fw-semibold">Título</label>
+                  <input type="text" name="titulo" class="form-control" value="{{ s.titulo }}">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">Tipo</label>
+                  <select name="tipo" class="form-select">
+                    <option value="texto" {% if s.tipo=='texto' %}selected{% endif %}>Texto</option>
+                    <option value="lista" {% if s.tipo=='lista' %}selected{% endif %}>Lista de pontos</option>
+                    <option value="imagem" {% if s.tipo=='imagem' %}selected{% endif %}>Imagem + texto</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold">Ordem</label>
+                  <input type="number" name="ordem" class="form-control" value="{{ s.ordem }}" min="0">
+                </div>
+                <div class="col-12">
+                  <label class="form-label fw-semibold">Conteúdo <small class="text-muted">(para lista: um ponto por linha)</small></label>
+                  <textarea name="conteudo" class="form-control" rows="5">{{ s.conteudo }}</textarea>
+                </div>
+                <div class="col-12">
+                  <label class="form-label fw-semibold">Substituir imagem</label>
+                  <input type="file" name="imagem" class="form-control" accept=".jpg,.jpeg,.png,.gif,.webp">
+                  {% if s.imagem %}
+                  <div class="mt-2"><img src="{{ url_for('slide_img', filename=s.imagem) }}" style="max-height:60px"></div>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+
+    <!-- Criar novo slide -->
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm sticky-top" style="top:1rem">
+        <div class="card-header py-3" style="background:#0E4D7D;color:white">
+          <h5 class="mb-0 fw-semibold"><i class="bi bi-plus-lg me-2"></i>Novo Slide</h5>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('criar_slide', turma=turma) }}" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Título</label>
+              <input type="text" name="titulo" class="form-control" placeholder="ex: Pontos de discussão" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Tipo</label>
+              <select name="tipo" class="form-select">
+                <option value="texto">Texto livre</option>
+                <option value="lista">Lista de pontos</option>
+                <option value="imagem">Imagem + texto</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Conteúdo <small class="text-muted">(lista: um ponto por linha)</small></label>
+              <textarea name="conteudo" class="form-control" rows="5" placeholder="Escreva aqui..."></textarea>
+            </div>
+            <div class="mb-4">
+              <label class="form-label fw-semibold">Imagem (opcional)</label>
+              <input type="file" name="imagem" class="form-control" accept=".jpg,.jpeg,.png,.gif,.webp">
+            </div>
+            <button type="submit" class="btn btn-primary w-100">
+              <i class="bi bi-plus-lg me-1"></i>Criar Slide
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

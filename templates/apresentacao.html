@@ -109,6 +109,68 @@
     .ap-table .sep-col { border-left: 2px solid #22c55e !important; }
     .ap-table .media-col { border-left: 1px solid rgba(255,255,255,.15) !important; font-weight: 800; }
 
+    /* Aba slides */
+    .slides-tab {
+      position:fixed; right:0; top:50%; transform:translateY(-50%);
+      z-index:100;
+    }
+    .slides-tab-btn {
+      writing-mode:vertical-rl; text-orientation:mixed;
+      background:var(--azul2); color:white; border:none;
+      padding:.8rem .5rem; border-radius:8px 0 0 8px; cursor:pointer;
+      font-weight:700; font-size:.85rem; letter-spacing:.5px;
+    }
+    .slides-panel {
+      position:fixed; right:0; top:0; bottom:0; width:520px;
+      background:var(--card); border-left:2px solid var(--borda);
+      z-index:200; display:flex; flex-direction:column;
+      transform:translateX(100%); transition:transform .25s ease;
+    }
+    .slides-panel.open { transform:translateX(0); }
+    .slides-panel-header {
+      background:var(--azul); padding:.8rem 1rem;
+      display:flex; align-items:center; justify-content:space-between;
+      flex-shrink:0; border-bottom:2px solid var(--azul2);
+    }
+    .slides-panel-body { flex:1; overflow-y:auto; padding:1rem; }
+    .slide-card {
+      background:#1e3a5f; border-radius:8px; margin-bottom:.8rem;
+      padding:1rem; cursor:pointer; border:2px solid transparent;
+      transition:border-color .15s;
+    }
+    .slide-card:hover, .slide-card.active { border-color:var(--azul2); }
+    .slide-card-titulo { font-weight:700; font-size:.95rem; margin-bottom:.3rem; color:var(--azul3); }
+    .slide-card-preview { font-size:.82rem; opacity:.6; }
+
+    /* Slide fullscreen */
+    .slide-full {
+      position:fixed; inset:0; background:var(--fundo);
+      z-index:300; display:flex; flex-direction:column;
+    }
+    .slide-full-header {
+      background:var(--azul); padding:.6rem 1.5rem;
+      display:flex; align-items:center; justify-content:space-between;
+      border-bottom:2px solid var(--azul2); flex-shrink:0;
+    }
+    .slide-full-body {
+      flex:1; display:flex; flex-direction:column; align-items:center;
+      justify-content:center; padding:3rem; overflow-y:auto;
+    }
+    .slide-titulo-grande { font-size:2.5rem; font-weight:900; color:white; margin-bottom:1.5rem; text-align:center; }
+    .slide-texto { font-size:1.4rem; color:rgba(255,255,255,.85); line-height:1.7; max-width:800px; text-align:center; white-space:pre-wrap; }
+    .slide-lista { list-style:none; padding:0; max-width:700px; width:100%; }
+    .slide-lista li {
+      display:flex; align-items:flex-start; gap:.8rem;
+      font-size:1.4rem; color:rgba(255,255,255,.85); margin-bottom:.9rem;
+    }
+    .slide-lista li::before { content:'▸'; color:var(--azul2); flex-shrink:0; margin-top:.1rem; }
+    .slide-img { max-height:55vh; max-width:100%; border-radius:8px; object-fit:contain; margin-bottom:1.5rem; }
+    .slide-nav-bar {
+      background:#0a1628; border-top:1px solid var(--borda);
+      padding:.7rem 2rem; display:flex; align-items:center;
+      justify-content:center; gap:1.5rem; flex-shrink:0;
+    }
+
     /* Vista turma */
     .vt-wrap { flex:1; overflow:auto; padding:1rem 1.2rem; }
     .vt-table { width:100%; border-collapse:collapse; font-size:.9rem; }
@@ -233,8 +295,45 @@
   </div>
 </div>
 
+<!-- Aba slides -->
+{% if slides_json != '[]' %}
+<div class="slides-tab">
+  <button class="slides-tab-btn" onclick="toggleSlidesPanel()">
+    <i class="bi bi-collection-play d-block mb-1" style="writing-mode:horizontal-tb"></i>
+    Slides
+  </button>
+</div>
+
+<div class="slides-panel" id="slides-panel">
+  <div class="slides-panel-header">
+    <span style="font-weight:700; font-size:1rem"><i class="bi bi-collection-play me-2"></i>Slides da Turma</span>
+    <button onclick="toggleSlidesPanel()" style="background:none;border:none;color:white;font-size:1.3rem;cursor:pointer">✕</button>
+  </div>
+  <div class="slides-panel-body" id="slides-lista"></div>
+</div>
+
+<!-- Slide fullscreen -->
+<div class="slide-full" id="slide-full" style="display:none">
+  <div class="slide-full-header">
+    <span id="slide-titulo-header" style="font-weight:700; font-size:1.1rem"></span>
+    <button onclick="fecharSlide()" style="background:none;border:none;color:white;font-size:1.5rem;cursor:pointer">✕</button>
+  </div>
+  <div class="slide-full-body" id="slide-full-body"></div>
+  <div class="slide-nav-bar">
+    <button class="btn-nav" id="slide-btn-ant" onclick="navSlide(-1)">
+      <i class="bi bi-chevron-left"></i> Anterior
+    </button>
+    <span id="slide-idx" style="font-size:.9rem; opacity:.5; min-width:60px; text-align:center"></span>
+    <button class="btn-nav" id="slide-btn-prox" onclick="navSlide(1)">
+      Seguinte <i class="bi bi-chevron-right"></i>
+    </button>
+  </div>
+</div>
+{% endif %}
+
 <script>
 const ALUNOS = {{ alunos_json | safe }};
+const SLIDES = {{ slides_json | safe }};
 let idx = 0;
 
 function nc(n) {
@@ -477,6 +576,76 @@ function construirVistaTurma() {
 
   document.getElementById('vt-container').innerHTML = html;
 }
+
+// ── Slides ──────────────────────────────────────────────────────────────────
+let slideIdx = 0;
+
+function toggleSlidesPanel() {
+  const p = document.getElementById('slides-panel');
+  if (!p) return;
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) renderSlidesLista();
+}
+
+function renderSlidesLista() {
+  if (!SLIDES || !SLIDES.length) return;
+  const el = document.getElementById('slides-lista');
+  el.innerHTML = SLIDES.map((s,i) => `
+    <div class="slide-card ${i===slideIdx?'active':''}" onclick="abrirSlide(${i})">
+      <div class="slide-card-titulo">${s.titulo || '(sem título)'}</div>
+      <div class="slide-card-preview">${(s.conteudo||'').substring(0,60)}${(s.conteudo||'').length>60?'…':''}</div>
+    </div>`).join('');
+}
+
+function abrirSlide(i) {
+  if (!SLIDES || !SLIDES[i]) return;
+  slideIdx = i;
+  const s = SLIDES[i];
+  document.getElementById('slide-titulo-header').textContent = s.titulo || '';
+  document.getElementById('slide-full').style.display = 'flex';
+  renderSlideConteudo(s, i);
+}
+
+function renderSlideConteudo(s, i) {
+  const body = document.getElementById('slide-full-body');
+  let html = '';
+  if (s.imagem_url) html += `<img src="${s.imagem_url}" class="slide-img" alt="">`;
+  if (s.titulo) html += `<div class="slide-titulo-grande">${s.titulo}</div>`;
+  if (s.tipo === 'lista' && s.conteudo) {
+    const linhas = s.conteudo.split('\n').filter(l => l.trim());
+    html += `<ul class="slide-lista">${linhas.map(l => `<li>${l.trim()}</li>`).join('')}</ul>`;
+  } else if (s.conteudo) {
+    html += `<div class="slide-texto">${s.conteudo}</div>`;
+  }
+  body.innerHTML = html;
+
+  document.getElementById('slide-idx').textContent = `${i+1} / ${SLIDES.length}`;
+  document.getElementById('slide-btn-ant').disabled = (i <= 0);
+  document.getElementById('slide-btn-prox').disabled = (i >= SLIDES.length - 1);
+}
+
+function navSlide(dir) {
+  const novo = slideIdx + dir;
+  if (novo >= 0 && novo < SLIDES.length) {
+    slideIdx = novo;
+    abrirSlide(slideIdx);
+  }
+}
+
+function fecharSlide() {
+  document.getElementById('slide-full').style.display = 'none';
+  renderSlidesLista();
+}
+
+// Teclas de seta dentro do slide fullscreen
+document.addEventListener('keydown', e => {
+  if (document.getElementById('slide-full')?.style.display !== 'none') {
+    if (e.key==='ArrowRight'||e.key==='ArrowDown') navSlide(1);
+    if (e.key==='ArrowLeft' ||e.key==='ArrowUp')   navSlide(-1);
+    if (e.key==='Escape') fecharSlide();
+    e.stopPropagation();
+  }
+});
 
 function toggleFS() {
   if (!document.fullscreenElement) {
