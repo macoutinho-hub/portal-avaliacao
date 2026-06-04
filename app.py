@@ -132,6 +132,27 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+# ─── Utilitários de turma ─────────────────────────────────────────────────────
+
+import re as _re_global
+
+def ano_letivo_atual(db):
+    """Devolve o ano letivo mais recente na BD."""
+    r = db.execute("SELECT ano_letivo FROM alunos ORDER BY ano_letivo DESC LIMIT 1").fetchone()
+    return r["ano_letivo"] if r else "2025/2026"
+
+def base_turma(turma):
+    """Remove sufixo de curso: '12A1 CT' → '12A1', '10A1' → '10A1'."""
+    return _re_global.sub(r'\s+\w+$', '', str(turma or "").strip())
+
+def turmas_base_para_sql(turma_base, db, ano):
+    """Devolve lista de turmas reais que correspondem à turma base."""
+    rows = db.execute(
+        "SELECT DISTINCT turma FROM alunos WHERE ano_letivo=? ORDER BY turma", (ano,)
+    ).fetchall()
+    return [r["turma"] for r in rows if base_turma(r["turma"]) == turma_base]
+
+
 # ─── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -162,10 +183,18 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-def calcular_alunos_info(db, turma):
-    """Devolve lista de alunos com média e nº de negativas para uma turma."""
+def calcular_alunos_info(db, turma, ano=None):
+    """Devolve lista de alunos com média e nº de negativas para uma turma (base)."""
+    if ano is None:
+        ano = ano_letivo_atual(db)
+    # Suporta turma base ("12A1") ou turma exacta ("12A1 CT")
+    turmas_reais = turmas_base_para_sql(turma, db, ano)
+    if not turmas_reais:
+        turmas_reais = [turma]  # fallback
+    placeholders = ",".join("?" * len(turmas_reais))
     alunos = db.execute(
-        "SELECT * FROM alunos WHERE turma=? ORDER BY nome", (turma,)
+        f"SELECT * FROM alunos WHERE turma IN ({placeholders}) AND ano_letivo=? ORDER BY nome",
+        turmas_reais + [ano]
     ).fetchall()
     alunos_info = []
     for a in alunos:
@@ -192,8 +221,14 @@ def calcular_alunos_info(db, turma):
     return alunos_info
 
 def calcular_stats_turma(db, turma, periodo_sel=None):
-    """Calcula médias por disciplina e comparação entre períodos para uma turma."""
-    alunos = db.execute("SELECT id FROM alunos WHERE turma=?", (turma,)).fetchall()
+    """Calcula médias por disciplina e comparação entre períodos para uma turma (base)."""
+    ano = ano_letivo_atual(db)
+    turmas_reais = turmas_base_para_sql(turma, db, ano) or [turma]
+    ph = ",".join("?" * len(turmas_reais))
+    alunos = db.execute(
+        f"SELECT id FROM alunos WHERE turma IN ({ph}) AND ano_letivo=?",
+        turmas_reais + [ano]
+    ).fetchall()
     ids = [a["id"] for a in alunos]
     if not ids:
         return {}, [], None, []
@@ -242,24 +277,35 @@ def calcular_stats_turma(db, turma, periodo_sel=None):
 def dashboard():
     db = get_db()
     if session["role"] == "admin":
-        turmas = db.execute(
-            "SELECT turma, COUNT(*) as total FROM alunos GROUP BY turma ORDER BY turma"
+        ano = ano_letivo_atual(db)
+        # Agrupar por turma base (ex: 12A1 CT + AV + SE → 12A1)
+        rows = db.execute(
+            "SELECT turma, COUNT(*) as total FROM alunos WHERE ano_letivo=? GROUP BY turma ORDER BY turma",
+            (ano,)
         ).fetchall()
+        turmas_agrupadas = {}
+        for r in rows:
+            tb = base_turma(r["turma"])
+            turmas_agrupadas[tb] = turmas_agrupadas.get(tb, 0) + r["total"]
+        turmas = [{"turma": t, "total": n} for t, n in sorted(turmas_agrupadas.items())]
         return render_template("dashboard_admin.html", turmas=turmas)
     else:
         # turma pode ser "12A1 AV" ou "12A1 AV,12A1 CT,12A1 SE"
         turmas_str = session.get("turma") or ""
         turmas_lista = [t.strip() for t in turmas_str.split(",") if t.strip()]
 
-        turma_sel = request.args.get("turma", turmas_lista[0] if turmas_lista else "")
-        if turma_sel not in turmas_lista:
-            turma_sel = turmas_lista[0] if turmas_lista else ""
+        # Converter turmas reais para turmas base (ex: "12A1 CT" → "12A1")
+        turmas_base_lista = sorted(set(base_turma(t) for t in turmas_lista))
+        turma_sel = request.args.get("turma", turmas_base_lista[0] if turmas_base_lista else "")
+        if turma_sel not in turmas_base_lista:
+            turma_sel = turmas_base_lista[0] if turmas_base_lista else ""
         periodo_sel = request.args.get("periodo", None)
         if periodo_sel:
             try: periodo_sel = int(periodo_sel)
             except: periodo_sel = None
 
-        alunos_info = calcular_alunos_info(db, turma_sel) if turma_sel else []
+        ano = ano_letivo_atual(db)
+        alunos_info = calcular_alunos_info(db, turma_sel, ano) if turma_sel else []
         medias_disc, periodos_disp, periodo_sel, comparacao = calcular_stats_turma(db, turma_sel, periodo_sel)
 
         kwargs = dict(alunos=alunos_info, turma=turma_sel,
@@ -267,8 +313,8 @@ def dashboard():
                       periodos_disponiveis=periodos_disp,
                       periodo_sel=periodo_sel,
                       comparacao_periodos=comparacao)
-        if len(turmas_lista) > 1:
-            kwargs["turmas_multiplas"] = turmas_lista
+        if len(turmas_base_lista) > 1:
+            kwargs["turmas_multiplas"] = turmas_base_lista
         return render_template("dashboard.html", **kwargs)
 
 @app.route("/aluno/<int:aluno_id>")
@@ -894,8 +940,13 @@ def apresentacao(turma):
         flash("Sem permissão para esta turma.", "danger")
         return redirect(url_for("dashboard"))
 
+    ano = ano_letivo_atual(db)
+    tb = base_turma(turma)
+    turmas_reais = turmas_base_para_sql(tb, db, ano) or [turma]
+    ph = ",".join("?" * len(turmas_reais))
     alunos = db.execute(
-        "SELECT * FROM alunos WHERE turma=? ORDER BY nome", (turma,)
+        f"SELECT * FROM alunos WHERE turma IN ({ph}) AND ano_letivo=? ORDER BY nome",
+        turmas_reais + [ano]
     ).fetchall()
 
     alunos_json = []
@@ -1035,13 +1086,15 @@ def apresentacao(turma):
 @admin_required
 def ver_turma(turma):
     db = get_db()
+    tb = base_turma(turma)
+    ano = ano_letivo_atual(db)
     periodo_sel = request.args.get("periodo", None)
     if periodo_sel:
         try: periodo_sel = int(periodo_sel)
         except: periodo_sel = None
-    alunos_info = calcular_alunos_info(db, turma)
-    medias_disc, periodos_disp, periodo_sel, comparacao = calcular_stats_turma(db, turma, periodo_sel)
-    return render_template("dashboard.html", alunos=alunos_info, turma=turma,
+    alunos_info = calcular_alunos_info(db, tb, ano)
+    medias_disc, periodos_disp, periodo_sel, comparacao = calcular_stats_turma(db, tb, periodo_sel)
+    return render_template("dashboard.html", alunos=alunos_info, turma=tb,
                            medias_disciplinas=medias_disc,
                            periodos_disponiveis=periodos_disp,
                            periodo_sel=periodo_sel,

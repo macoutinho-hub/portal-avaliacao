@@ -112,7 +112,9 @@
       <i class="bi bi-chevron-left"></i> Anterior
       <span class="key-hint">← seta</span>
     </button>
-    <span class="aluno-index" id="idx-label"></span>
+    <select id="select-aluno" onchange="irPara(this.value)"
+      style="background:#2d3f55;color:white;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:.4rem .8rem;font-size:.88rem;min-width:220px;max-width:300px;cursor:pointer">
+    </select>
     <button class="btn-nav" id="btn-prox" onclick="navegar(1)">
       Seguinte <i class="bi bi-chevron-right"></i>
       <span class="key-hint">seta →</span>
@@ -143,7 +145,24 @@ function ncSpan(n) {
   return `<span class="nc ${corClasse(n)}">${fmt(n)}</span>`;
 }
 
+function popularDropdown() {
+  const sel = document.getElementById('select-aluno');
+  sel.innerHTML = '';
+  ALUNOS.forEach((a, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${i+1}. ${a.nome}`;
+    sel.appendChild(opt);
+  });
+}
+
+function irPara(i) {
+  idx = parseInt(i);
+  mostrar(idx);
+}
+
 function mostrar(i) {
+  document.getElementById('select-aluno').value = i;
   const a = ALUNOS[i];
 
   // Foto
@@ -240,6 +259,7 @@ document.addEventListener('keydown', e => {
 });
 
 // Iniciar
+popularDropdown();
 mostrar(0);
 </script>
 </body>
