@@ -359,24 +359,34 @@ def aluno(aluno_id):
                 "media": round(sum(vals) / len(vals), 1) if vals else None,
             })
 
-    # CIF único no final — média de todos os semestres por disciplina (ano actual)
-    disc_ano_atual = notas_por_ano.get(ano_atual, {})
-    periodos_atuais = sorted({p for d in disc_ano_atual.values() for p in d})
+    # ── CIF: média das notas do 2º semestre (periodo=2) de cada ano leccionado ──
+    # Se o 2º semestre ainda não existir, usa o período mais recente disponível
     cif_notas = {}
     for d in todas_disciplinas:
-        vals_d = [disc_ano_atual.get(d, {}).get(p) for p in periodos_atuais
-                  if disc_ano_atual.get(d, {}).get(p) is not None]
-        cif_notas[d] = round(sum(vals_d) / len(vals_d), 1) if vals_d else None
+        notas_2s = []
+        for ano, disc_ano in notas_por_ano.items():
+            periodos_d = sorted(disc_ano.get(d, {}).keys())
+            if not periodos_d:
+                continue
+            # Preferir período 2; se não existir, usar o último período disponível
+            periodo_final = 2 if 2 in periodos_d else periodos_d[-1]
+            nota = disc_ano.get(d, {}).get(periodo_final)
+            if nota is not None:
+                notas_2s.append(nota)
+        cif_notas[d] = round(sum(notas_2s) / len(notas_2s), 1) if notas_2s else None
+
     cif_vals = [v for v in cif_notas.values() if v is not None]
+    cif_media = round(sum(cif_vals) / len(cif_vals), 1) if cif_vals else None
+
     linhas.append({
         "label": "CIF",
         "tipo": "cif",
         "atual": True,
         "notas": cif_notas,
-        "media": round(sum(cif_vals) / len(cif_vals), 1) if cif_vals else None,
+        "media": cif_media,
     })
 
-    # Linha de Exame (vazia por enquanto)
+    # ── Exame (vazio — a importar futuramente) ────────────────────────────────
     linhas.append({
         "label": "Exame",
         "tipo": "exame",
@@ -385,13 +395,15 @@ def aluno(aluno_id):
         "media": None,
     })
 
-    # CFD = CIF (sem exame por enquanto)
+    # ── CFD = CIF quando sem exame; com exame: (7.5×CIF + 2.5×Exame) / 10 ───
+    # Por agora sem exames → CFD = CIF
+    cfd_notas = dict(cif_notas)
     linhas.append({
         "label": "CFD",
         "tipo": "cfd",
         "atual": False,
-        "notas": cif_notas,
-        "media": round(sum(cif_vals) / len(cif_vals), 1) if cif_vals else None,
+        "notas": cfd_notas,
+        "media": cif_media,
     })
 
     # ── Resumo para cabeçalho ─────────────────────────────────────────────────
@@ -849,21 +861,23 @@ def apresentacao(turma):
                                 "atual": ano == a["ano_letivo"], "notas": nl,
                                 "media": round(sum(vals)/len(vals),1) if vals else None})
 
-        # CIF único no final — ano actual
-        ano_at = a["ano_letivo"]
-        da = notas_por_ano.get(ano_at, {})
-        pa = sorted({p for d in da.values() for p in d})
-        cif = {d: None for d in todas}
+        # CIF: média das notas do 2º semestre de cada ano leccionado
+        cif = {}
         for d in todas:
-            vd = [da.get(d,{}).get(p) for p in pa if da.get(d,{}).get(p) is not None]
-            cif[d] = round(sum(vd)/len(vd),1) if vd else None
+            ns = []
+            for ano_k, da_k in notas_por_ano.items():
+                pds = sorted(da_k.get(d, {}).keys())
+                if not pds: continue
+                pf = 2 if 2 in pds else pds[-1]
+                n = da_k.get(d, {}).get(pf)
+                if n is not None: ns.append(n)
+            cif[d] = round(sum(ns)/len(ns),1) if ns else None
         cv = [v for v in cif.values() if v is not None]
-        linhas.append({"label":"CIF","tipo":"cif","atual":True,
-                       "notas":cif,"media":round(sum(cv)/len(cv),1) if cv else None})
+        cm = round(sum(cv)/len(cv),1) if cv else None
+        linhas.append({"label":"CIF","tipo":"cif","atual":True,"notas":cif,"media":cm})
         linhas.append({"label":"Exame","tipo":"exame","atual":False,
                        "notas":{d:None for d in todas},"media":None})
-        linhas.append({"label":"CFD","tipo":"cfd","atual":False,
-                       "notas":cif,"media":round(sum(cv)/len(cv),1) if cv else None})
+        linhas.append({"label":"CFD","tipo":"cfd","atual":False,"notas":dict(cif),"media":cm})
 
         # Notas de reunião
         nr_rows = db.execute(
