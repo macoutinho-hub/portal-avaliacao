@@ -177,12 +177,118 @@ DISC_FAMILIAS = {
     "Filosofia A":                          "família_filo",
 }
 
+def nome_match(nome_a, nome_b):
+    """
+    Verifica se dois nomes correspondem ao mesmo aluno, mesmo com abreviações.
+    Ex: 'Diogo Pessoa P. Ferreira' == 'Diogo Pessoa Pereira Ferreira'
+    """
+    import unicodedata as _uc, re as _re2
+
+    def _norm_palavra(s):
+        s = _uc.normalize('NFKD', str(s))
+        return s.encode('ascii','ignore').decode().lower().strip('. ')
+
+    def _palavras(nome):
+        return [_norm_palavra(p) for p in nome.strip().split() if _norm_palavra(p)]
+
+    pa = _palavras(nome_a)
+    pb = _palavras(nome_b)
+
+    if not pa or not pb:
+        return False
+
+    # Primeiro e último nome devem coincidir
+    if pa[0] != pb[0] or pa[-1] != pb[-1]:
+        return False
+
+    # Nomes do meio: comparar par a par, permitindo inicial
+    meios_a = pa[1:-1]
+    meios_b = pb[1:-1]
+
+    # Se um lado não tem nomes do meio, aceitar
+    if not meios_a or not meios_b:
+        return True
+
+    # Alinhar pelo menor comprimento
+    for ma, mb in zip(meios_a, meios_b):
+        if ma == mb:
+            continue
+        # Verificar se um é inicial do outro
+        if len(ma) == 1 and mb.startswith(ma):
+            continue
+        if len(mb) == 1 and ma.startswith(mb):
+            continue
+        return False
+
+    return True
+
+
 def membros_familia(disc):
     """Devolve todos os nomes que pertencem à mesma família que `disc`."""
     fam = DISC_FAMILIAS.get(disc)
     if not fam:
         return [disc]
     return [d for d, f in DISC_FAMILIAS.items() if f == fam]
+
+
+def encontrar_aluno_id(db, nome_str, turma, ano, numero="", alunos_cache=None, alunos_todos=None):
+    """
+    Procura aluno_id por: número → nome exacto → nome fuzzy (iniciais).
+    alunos_cache: {(nome_norm, turma): id}
+    alunos_todos: {nome_norm: [{id, numero, nome_original}]}
+    """
+    import unicodedata as _uc3, re as _re5
+
+    def _norm(s):
+        s = _uc3.normalize('NFKD', str(s or ''))
+        s = s.encode('ascii','ignore').decode()
+        return _re5.sub(r'\s+', ' ', s).strip().lower()
+
+    nome_n = _norm(nome_str)
+
+    # 1. Por número de processo (mais fiável)
+    if numero:
+        r = db.execute(
+            "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?", (numero, ano)
+        ).fetchone()
+        if r:
+            return r["id"]
+
+    # 2. Por nome normalizado exacto + turma
+    if alunos_cache is not None:
+        aid = alunos_cache.get((nome_n, turma))
+        if aid:
+            return aid
+
+    # 3. Por nome normalizado exacto (qualquer turma desse ano)
+    r = db.execute(
+        "SELECT id FROM alunos WHERE ano_letivo=? AND LOWER(nome)=?", (ano, nome_str.lower())
+    ).fetchone()
+    if r:
+        return r["id"]
+
+    # 4. Fuzzy: nome com iniciais — procurar em todos os alunos do ano
+    candidatos = db.execute(
+        "SELECT id, nome FROM alunos WHERE ano_letivo=? AND turma=?", (ano, turma)
+    ).fetchall()
+    for c in candidatos:
+        if nome_match(nome_str, c["nome"]):
+            return c["id"]
+
+    # 5. Fuzzy sem turma
+    if alunos_todos:
+        for _, lista in alunos_todos.items():
+            for item in lista:
+                if nome_match(nome_str, item.get("nome_original", "")):
+                    # Verificar se existe registo para o ano
+                    r2 = db.execute(
+                        "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?",
+                        (item.get("numero",""), ano)
+                    ).fetchone()
+                    if r2:
+                        return r2["id"]
+
+    return None
 
 
 def get_setting(db, key, default=None):
@@ -1655,7 +1761,12 @@ def importar_pauta(turma):
         nao_enc = []
 
         for al in alunos_doc:
+            # 1. Por número; 2. nome exacto; 3. nome fuzzy
             aluno_id = cache_num.get(al["numero"]) or cache_nome.get(_norm(al["nome"]))
+            if aluno_id is None:
+                for a_db in alunos_db:
+                    if nome_match(al["nome"], a_db["nome"]):
+                        aluno_id = a_db["id"]; break
             if aluno_id is None:
                 nao_enc.append(al["nome"])
                 continue
@@ -2170,23 +2281,50 @@ def importar_notas_web():
                     if np_row[c] and str(np_row[c]).strip() == "NP.":
                         disc_np_map[dname] = c; break
 
+            # Detectar coluna do número na grelha (col 4 = Número na turma, não útil;
+            # col 1 do header pode ter "N.º Matrícula" — já tratado em parse_pauta_excel)
+            col_num_grelha = next(
+                (ci for ci, v in enumerate(rows[header_idx]) if v and "N.º" in str(v) and "Matrícula" in str(v)), None
+            )
+
             turma_atual = None
             for row in rows[header_idx + 2:]:
                 if row[0] and str(row[0]).strip():
                     turma_atual = _extrair_turma(row[0])
                 nome_val = row[7] if len(row) > 7 else None
                 if not nome_val or not str(nome_val).strip(): continue
-                nome_n = _normalizar(str(nome_val))
+                nome_n   = _normalizar(str(nome_val))
                 nome_str = str(nome_val).strip()
+                # Número de matrícula da grelha (col 1 nas pautas, col 4 nas grelhas de avaliação)
+                num_grelha = str(row[col_num_grelha]).strip() if col_num_grelha and col_num_grelha < len(row) and row[col_num_grelha] else \
+                             str(row[1]).strip() if len(row) > 1 and row[1] and str(row[1]).strip().isdigit() else ""
 
-                # 1. Tentar encontrar no ano pretendido
-                aluno_id = alunos_cache.get((nome_n, turma_atual))
+                # 1. Por número de matrícula (mais fiável)
+                aluno_id = None
+                if num_grelha:
+                    r = db.execute(
+                        "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?", (num_grelha, ano)
+                    ).fetchone()
+                    if r: aluno_id = r["id"]
 
-                # 2. Se não encontrado, criar registo para este ano usando número de outro ano
+                # 2. Por nome exacto
                 if aluno_id is None:
-                    numero_aluno = ""
-                    if nome_n in alunos_todos:
-                        # Usar o número do aluno encontrado noutro ano
+                    aluno_id = alunos_cache.get((nome_n, turma_atual))
+
+                # 3. Por nome fuzzy (iniciais)
+                if aluno_id is None:
+                    cands = db.execute(
+                        "SELECT id, nome FROM alunos WHERE ano_letivo=? AND turma=?", (ano, turma_atual or "")
+                    ).fetchall()
+                    for c in cands:
+                        if nome_match(nome_str, c["nome"]):
+                            aluno_id = c["id"]
+                            break
+
+                # 4. Se não encontrado, criar registo
+                if aluno_id is None:
+                    numero_aluno = num_grelha
+                    if not numero_aluno and nome_n in alunos_todos:
                         numero_aluno = alunos_todos[nome_n][0]["numero"] or ""
 
                     # Criar registo do aluno para este ano letivo
