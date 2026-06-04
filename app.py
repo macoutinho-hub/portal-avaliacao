@@ -16,7 +16,9 @@ app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
 DATABASE = os.environ.get("DATABASE", "portal.db")
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "uploads")
+FOTOS_FOLDER  = os.environ.get("FOTOS_FOLDER", os.path.join(os.path.dirname(DATABASE) if os.path.dirname(DATABASE) else ".", "fotos"))
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(FOTOS_FOLDER,  exist_ok=True)
 
 # Inicializar BD ao arrancar (funciona com gunicorn e python app.py)
 # Chamado depois de 'app' ser criado, via with app.app_context()
@@ -393,13 +395,21 @@ def aluno(aluno_id):
             "negas": sorted(negas, key=lambda x: x[1]),
         }
 
+    # Verificar se existe foto
+    foto_url = None
+    if a["numero"]:
+        for ext in ("jpg", "jpeg", "png", "webp"):
+            if os.path.exists(os.path.join(FOTOS_FOLDER, f"{a['numero']}.{ext}")):
+                foto_url = url_for("foto_aluno", numero=a["numero"])
+                break
+
     return render_template("aluno.html", aluno=a,
                            todas_disciplinas=todas_disciplinas,
                            abreviaturas=ABREVIATURAS,
                            separador_idx=separador_idx,
                            linhas=linhas,
                            resumo=resumo,
-                           foto_url=None)
+                           foto_url=foto_url)
 
 # ─── Edição de nota ───────────────────────────────────────────────────────────
 
@@ -452,6 +462,26 @@ def editar_nota(aluno_id):
 
     db.commit()
     return jsonify({"ok": True, "nota": nota})
+
+
+# ─── Fotos ────────────────────────────────────────────────────────────────────
+
+@app.route("/foto/<numero>")
+@login_required
+def foto_aluno(numero):
+    from flask import send_file
+    for ext in ("jpg", "jpeg", "png", "webp"):
+        path = os.path.join(FOTOS_FOLDER, f"{numero}.{ext}")
+        if os.path.exists(path):
+            return send_file(path)
+    # Foto não encontrada — devolver placeholder SVG
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
+      <circle cx="40" cy="40" r="40" fill="#2563eb"/>
+      <circle cx="40" cy="32" r="14" fill="rgba(255,255,255,.7)"/>
+      <ellipse cx="40" cy="72" rx="24" ry="18" fill="rgba(255,255,255,.7)"/>
+    </svg>'''
+    from flask import Response
+    return Response(svg, mimetype="image/svg+xml")
 
 
 # ─── Admin routes ──────────────────────────────────────────────────────────────
@@ -676,6 +706,64 @@ def ver_turma(turma):
                            comparacao_periodos=comparacao)
 
 # ─── Importar notas via web (admin) ───────────────────────────────────────────
+
+@app.route("/admin/upload-fotos", methods=["GET", "POST"])
+@login_required
+@admin_required
+def upload_fotos():
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.lower().endswith(".zip"):
+            flash("Por favor carregue um ficheiro .zip.", "danger")
+            return redirect(url_for("upload_fotos"))
+
+        import zipfile, io
+
+        db = get_db()
+        # Obter todos os números de alunos válidos
+        numeros = {r["numero"] for r in db.execute("SELECT DISTINCT numero FROM alunos").fetchall() if r["numero"]}
+
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(f.read()))
+            guardadas = 0
+            ignoradas = 0
+
+            for nome in zf.namelist():
+                basename = os.path.basename(nome)
+                if not basename:
+                    continue
+                # Extrair número do nome do ficheiro (ex: "3023.jpg" → "3023")
+                raiz, ext = os.path.splitext(basename)
+                if ext.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+                    continue
+                # Normalizar: remover zeros à esquerda para comparação
+                raiz_strip = raiz.strip()
+                # Verificar se corresponde a um aluno (com ou sem zeros à esquerda)
+                match = raiz_strip in numeros or raiz_strip.lstrip("0") in {n.lstrip("0") for n in numeros}
+                if not match:
+                    ignoradas += 1
+                    continue
+                # Guardar com o número original do aluno
+                numero_aluno = next((n for n in numeros if n.lstrip("0") == raiz_strip.lstrip("0")), raiz_strip)
+                dest = os.path.join(FOTOS_FOLDER, f"{numero_aluno}{ext.lower()}")
+                with zf.open(nome) as src, open(dest, "wb") as dst:
+                    dst.write(src.read())
+                guardadas += 1
+
+            flash(f"✓ {guardadas} fotos importadas, {ignoradas} ignoradas (não correspondem a alunos).", "success")
+        except Exception as e:
+            flash(f"Erro ao processar ZIP: {e}", "danger")
+
+        return redirect(url_for("upload_fotos"))
+
+    # Contar fotos já existentes
+    try:
+        n_fotos = len([f for f in os.listdir(FOTOS_FOLDER) if f.lower().endswith((".jpg",".jpeg",".png",".webp"))])
+    except:
+        n_fotos = 0
+
+    return render_template("upload_fotos.html", n_fotos=n_fotos)
+
 
 @app.route("/admin/importar-notas", methods=["GET", "POST"])
 @login_required

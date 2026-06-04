@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Fotos dos Alunos{% endblock %}
+
+{% block content %}
+<div class="px-3" style="max-width:650px">
+  <h2 class="fw-bold mb-4"><i class="bi bi-person-bounding-box me-2 text-primary"></i>Fotos dos Alunos</h2>
+
+  {% if n_fotos > 0 %}
+  <div class="alert alert-success border-0 shadow-sm mb-4">
+    <i class="bi bi-check-circle-fill me-2"></i>
+    <strong>{{ n_fotos }}</strong> foto{{ 's' if n_fotos != 1 }} já carregada{{ 's' if n_fotos != 1 }}.
+  </div>
+  {% endif %}
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-semibold"><i class="bi bi-upload me-2 text-primary"></i>Carregar fotos (ficheiro .zip)</h5>
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro ZIP com as fotos</label>
+          <input type="file" name="ficheiro" class="form-control" accept=".zip" required>
+          <div class="form-text">Pode incluir fotos de outros alunos — o portal importa automaticamente apenas as que correspondem a alunos do secundário.</div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-cloud-upload me-1"></i>Importar Fotos
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white">
+      <h6 class="fw-semibold mb-0"><i class="bi bi-info-circle me-2 text-primary"></i>Como preparar o ficheiro</h6>
+    </div>
+    <div class="card-body text-muted" style="font-size:.9rem">
+      <ol class="mb-0">
+        <li>Abra o <strong>OneDrive</strong> no browser</li>
+        <li>Navegue até à pasta com as fotos</li>
+        <li>Seleccione todas (Ctrl+A) → <strong>Transferir</strong></li>
+        <li>O OneDrive gera um ficheiro <code>.zip</code> — carregue-o aqui</li>
+      </ol>
+      <p class="mt-2 mb-0">As fotos devem ter o <strong>número interno do aluno</strong> como nome do ficheiro (ex: <code>3023.jpg</code>).</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
