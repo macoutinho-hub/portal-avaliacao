@@ -359,20 +359,22 @@ def aluno(aluno_id):
                 "media": round(sum(vals) / len(vals), 1) if vals else None,
             })
 
-        # CIF por disciplina (média dos semestres) — sem indicação de ano
-        cif_notas = {}
-        for d in todas_disciplinas:
-            vals_d = [disc_ano.get(d, {}).get(p) for p in periodos
-                      if disc_ano.get(d, {}).get(p) is not None]
-            cif_notas[d] = round(sum(vals_d) / len(vals_d), 1) if vals_d else None
-        cif_vals = [v for v in cif_notas.values() if v is not None]
-        linhas.append({
-            "label": "CIF",
-            "tipo": "cif",
-            "atual": ano == ano_atual,
-            "notas": cif_notas,
-            "media": round(sum(cif_vals) / len(cif_vals), 1) if cif_vals else None,
-        })
+    # CIF único no final — média de todos os semestres por disciplina (ano actual)
+    disc_ano_atual = notas_por_ano.get(ano_atual, {})
+    periodos_atuais = sorted({p for d in disc_ano_atual.values() for p in d})
+    cif_notas = {}
+    for d in todas_disciplinas:
+        vals_d = [disc_ano_atual.get(d, {}).get(p) for p in periodos_atuais
+                  if disc_ano_atual.get(d, {}).get(p) is not None]
+        cif_notas[d] = round(sum(vals_d) / len(vals_d), 1) if vals_d else None
+    cif_vals = [v for v in cif_notas.values() if v is not None]
+    linhas.append({
+        "label": "CIF",
+        "tipo": "cif",
+        "atual": True,
+        "notas": cif_notas,
+        "media": round(sum(cif_vals) / len(cif_vals), 1) if cif_vals else None,
+    })
 
     # Linha de Exame (vazia por enquanto)
     linhas.append({
@@ -384,13 +386,12 @@ def aluno(aluno_id):
     })
 
     # CFD = CIF (sem exame por enquanto)
-    ultimo_cif = next((l for l in reversed(linhas) if l["tipo"] == "cif" and l["atual"]), None)
     linhas.append({
         "label": "CFD",
         "tipo": "cfd",
         "atual": False,
-        "notas": ultimo_cif["notas"] if ultimo_cif else {d: None for d in todas_disciplinas},
-        "media": ultimo_cif["media"] if ultimo_cif else None,
+        "notas": cif_notas,
+        "media": round(sum(cif_vals) / len(cif_vals), 1) if cif_vals else None,
     })
 
     # ── Resumo para cabeçalho ─────────────────────────────────────────────────
@@ -848,20 +849,21 @@ def apresentacao(turma):
                                 "atual": ano == a["ano_letivo"], "notas": nl,
                                 "media": round(sum(vals)/len(vals),1) if vals else None})
 
-            cif = {d: None for d in todas}
-            for d in todas:
-                vd = [disc_ano.get(d,{}).get(p) for p in periodos if disc_ano.get(d,{}).get(p) is not None]
-                cif[d] = round(sum(vd)/len(vd),1) if vd else None
-            cv = [v for v in cif.values() if v is not None]
-            linhas.append({"label":"CIF","tipo":"cif","atual": ano==a["ano_letivo"],
-                           "notas":cif,"media":round(sum(cv)/len(cv),1) if cv else None})
-
+        # CIF único no final — ano actual
+        ano_at = a["ano_letivo"]
+        da = notas_por_ano.get(ano_at, {})
+        pa = sorted({p for d in da.values() for p in d})
+        cif = {d: None for d in todas}
+        for d in todas:
+            vd = [da.get(d,{}).get(p) for p in pa if da.get(d,{}).get(p) is not None]
+            cif[d] = round(sum(vd)/len(vd),1) if vd else None
+        cv = [v for v in cif.values() if v is not None]
+        linhas.append({"label":"CIF","tipo":"cif","atual":True,
+                       "notas":cif,"media":round(sum(cv)/len(cv),1) if cv else None})
         linhas.append({"label":"Exame","tipo":"exame","atual":False,
                        "notas":{d:None for d in todas},"media":None})
-        uc = next((l for l in reversed(linhas) if l["tipo"]=="cif" and l["atual"]), None)
         linhas.append({"label":"CFD","tipo":"cfd","atual":False,
-                       "notas":uc["notas"] if uc else {d:None for d in todas},
-                       "media":uc["media"] if uc else None})
+                       "notas":cif,"media":round(sum(cv)/len(cv),1) if cv else None})
 
         # Notas de reunião
         nr_rows = db.execute(
