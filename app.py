@@ -1672,7 +1672,7 @@ def apresentacao(turma):
             "Física e Química A":"FQ A","Física":"Fís","Química":"Quím",
             "Geometria Descritiva A":"GDA","Economia A":"Econ A","Economia C":"Econ C",
             "Geografia A":"Geo A","História Geral":"Hist B",
-            "Matemática Geral":"Mat B","Matemática Aplicada Ciências Sociais":"MACS",
+            "Matemática B":"Mat B","Matemática Geral":"Mat G","Matemática Aplicada Ciências Sociais":"MACS",
             "Filosofia A":"Filo A","Ciência Política":"C. Pol",
             "Psicologia B":"Psic B","Aplicações Informáticas B":"AI B","Oficinas":"Ofic",
             "Literatura Portuguesa":"Lit. P","Alemão":"Alem","Espanhol":"Esp","Francês":"Fr",
@@ -1683,12 +1683,38 @@ def apresentacao(turma):
                   "Matemática A","Desenho A","Desenho Geral","História A",
                   "Biologia e Geologia","Biologia","Física e Química A","Física","Química",
                   "Geometria Descritiva A","Economia A","Economia C","Geografia A",
-                  "História Geral","Matemática Geral","Matemática Aplicada Ciências Sociais",
+                  "História Geral","Matemática B","Matemática Geral","Matemática Aplicada Ciências Sociais",
                   "Filosofia A","Ciência Política","Psicologia B","Aplicações Informáticas B","Oficinas",
                   "Literatura Portuguesa","Alemão","Espanhol","Francês",
                   "Hora de PT","Tempo de Trabalho Autónomo"]
         _N_G = 7
         def _p(d): return next((i for i,n in enumerate(_ORDEM) if d==n or (len(n)>=6 and d.startswith(n[:6]))), len(_ORDEM))
+
+        # ── Canonical renaming por aluno (igual à rota /aluno) ──────────────
+        disc_atual_ap = set(notas_por_ano.get(a["ano_letivo"], {}).keys())
+        canon_ap = {}
+        all_discs_ap = {d for ano_d in notas_por_ano.values() for d in ano_d}
+        for d in all_discs_ap:
+            fam = DISC_FAMILIAS.get(d)
+            if not fam:
+                canon_ap[d] = d
+                continue
+            membros_at = [m for m in membros_familia(d) if m in disc_atual_ap]
+            if not membros_at:
+                for y in sorted(notas_por_ano.keys(), reverse=True):
+                    membros_at = [m for m in membros_familia(d) if m in notas_por_ano.get(y, {})]
+                    if membros_at: break
+            canon_ap[d] = membros_at[0] if membros_at else d
+
+        notas_por_ano_c = {}
+        for y, disc_y in notas_por_ano.items():
+            notas_por_ano_c[y] = {}
+            for d, periodos in disc_y.items():
+                can = canon_ap.get(d, d)
+                notas_por_ano_c[y].setdefault(can, {}).update(periodos)
+        notas_por_ano = notas_por_ano_c
+        # ────────────────────────────────────────────────────────────────────
+
         todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
         todas = sorted(todas_set, key=_p)
         gerais_p = [d for d in todas if _p(d) < _N_G]
