@@ -184,6 +184,25 @@ def admin_required(f):
 
 import re as _re_global
 
+# Nomes de colunas usados nas pautas do 11º → nome canónico da BD
+# Chaves em minúsculas para comparação case-insensitive
+DISC_RENAME_11 = {
+    "mat. g (a)":                        "Matemática A",
+    "matemática geral (a)":              "Matemática A",
+    "mat. g (b)":                        "Matemática B",
+    "matemática geral (b)":              "Matemática B",
+    "mat. g (macs)":                     "Matemática Aplicada Ciências Sociais",
+    "matemática geral (macs)":           "Matemática Aplicada Ciências Sociais",
+    "hist. g (a)":                       "História A",
+    "história geral (a)":                "História A",
+    "hist. g (b)":                       "História B",
+    "história geral (b)":                "História B",
+    "desenho geral":                     "Desenho A",
+    "des. g":                            "Desenho A",
+    "des g":                             "Desenho A",
+    "desenho g":                         "Desenho A",
+}
+
 # Famílias de disciplinas equivalentes (mesma disciplina, nomes diferentes entre anos)
 DISC_FAMILIAS = {
     # Variantes da mesma disciplina entre anos (nome canónico = o do ano actual do aluno)
@@ -765,13 +784,20 @@ def aluno(aluno_id):
         if d in nf_cif:
             cif_notas[d] = round(nf_cif[d])  # oficial → usar directamente
         else:
+            # CIF = média do 2º semestre de cada ano (com fallback para 1º sem. se não houver 2º)
+            # Para alunos de 11º: 2º sem 10º + 2º sem 11º (ou 1º sem 11º se não houver 2º)
             notas_2s = []
-            for ano, disc_ano in notas_por_ano.items():
+            anos_ordenados = sorted(notas_por_ano.keys())  # ex: ["10º Ano", "11º Ano"]
+            for rotulo in anos_ordenados:
+                disc_ano = notas_por_ano[rotulo]
                 periodos_d = sorted(disc_ano.get(d, {}).keys())
-                if not periodos_d: continue
-                periodo_final = 2 if 2 in periodos_d else periodos_d[-1]
-                nota = disc_ano.get(d, {}).get(periodo_final)
-                if isinstance(nota, (int, float)): notas_2s.append(nota)
+                if not periodos_d:
+                    continue
+                # Preferir 2º semestre; fallback para o último disponível
+                periodo_escolhido = 2 if 2 in periodos_d else periodos_d[-1]
+                nota = disc_ano.get(d, {}).get(periodo_escolhido)
+                if isinstance(nota, (int, float)):
+                    notas_2s.append(nota)
             cif_notas[d] = round(sum(notas_2s) / len(notas_2s)) if notas_2s else None
 
     cif_vals = [v for v in cif_notas.values() if v is not None]
@@ -1458,12 +1484,19 @@ def importar_excel():
                     continue
                 aluno_id = aluno_row["id"]
 
+                # Determinar nível curricular do aluno para aplicar renomear disciplinas
+                _nivel_imp = int(turma_val[:2]) if turma_val[:2].isdigit() else 0
+
                 for col_i, disc_name in disc_cols:
                     val = row[col_i]
                     # Detetar se é observação (coluna seguinte pode ser _obs)
                     is_obs = any(k in disc_name.lower() for k in ["obs", "observ", "nota_text", "descrit"])
                     if is_obs:
                         continue  # tratadas em conjunto com a nota
+
+                    # Normalizar nome da disciplina para alunos de 11º
+                    if _nivel_imp == 11:
+                        disc_name = DISC_RENAME_11.get(disc_name.strip().lower(), disc_name)
 
                     nota_num = None
                     try:
