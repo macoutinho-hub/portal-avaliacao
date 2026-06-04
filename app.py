@@ -2105,8 +2105,14 @@ def importar_pauta(turma):
                 nao_enc.append(al["nome"])
                 continue
 
+            # Nível curricular da turma (ex: "11D1" → 11)
+            _nivel_pauta = int(tb[:2]) if tb[:2].isdigit() else 0
+
             for disc_abrev, campos in al["notas"].items():
                 disc_nome = MAPA_DISC_GLOBAL.get(disc_abrev, disc_abrev.rstrip(" (a)(b)(macs)").strip())
+                # Para turmas de 11º, DES.G é sempre Desenho A
+                if _nivel_pauta == 11 and disc_nome == "Desenho Geral":
+                    disc_nome = "Desenho A"
 
                 cf  = campos.get("CF")
                 cif = campos.get("CIF")
@@ -2162,12 +2168,16 @@ MAPA_DISC_GLOBAL = {
     "PORT.": "Português", "FILO.": "Filosofia",
     "ED.FÍSICA": "Educação Física", "RELIGIÃO": "Religião",
     "LE I-ING.": "Líng. Estrang. I - Inglês",
-    "MAT. G (a)": "Matemática A", "MAT. G (b)": "Matemática Geral",
+    "MAT. G (a)": "Matemática A",
+    "MAT. G (b)": "Matemática B",
     "MAT. G (macs)": "Matemática Aplicada Ciências Sociais",
     "BIO.GEO.": "Biologia e Geologia", "FÍS.QUÍM.A": "Física e Química A",
-    "GEOG.A": "Geografia A", "HIST. G (b)": "História Geral",
-    "HIST. G (a)": "História A", "HIST.A": "História A",
-    "DES.G": "Desenho Geral", "DES.A": "Desenho A",
+    "GEOG.A": "Geografia A",
+    "HIST. G (a)": "História A",
+    "HIST. G (b)": "História B",
+    "HIST.A": "História A",
+    "DES.G": "Desenho Geral",  # substituído por Desenho A em turmas de 11º (ver importar_pauta)
+    "DES.A": "Desenho A",
     "ECON.A": "Economia A", "GEO.DESC.A": "Geometria Descritiva A",
     "PROJ.": "Projeto", "PT": "Hora de PT",
 }
