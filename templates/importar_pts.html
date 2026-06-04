@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Importar Professores Tutores{% endblock %}
+
+{% block content %}
+<div class="px-3" style="max-width:800px">
+  <h2 class="fw-bold mb-4"><i class="bi bi-people-fill me-2 text-primary"></i>Importar Professores Tutores</h2>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-semibold"><i class="bi bi-upload me-2 text-primary"></i>Carregar ficheiro Excel</h5>
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro Excel (.xlsx)</label>
+          <input type="file" name="ficheiro" class="form-control" accept=".xlsx,.xls" required>
+          <div class="form-text">Colunas necessárias: <strong>Nome Completo</strong>, <strong>Email Institucional</strong>, <strong>Turma(s)</strong></div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-cloud-upload me-1"></i>Criar Contas
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {% if credenciais %}
+  <!-- Credenciais geradas -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+      <h5 class="mb-0 fw-semibold text-success">
+        <i class="bi bi-check-circle-fill me-2"></i>{{ credenciais|length }} conta(s) criada(s)
+      </h5>
+      <button class="btn btn-sm btn-outline-secondary" onclick="copiarTudo()">
+        <i class="bi bi-clipboard me-1"></i>Copiar tudo
+      </button>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="tabela-cred">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-4">Nome</th>
+              <th>Email</th>
+              <th>Turma(s)</th>
+              <th>Password</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in credenciais %}
+            <tr>
+              <td class="ps-4 fw-semibold">{{ c.nome }}</td>
+              <td class="text-muted">{{ c.email }}</td>
+              <td><span class="badge" style="background:#2563eb">{{ c.turma }}</span></td>
+              <td><code class="bg-light px-2 py-1 rounded">{{ c.password }}</code></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p class="text-muted" style="font-size:.85rem">
+    <i class="bi bi-exclamation-triangle me-1"></i>Guarde estas credenciais agora — as passwords não serão mostradas novamente.
+  </p>
+
+  <script>
+  function copiarTudo() {
+    let txt = 'CREDENCIAIS PROFESSORES TUTORES — Portal de Avaliação\n';
+    txt += '='.repeat(55) + '\n\n';
+    document.querySelectorAll('#tabela-cred tbody tr').forEach(tr => {
+      const cells = tr.querySelectorAll('td');
+      txt += `Nome   : ${cells[0].textContent.trim()}\n`;
+      txt += `Email  : ${cells[1].textContent.trim()}\n`;
+      txt += `Turmas : ${cells[2].textContent.trim()}\n`;
+      txt += `Pass   : ${cells[3].textContent.trim()}\n\n`;
+    });
+    navigator.clipboard.writeText(txt).then(() => {
+      alert('Credenciais copiadas para a área de transferência!');
+    });
+  }
+  </script>
+  {% endif %}
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white">
+      <h6 class="fw-semibold mb-0"><i class="bi bi-info-circle me-2 text-primary"></i>Formato do ficheiro</h6>
+    </div>
+    <div class="card-body text-muted" style="font-size:.9rem">
+      <p>O ficheiro deve ter pelo menos estas colunas:</p>
+      <table class="table table-sm table-bordered mb-2">
+        <thead class="table-light"><tr><th>Coluna</th><th>Exemplo</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Nome Completo</strong></td><td>Ana Patrícia Abrantes Saraiva Silva</td></tr>
+          <tr><td><strong>Email Institucional</strong></td><td>patricia.silva@colegiopedroarrupe.pt</td></tr>
+          <tr><td><strong>Turma(s)</strong></td><td>10B1 &nbsp;ou&nbsp; 12A1, 10C2</td></tr>
+        </tbody>
+      </table>
+      <p class="mb-0">Turmas múltiplas separadas por vírgula. As turmas de 12º devem usar o nome base (ex: <code>12A1</code>).</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

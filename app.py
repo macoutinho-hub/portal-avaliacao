@@ -734,6 +734,78 @@ def admin_panel():
     users = db.execute("SELECT * FROM users ORDER BY role, turma, nome").fetchall()
     return render_template("admin.html", users=users)
 
+@app.route("/admin/importar-pts", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_pts():
+    import secrets, string, io, unicodedata as _uc2, re as _re3
+
+    def gerar_password(n=10):
+        chars = string.ascii_letters + string.digits
+        return "".join(secrets.choice(chars) for _ in range(n))
+
+    credenciais = None
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.endswith((".xlsx", ".xls")):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_pts"))
+
+        path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+        f.save(path)
+        db = get_db()
+
+        wb = openpyxl.load_workbook(path, data_only=True)
+        ws = wb.active
+        headers = [str(c.value or "").strip().lower() for c in ws[1]]
+
+        def ci(names):
+            for n in names:
+                for i, h in enumerate(headers):
+                    if n.lower() in h: return i
+            return None
+
+        idx_nome  = ci(["nome"])
+        idx_email = ci(["email"])
+        idx_turma = ci(["turma"])
+
+        if idx_nome is None or idx_email is None:
+            flash("Colunas 'Nome' e 'Email' não encontradas.", "danger")
+            return redirect(url_for("importar_pts"))
+
+        criados = []
+        ignorados = []
+
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            nome  = str(row[idx_nome] or "").strip()
+            email = str(row[idx_email] or "").strip().lower()
+            turma = str(row[idx_turma] or "").strip() if idx_turma is not None else ""
+            if not nome or not email or "@" not in email:
+                continue
+
+            # Normalizar turmas: "12A1, 10C2" → "12A1,10C2"
+            turma_norm = ",".join(t.strip() for t in turma.split(",") if t.strip())
+
+            existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+            if existing:
+                ignorados.append(nome)
+                continue
+
+            pwd = gerar_password()
+            db.execute(
+                "INSERT INTO users (email, password, nome, turma, role) VALUES (?,?,?,?,?)",
+                (email, generate_password_hash(pwd), nome, turma_norm, "diretor")
+            )
+            criados.append({"nome": nome, "email": email, "turma": turma_norm, "password": pwd})
+
+        db.commit()
+        flash(f"✓ {len(criados)} PT(s) criado(s). {len(ignorados)} já existiam.", "success")
+        credenciais = criados
+
+    return render_template("importar_pts.html", credenciais=credenciais)
+
+
 @app.route("/admin/criar_utilizador", methods=["POST"])
 @login_required
 @admin_required
