@@ -319,11 +319,22 @@ def aluno(aluno_id):
         vals = [v for v in notas_dict.values() if v is not None]
         return round(sum(vals) / len(vals), 1) if vals else None
 
+    # Extrair ano escolar da turma (ex: "10D1" → "10º Ano", "12A1 CT" → "12º Ano")
+    import re as _re
+    def ano_da_turma(turma_str):
+        m = _re.match(r"(\d+)", str(turma_str or ""))
+        return (m.group(1) + "º Ano") if m else "Ano ?"
+
     for ano in sorted(notas_por_ano.keys()):
         disc_ano = notas_por_ano[ano]
         periodos = sorted({p for d in disc_ano.values() for p in d})
-        ano_label = ano.split("/")[0]  # ex: "2025"
-        ano_escolar = str(int(ano_label) - 2024 + 10) + "º Ano"  # heurística
+        # Obter a turma do aluno neste ano letivo
+        aluno_ano = db.execute(
+            "SELECT turma FROM alunos WHERE numero=? AND ano_letivo=?",
+            (a["numero"], ano)
+        ).fetchone()
+        turma_ano = aluno_ano["turma"] if aluno_ano else a["turma"]
+        ano_escolar = ano_da_turma(turma_ano)
 
         for p in periodos:
             notas_linha = {d: disc_ano.get(d, {}).get(p) for d in todas_disciplinas}
@@ -336,7 +347,7 @@ def aluno(aluno_id):
                 "media": round(sum(vals) / len(vals), 1) if vals else None,
             })
 
-        # CIF por disciplina (média dos semestres)
+        # CIF por disciplina (média dos semestres) — sem indicação de ano
         cif_notas = {}
         for d in todas_disciplinas:
             vals_d = [disc_ano.get(d, {}).get(p) for p in periodos
@@ -344,7 +355,7 @@ def aluno(aluno_id):
             cif_notas[d] = round(sum(vals_d) / len(vals_d), 1) if vals_d else None
         cif_vals = [v for v in cif_notas.values() if v is not None]
         linhas.append({
-            "label": f"CIF {ano_escolar}",
+            "label": "CIF",
             "tipo": "cif",
             "atual": ano == ano_atual,
             "notas": cif_notas,
