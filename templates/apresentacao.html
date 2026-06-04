@@ -152,9 +152,15 @@
     <span class="ap-turma"><i class="bi bi-people-fill me-2"></i>Reunião — {{ turma }}</span>
     <div style="display:flex; align-items:center; gap:1.5rem">
       <span style="font-size:.9rem; opacity:.5">{{ alunos|length }} aluno{{ 's' if alunos|length != 1 }}</span>
-      <a href="{{ url_for('ver_turma', turma=turma) }}" class="ap-close" title="Sair">
-        <i class="bi bi-x-lg"></i>
-      </a>
+      <div style="display:flex; gap:.8rem; align-items:center">
+        <button onclick="toggleFS()" id="btn-fs" title="Ecrã inteiro"
+          style="background:none;border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:1.2rem">
+          <i class="bi bi-fullscreen" id="fs-icon"></i>
+        </button>
+        <a href="{{ url_for('ver_turma', turma=turma) }}" class="ap-close" title="Sair">
+          <i class="bi bi-x-lg"></i>
+        </a>
+      </div>
     </div>
   </div>
 
@@ -326,6 +332,20 @@ function navegar(dir) {
 document.addEventListener('keydown', e => {
   if (e.key==='ArrowRight'||e.key==='ArrowDown') navegar(1);
   if (e.key==='ArrowLeft' ||e.key==='ArrowUp')   navegar(-1);
+});
+
+function toggleFS() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+    document.getElementById('fs-icon').className = 'bi bi-fullscreen-exit';
+  } else {
+    document.exitFullscreen();
+    document.getElementById('fs-icon').className = 'bi bi-fullscreen';
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('fs-icon').className =
+    document.fullscreenElement ? 'bi bi-fullscreen-exit' : 'bi bi-fullscreen';
 });
 
 popularDropdown();
