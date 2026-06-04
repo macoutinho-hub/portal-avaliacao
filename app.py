@@ -83,7 +83,25 @@ def init_db():
             updated_by   INTEGER REFERENCES users(id),
             UNIQUE(aluno_id, categoria)
         );
+
+        CREATE TABLE IF NOT EXISTS notas_finais (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id     INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            disciplina   TEXT NOT NULL,
+            ano_letivo   TEXT NOT NULL,
+            cif          REAL,
+            exame_f1     REAL,
+            exame_f2     REAL,
+            cfd          REAL,
+            UNIQUE(aluno_id, disciplina, ano_letivo)
+        );
     """)
+    # Adicionar coluna bi se não existir
+    try:
+        db.execute("ALTER TABLE alunos ADD COLUMN bi TEXT")
+        db.commit()
+    except Exception:
+        pass  # coluna já existe
     db.commit()
     # Create default admin if not exists
     cur = db.execute("SELECT id FROM users WHERE role='admin'")
@@ -381,22 +399,40 @@ def aluno(aluno_id):
                 "media": round(sum(vals) / len(vals), 1) if vals else None,
             })
 
-    # ── CIF: média das notas do 2º semestre de cada ano — arredondada à unidade ─
+    # ── Carregar notas_finais (CIF/Exame/CFD oficiais) ───────────────────────
+    nf_rows = db.execute(
+        "SELECT disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd FROM notas_finais "
+        "WHERE aluno_id=?", (aluno_id,)
+    ).fetchall()
+    # Indexar por disciplina (preferir o ano mais recente)
+    nf_cif  = {}
+    nf_ex1  = {}
+    nf_ex2  = {}
+    nf_cfd  = {}
+    for r in sorted(nf_rows, key=lambda x: x["ano_letivo"]):
+        d = r["disciplina"]
+        if r["cif"]  is not None: nf_cif[d]  = r["cif"]
+        if r["exame_f1"] is not None: nf_ex1[d] = r["exame_f1"]
+        if r["exame_f2"] is not None: nf_ex2[d] = r["exame_f2"]
+        if r["cfd"]  is not None: nf_cfd[d]  = r["cfd"]
+
+    # ── CIF: calculado ou oficial se disponível ───────────────────────────────
     cif_notas = {}
     for d in todas_disciplinas:
-        notas_2s = []
-        for ano, disc_ano in notas_por_ano.items():
-            periodos_d = sorted(disc_ano.get(d, {}).keys())
-            if not periodos_d:
-                continue
-            periodo_final = 2 if 2 in periodos_d else periodos_d[-1]
-            nota = disc_ano.get(d, {}).get(periodo_final)
-            if nota is not None:
-                notas_2s.append(nota)
-        cif_notas[d] = round(sum(notas_2s) / len(notas_2s)) if notas_2s else None  # arredonda à unidade
+        if d in nf_cif:
+            cif_notas[d] = round(nf_cif[d])  # oficial → usar directamente
+        else:
+            notas_2s = []
+            for ano, disc_ano in notas_por_ano.items():
+                periodos_d = sorted(disc_ano.get(d, {}).keys())
+                if not periodos_d: continue
+                periodo_final = 2 if 2 in periodos_d else periodos_d[-1]
+                nota = disc_ano.get(d, {}).get(periodo_final)
+                if nota is not None: notas_2s.append(nota)
+            cif_notas[d] = round(sum(notas_2s) / len(notas_2s)) if notas_2s else None
 
     cif_vals = [v for v in cif_notas.values() if v is not None]
-    cif_media = round(sum(cif_vals) / len(cif_vals)) if cif_vals else None  # arredonda à unidade
+    cif_media = round(sum(cif_vals) / len(cif_vals)) if cif_vals else None
 
     linhas.append({
         "label": "CIF",
@@ -406,23 +442,47 @@ def aluno(aluno_id):
         "media": cif_media,
     })
 
-    # ── Exame (vazio — a importar futuramente) ────────────────────────────────
+    # ── Exame (F1 ou o melhor entre F1/F2) ───────────────────────────────────
+    exame_notas = {}
+    for d in todas_disciplinas:
+        f1 = nf_ex1.get(d)
+        f2 = nf_ex2.get(d)
+        if f1 is not None and f2 is not None:
+            exame_notas[d] = max(f1, f2)
+        elif f1 is not None:
+            exame_notas[d] = f1
+        elif f2 is not None:
+            exame_notas[d] = f2
+        else:
+            exame_notas[d] = None
+
+    ex_vals = [v for v in exame_notas.values() if v is not None]
     linhas.append({
         "label": "Exame",
         "tipo": "exame",
         "atual": False,
-        "notas": {d: None for d in todas_disciplinas},
-        "media": None,
+        "notas": exame_notas,
+        "media": round(sum(ex_vals) / len(ex_vals), 1) if ex_vals else None,
     })
 
-    # ── CFD = CIF (sem exame); com exame: (7.5×CIF + 2.5×Exame)/10 arredondado ─
-    cfd_notas = dict(cif_notas)
+    # ── CFD: oficial ou calculado (7.5×CIF + 2.5×Exame)/10 ──────────────────
+    cfd_notas = {}
+    for d in todas_disciplinas:
+        if d in nf_cfd:
+            cfd_notas[d] = round(nf_cfd[d])
+        elif cif_notas.get(d) is not None and exame_notas.get(d) is not None:
+            cfd_notas[d] = round((7.5 * cif_notas[d] + 2.5 * exame_notas[d]) / 10)
+        else:
+            cfd_notas[d] = cif_notas.get(d)  # sem exame → CFD = CIF
+
+    cfd_vals = [v for v in cfd_notas.values() if v is not None]
+    cfd_media = round(sum(cfd_vals) / len(cfd_vals)) if cfd_vals else None
     linhas.append({
         "label": "CFD",
         "tipo": "cfd",
         "atual": False,
         "notas": cfd_notas,
-        "media": cif_media,
+        "media": cfd_media,
     })
 
     # ── Resumo para cabeçalho ─────────────────────────────────────────────────
@@ -1017,6 +1077,158 @@ def upload_fotos():
     return render_template("upload_fotos.html", n_fotos=n_fotos)
 
 
+@app.route("/admin/importar-aludisc", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_aludisc():
+    """Importa ficheiro AluDisc (CIF, Exame, CFD por BI e código de disciplina)."""
+
+    # Mapeamento de códigos internos → nomes de disciplinas
+    MAPA_CODIGOS = {
+        "N014": "Biologia e Geologia", "N030": "Desenho A",
+        "N040": "Economia A",          "N044": "Economia C",
+        "N046": "Religião",            "N048": "Educação Física",
+        "N096": "Filosofia",           "N100": "Física e Química A",
+        "N104": "Biologia",            "N110": "Geografia A",
+        "N118": "Geometria Descritiva A", "N128": "História da Cultura e das Artes",
+        "N130": "História A",          "N132": "História Geral",
+        "N156": "Matemática Aplicada Ciências Sociais",
+        "N162": "Matemática A",        "N164": "Matemática Geral",
+        "N174": "Literatura Portuguesa","N186": "Português",
+        "N220": "Filosofia A",         "N222": "Ciência Política",
+        "N230": "Psicologia B",        "N304": "Líng. Estrang. I - Inglês",
+        "N314": "Alemão",              "N332": "Espanhol",
+        "N334": "Francês",
+        "N009": "Aplicações Informáticas B", "N018": "Desenho Geral",
+        "N022": "Física",              "N098": "Química",
+    }
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.endswith((".xlsx", ".xls")):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_aludisc"))
+
+        path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+        f.save(path)
+
+        db = get_db()
+
+        # Construir mapa BI → {ano_letivo → aluno_id}
+        bi_map = {}
+        for a in db.execute("SELECT id, bi, ano_letivo FROM alunos WHERE bi IS NOT NULL AND bi != ''").fetchall():
+            bi_map.setdefault(a["bi"], {})[a["ano_letivo"]] = a["id"]
+
+        try:
+            wb = openpyxl.load_workbook(path, data_only=True)
+            ws = wb.active
+
+            # Detectar linha de cabeçalho
+            header_row = None
+            for i, row in enumerate(ws.iter_rows(min_row=1, max_row=5, values_only=True), 1):
+                if row[0] and "BI" in str(row[0]).upper():
+                    header_row = i
+                    break
+            if not header_row:
+                flash("Cabeçalho não encontrado no ficheiro.", "danger")
+                return redirect(url_for("importar_aludisc"))
+
+            import re as _re2
+            importados = 0
+            sem_bi = set()
+            codigos_desconhecidos = set()
+
+            for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+                bi_raw  = str(row[0]).strip() if row[0] else ""
+                cod     = str(row[1]).strip() if row[1] else ""
+                ano_raw = str(row[2]).strip() if row[2] else ""
+                cif_raw = row[6]
+                ex1_raw = row[8]
+                ex2_raw = row[9]
+                cfd_raw = row[10]
+
+                if not bi_raw or not cod:
+                    continue
+
+                # Normalizar BI (só dígitos)
+                bi = _re2.sub(r'[^0-9]', '', bi_raw)
+
+                # Determinar ano letivo (ex: 2025 → "2024/2025")
+                try:
+                    ano_n = int(float(ano_raw))
+                    ano_letivo = f"{ano_n-1}/{ano_n}"
+                except Exception:
+                    continue
+
+                # Nome da disciplina
+                disc_nome = MAPA_CODIGOS.get(cod)
+                if not disc_nome:
+                    codigos_desconhecidos.add(cod)
+                    disc_nome = cod  # usar código como nome
+
+                # Converter notas
+                def parse_n(v):
+                    if v is None: return None
+                    try: return float(str(v).strip())
+                    except: return None
+
+                cif = parse_n(cif_raw)
+                ex1 = parse_n(ex1_raw)
+                ex2 = parse_n(ex2_raw)
+                cfd = parse_n(cfd_raw)
+
+                # Converter exame de escala 0-200 para 0-20
+                if ex1 is not None and ex1 > 20: ex1 = round(ex1 / 10, 1)
+                if ex2 is not None and ex2 > 20: ex2 = round(ex2 / 10, 1)
+
+                # Encontrar aluno pelo BI
+                aluno_id = None
+                if bi in bi_map:
+                    # Preferir o ano letivo exacto, senão qualquer
+                    aluno_id = bi_map[bi].get(ano_letivo) or list(bi_map[bi].values())[0]
+
+                if aluno_id is None:
+                    sem_bi.add(bi)
+                    continue
+
+                # Upsert em notas_finais
+                ex = db.execute(
+                    "SELECT id FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+                    (aluno_id, disc_nome, ano_letivo)
+                ).fetchone()
+                if ex:
+                    db.execute(
+                        "UPDATE notas_finais SET cif=?, exame_f1=?, exame_f2=?, cfd=? WHERE id=?",
+                        (cif, ex1, ex2, cfd, ex["id"])
+                    )
+                else:
+                    db.execute(
+                        "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd) VALUES (?,?,?,?,?,?,?)",
+                        (aluno_id, disc_nome, ano_letivo, cif, ex1, ex2, cfd)
+                    )
+                importados += 1
+
+            db.commit()
+            msg = f"✓ {importados} registos importados."
+            if sem_bi:
+                msg += f" {len(sem_bi)} BI(s) não encontrados (alunos sem BI registado)."
+            if codigos_desconhecidos:
+                msg += f" Códigos desconhecidos: {', '.join(sorted(codigos_desconhecidos))}."
+            flash(msg, "success" if not sem_bi else "warning")
+
+        except Exception as e:
+            flash(f"Erro: {e}", "danger")
+
+        return redirect(url_for("importar_aludisc"))
+
+    # Contagem actual
+    try:
+        n = db.execute("SELECT COUNT(*) FROM notas_finais").fetchone()[0]
+    except Exception:
+        n = 0
+    return render_template("importar_aludisc.html", n_registos=n)
+
+
 @app.route("/admin/importar-notas", methods=["GET", "POST"])
 @login_required
 @admin_required
@@ -1103,6 +1315,7 @@ def importar_notas_web():
             idx_1s    = ci(["nota 1º semestre", "nota 1o semestre", "1º semestre"])
             idx_2s    = ci(["nota 2º semestre", "nota 2o semestre", "2º semestre"])
             idx_ano   = ci(["ano letivo"])
+            idx_bi    = ci(["documento de identificação", "bi", "doc. identificação", "documento identificacao"])
 
             if idx_nome is None or idx_disc is None:
                 return 0, 0, set()
@@ -1154,6 +1367,16 @@ def importar_notas_web():
                 if aluno_id is None:
                     nao_enc.add(f"{nome_str} ({turma_val})")
                     continue
+
+                # Guardar BI se disponível
+                if idx_bi is not None and row[idx_bi]:
+                    bi_val = _re.sub(r'[^0-9]', '', str(row[idx_bi]))  # só dígitos
+                    if bi_val:
+                        try:
+                            db.execute("UPDATE alunos SET bi=? WHERE id=? AND (bi IS NULL OR bi='')",
+                                       (bi_val, aluno_id))
+                        except Exception:
+                            pass
 
                 # Importar nota 1º semestre
                 n1 = _parse_nota(row[idx_1s] if idx_1s is not None else None)
