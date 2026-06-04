@@ -255,45 +255,140 @@ def aluno(aluno_id):
         flash("Não tem permissão para ver este aluno.", "danger")
         return redirect(url_for("dashboard"))
 
-    # Notas do ano actual
-    rows = db.execute(
-        "SELECT disciplina, periodo, nota, observacoes FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
-        (aluno_id,)
-    ).fetchall()
-
-    disciplinas = {}
-    for r in rows:
-        d = r["disciplina"]
-        if d not in disciplinas:
-            disciplinas[d] = {"notas": {}, "obs": {}}
-        disciplinas[d]["notas"][r["periodo"]] = r["nota"]
-        if r["observacoes"]:
-            disciplinas[d]["obs"][r["periodo"]] = r["observacoes"]
-    periodos = sorted({r["periodo"] for r in rows}) if rows else []
-
-    # Anos anteriores (mesmo número de aluno, anos letivos diferentes)
-    anos_anteriores = {}
+    # ── Recolher todos os dados de notas (ano actual + anteriores) ────────────
+    todos_alunos_ids = {a["ano_letivo"]: aluno_id}
     if a["numero"]:
-        outros = db.execute(
-            "SELECT id, ano_letivo FROM alunos WHERE numero=? AND ano_letivo!=? ORDER BY ano_letivo DESC",
+        for outro in db.execute(
+            "SELECT id, ano_letivo FROM alunos WHERE numero=? AND ano_letivo!=? ORDER BY ano_letivo",
             (a["numero"], a["ano_letivo"])
-        ).fetchall()
-        for outro in outros:
-            rows_ant = db.execute(
-                "SELECT disciplina, periodo, nota FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
-                (outro["id"],)
-            ).fetchall()
-            if rows_ant:
-                ano = outro["ano_letivo"]
-                anos_anteriores[ano] = {}
-                for r in rows_ant:
-                    d = r["disciplina"]
-                    if d not in anos_anteriores[ano]:
-                        anos_anteriores[ano][d] = {"notas": {}}
-                    anos_anteriores[ano][d]["notas"][r["periodo"]] = r["nota"]
+        ).fetchall():
+            todos_alunos_ids[outro["ano_letivo"]] = outro["id"]
 
-    return render_template("aluno.html", aluno=a, disciplinas=disciplinas,
-                           periodos=periodos, anos_anteriores=anos_anteriores)
+    # notas_por_ano: {ano_letivo: {disciplina: {periodo: nota}}}
+    notas_por_ano = {}
+    for ano, aid in todos_alunos_ids.items():
+        rows = db.execute(
+            "SELECT disciplina, periodo, nota FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
+            (aid,)
+        ).fetchall()
+        if rows:
+            notas_por_ano[ano] = {}
+            for r in rows:
+                d = r["disciplina"]
+                notas_por_ano[ano].setdefault(d, {})[r["periodo"]] = r["nota"]
+
+    # ── Abreviaturas das disciplinas ──────────────────────────────────────────
+    ABREVIATURAS = {
+        "Português": "POR", "Inglês": "ING", "Filosofia": "FIL",
+        "Educação Física": "EF", "Religião": "REL", "Matemática A": "MAT_A",
+        "Matemática Geral": "MAT_G", "Desenho A": "DES_A", "Desenho Geral": "DES_G",
+        "História A": "HIST_A", "História Geral": "HIST_G", "Geografia A": "GEO_A",
+        "Biologia": "BIO", "Biologia e Geologia": "BG", "Física": "FIS",
+        "Física e Química A": "FQ_A", "Química": "QUI",
+        "Economia A": "ECO_A", "Economia C": "ECO_C",
+        "Geometria Descritiva A": "GD_A",
+        "Aplicações Informáticas B": "AI_B",
+        "Psicologia B": "PSI_B", "Ciência Política": "CP",
+        "Filosofia A": "FIL_A",
+        "Oficinas": "OFI",
+        "Hora de PT": "PT", "Projeto": "PROJ",
+        "Tempo de Trabalho Autónomo": "TTA",
+        "Líng. Estrang. I - Inglês": "ING",
+    }
+
+    # ── Lista ordenada de todas as disciplinas ────────────────────────────────
+    todas_disciplinas = sorted({d for ano_d in notas_por_ano.values() for d in ano_d})
+
+    # Separador: disciplinas específicas aparecem depois das gerais
+    # (heurística: disciplinas com sufixo A/B/C ou nomes específicos)
+    disc_especificas_keywords = ["_A", "_B", "_C", "Desenho", "História A", "Biologia e G",
+                                  "Física e Q", "Geometria", "Economia A", "Geografia"]
+    def e_especifica(d):
+        return any(k in d for k in disc_especificas_keywords)
+
+    gerais  = [d for d in todas_disciplinas if not e_especifica(d)]
+    especif = [d for d in todas_disciplinas if e_especifica(d)]
+    todas_disciplinas = gerais + especif
+    separador_idx = len(gerais) if especif else None
+
+    # ── Construir linhas da tabela ────────────────────────────────────────────
+    ano_atual = a["ano_letivo"]
+    linhas = []
+
+    def media_notas(notas_dict):
+        vals = [v for v in notas_dict.values() if v is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    for ano in sorted(notas_por_ano.keys()):
+        disc_ano = notas_por_ano[ano]
+        periodos = sorted({p for d in disc_ano.values() for p in d})
+        ano_label = ano.split("/")[0]  # ex: "2025"
+        ano_escolar = str(int(ano_label) - 2024 + 10) + "º Ano"  # heurística
+
+        for p in periodos:
+            notas_linha = {d: disc_ano.get(d, {}).get(p) for d in todas_disciplinas}
+            vals = [v for v in notas_linha.values() if v is not None]
+            linhas.append({
+                "label": f"{ano_escolar} — {p}º Sem.",
+                "tipo": "semestre",
+                "atual": ano == ano_atual,
+                "notas": notas_linha,
+                "media": round(sum(vals) / len(vals), 1) if vals else None,
+            })
+
+        # CIF por disciplina (média dos semestres)
+        cif_notas = {}
+        for d in todas_disciplinas:
+            vals_d = [disc_ano.get(d, {}).get(p) for p in periodos
+                      if disc_ano.get(d, {}).get(p) is not None]
+            cif_notas[d] = round(sum(vals_d) / len(vals_d), 1) if vals_d else None
+        cif_vals = [v for v in cif_notas.values() if v is not None]
+        linhas.append({
+            "label": f"CIF {ano_escolar}",
+            "tipo": "cif",
+            "atual": ano == ano_atual,
+            "notas": cif_notas,
+            "media": round(sum(cif_vals) / len(cif_vals), 1) if cif_vals else None,
+        })
+
+    # Linha de Exame (vazia por enquanto)
+    linhas.append({
+        "label": "Exame",
+        "tipo": "exame",
+        "atual": False,
+        "notas": {d: None for d in todas_disciplinas},
+        "media": None,
+    })
+
+    # CFD = CIF (sem exame por enquanto)
+    ultimo_cif = next((l for l in reversed(linhas) if l["tipo"] == "cif" and l["atual"]), None)
+    linhas.append({
+        "label": "CFD",
+        "tipo": "cfd",
+        "atual": False,
+        "notas": ultimo_cif["notas"] if ultimo_cif else {d: None for d in todas_disciplinas},
+        "media": ultimo_cif["media"] if ultimo_cif else None,
+    })
+
+    # ── Resumo para cabeçalho ─────────────────────────────────────────────────
+    ultima_linha_sem = next((l for l in reversed(linhas)
+                             if l["tipo"] == "semestre" and l["atual"]), None)
+    resumo = None
+    if ultima_linha_sem:
+        negas = [(d, n) for d, n in ultima_linha_sem["notas"].items() if n is not None and n < 10]
+        resumo = {
+            "media_atual": ultima_linha_sem["media"],
+            "num_negas": len(negas),
+            "negas": sorted(negas, key=lambda x: x[1]),
+        }
+
+    return render_template("aluno.html", aluno=a,
+                           todas_disciplinas=todas_disciplinas,
+                           abreviaturas=ABREVIATURAS,
+                           separador_idx=separador_idx,
+                           linhas=linhas,
+                           resumo=resumo,
+                           foto_url=None)
 
 # ─── Admin routes ──────────────────────────────────────────────────────────────
 
