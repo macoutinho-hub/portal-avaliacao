@@ -163,9 +163,16 @@ import re as _re_global
 
 # Famílias de disciplinas equivalentes (mesma disciplina, nomes diferentes entre anos)
 DISC_FAMILIAS = {
-    # Apenas nomes genuinamente equivalentes para o MESMO aluno
-    "Inglês":                    "família_ing",
-    "Líng. Estrang. I - Inglês": "família_ing",
+    # Variantes da mesma disciplina entre anos (nome canónico = o do ano actual do aluno)
+    "Matemática A":                         "família_mat",
+    "Matemática Geral":                     "família_mat",
+    "Matemática Aplicada Ciências Sociais": "família_mat",
+    "História A":                           "família_hist",
+    "História Geral":                       "família_hist",
+    "Desenho A":                            "família_des",
+    "Desenho Geral":                        "família_des",
+    "Inglês":                               "família_ing",
+    "Líng. Estrang. I - Inglês":            "família_ing",
 }
 
 def nome_match(nome_a, nome_b):
@@ -622,17 +629,21 @@ def aluno(aluno_id):
     todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
 
     # ── Unificar disciplinas equivalentes entre anos ──────────────────────────
-    disc_ano_atual_set = set(notas_por_ano.get(a["ano_letivo"], {}).keys())
+    # Usar o nome do ano actual (chave = label de nível, ex: "11º Ano")
+    disc_ano_atual_set = set(notas_por_ano.get(_ano_atual_key, {}).keys())
+
     disc_canonical = {}
     for d in todas_set:
         fam = DISC_FAMILIAS.get(d)
         if not fam:
             disc_canonical[d] = d
             continue
+        # 1. Preferir membro da família presente no ano actual
         membros = [m for m in membros_familia(d) if m in disc_ano_atual_set]
         if not membros:
-            for ano_r in sorted(notas_por_ano.keys(), reverse=True):
-                membros = [m for m in membros_familia(d) if m in notas_por_ano[ano_r]]
+            # 2. Fallback: membro no ano mais recente com dados
+            for label_r in sorted(notas_por_ano.keys(), reverse=True):
+                membros = [m for m in membros_familia(d) if m in notas_por_ano.get(label_r, {})]
                 if membros: break
         disc_canonical[d] = membros[0] if membros else d
 
