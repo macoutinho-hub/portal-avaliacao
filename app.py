@@ -2599,6 +2599,51 @@ def importar_notas_web():
                 criados_auto += c
                 nao_enc      |= ne
                 continue
+
+            # ── Formato pauta oficial (PORT./FILO./etc. como cabeçalhos) ───
+            _turma_doc, _ano_doc, _sem_doc, _alunos_doc = parse_pauta_excel(ws)
+            if _alunos_doc:
+                _ano_usar = _ano_doc or ano
+                _sem_usar = _sem_doc or semestre
+                # Nível curricular da turma detectada na pauta
+                _nivel_pauta2 = int((_turma_doc or "")[:2]) if (_turma_doc or "")[:2].isdigit() else 0
+                for _al in _alunos_doc:
+                    _aid = alunos_cache.get((_normalizar(_al["nome"]), None))
+                    if _aid is None:
+                        r = db.execute(
+                            "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?",
+                            (_al["numero"], _ano_usar)
+                        ).fetchone()
+                        if r: _aid = r["id"]
+                    if _aid is None:
+                        for _a_db in db.execute(
+                            "SELECT id, nome FROM alunos WHERE ano_letivo=?", (_ano_usar,)
+                        ).fetchall():
+                            if nome_match(_al["nome"], _a_db["nome"]):
+                                _aid = _a_db["id"]; break
+                    if _aid is None:
+                        nao_enc.add(_al["nome"]); continue
+                    for _disc_abrev, _campos in _al["notas"].items():
+                        _disc_nome = MAPA_DISC_GLOBAL.get(_disc_abrev, _disc_abrev)
+                        if _nivel_pauta2 == 11 and _disc_nome == "Desenho Geral":
+                            _disc_nome = "Desenho A"
+                        _cf = _campos.get("CF")
+                        if _cf is not None:
+                            _ex = db.execute(
+                                "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+                                (_aid, _disc_nome, _sem_usar)
+                            ).fetchone()
+                            if _ex:
+                                db.execute("UPDATE notas SET nota=? WHERE id=?", (_cf, _ex["id"]))
+                            else:
+                                db.execute(
+                                    "INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,?,?)",
+                                    (_aid, _disc_nome, _sem_usar, _cf)
+                                )
+                            total_notas += 1
+                db.commit()
+                continue
+
             # ── Formato grelha (largo, com NP.) ────────────────────────────
 
             rows = list(ws.iter_rows(values_only=True))
