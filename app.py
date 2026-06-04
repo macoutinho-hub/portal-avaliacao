@@ -1,3 +1,4 @@
+# Portal de Avaliação — Colégio Pedro Arrupe
 import os
 import sqlite3
 import secrets
