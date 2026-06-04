@@ -764,6 +764,140 @@ def importar_excel():
 
     return render_template("importar.html")
 
+@app.route("/apresentacao/<path:turma>")
+@login_required
+def apresentacao(turma):
+    import json
+    db = get_db()
+
+    # Verificar permissão
+    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and turma not in turmas_user:
+        flash("Sem permissão para esta turma.", "danger")
+        return redirect(url_for("dashboard"))
+
+    alunos = db.execute(
+        "SELECT * FROM alunos WHERE turma=? ORDER BY nome", (turma,)
+    ).fetchall()
+
+    alunos_json = []
+    for a in alunos:
+        # Notas
+        rows = db.execute(
+            "SELECT disciplina, periodo, nota FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
+            (a["id"],)
+        ).fetchall()
+
+        notas_por_ano = {a["ano_letivo"]: {}}
+        for r in rows:
+            notas_por_ano[a["ano_letivo"]].setdefault(r["disciplina"], {})[r["periodo"]] = r["nota"]
+
+        # Anos anteriores
+        if a["numero"]:
+            for outro in db.execute(
+                "SELECT id, ano_letivo FROM alunos WHERE numero=? AND ano_letivo!=? ORDER BY ano_letivo",
+                (a["numero"], a["ano_letivo"])
+            ).fetchall():
+                rows_ant = db.execute(
+                    "SELECT disciplina, periodo, nota FROM notas WHERE aluno_id=?",
+                    (outro["id"],)
+                ).fetchall()
+                if rows_ant:
+                    notas_por_ano[outro["ano_letivo"]] = {}
+                    for r in rows_ant:
+                        notas_por_ano[outro["ano_letivo"]].setdefault(r["disciplina"], {})[r["periodo"]] = r["nota"]
+
+        # Disciplinas e abreviaturas
+        ABREVS = {
+            "Português":"POR","Inglês":"ING","Filosofia":"FIL","Educação Física":"EF",
+            "Religião":"REL","Matemática A":"MAT_A","Matemática Geral":"MAT_G",
+            "Desenho A":"DES_A","Desenho Geral":"DES_G","História A":"HIST_A",
+            "História Geral":"HIST_G","Geografia A":"GEO_A","Biologia":"BIO",
+            "Biologia e Geologia":"BG","Física":"FIS","Física e Química A":"FQ_A",
+            "Química":"QUI","Economia A":"ECO_A","Economia C":"ECO_C",
+            "Geometria Descritiva A":"GD_A","Aplicações Informáticas B":"AI_B",
+            "Psicologia B":"PSI_B","Ciência Política":"CP","Filosofia A":"FIL_A",
+            "Oficinas":"OFI","Hora de PT":"PT","Projeto":"PROJ",
+            "Tempo de Trabalho Autónomo":"TTA","Líng. Estrang. I - Inglês":"ING",
+        }
+        todas = sorted({d for ano_d in notas_por_ano.values() for d in ano_d})
+        disc_esp_kw = ["_A","_B","_C","Desenho","História A","Biologia e G","Física e Q","Geometria","Economia A","Geografia"]
+        gerais  = [d for d in todas if not any(k in d for k in disc_esp_kw)]
+        especif = [d for d in todas if any(k in d for k in disc_esp_kw)]
+        todas = gerais + especif
+        sep_idx = len(gerais) if especif else None
+
+        import re as _re
+        def ano_turma(t):
+            m = _re.match(r"(\d+)", str(t or ""))
+            return (m.group(1) + "º Ano") if m else "Ano ?"
+
+        linhas = []
+        for ano in sorted(notas_por_ano.keys()):
+            disc_ano = notas_por_ano[ano]
+            periodos = sorted({p for d in disc_ano.values() for p in d})
+            al_ano = db.execute("SELECT turma FROM alunos WHERE numero=? AND ano_letivo=?",
+                                (a["numero"], ano)).fetchone()
+            t_ano = al_ano["turma"] if al_ano else a["turma"]
+            ano_esc = ano_turma(t_ano)
+
+            for p in periodos:
+                nl = {d: disc_ano.get(d, {}).get(p) for d in todas}
+                vals = [v for v in nl.values() if v is not None]
+                linhas.append({"label": f"{ano_esc} — {p}º Sem.", "tipo": "semestre",
+                                "atual": ano == a["ano_letivo"], "notas": nl,
+                                "media": round(sum(vals)/len(vals),1) if vals else None})
+
+            cif = {d: None for d in todas}
+            for d in todas:
+                vd = [disc_ano.get(d,{}).get(p) for p in periodos if disc_ano.get(d,{}).get(p) is not None]
+                cif[d] = round(sum(vd)/len(vd),1) if vd else None
+            cv = [v for v in cif.values() if v is not None]
+            linhas.append({"label":"CIF","tipo":"cif","atual": ano==a["ano_letivo"],
+                           "notas":cif,"media":round(sum(cv)/len(cv),1) if cv else None})
+
+        linhas.append({"label":"Exame","tipo":"exame","atual":False,
+                       "notas":{d:None for d in todas},"media":None})
+        uc = next((l for l in reversed(linhas) if l["tipo"]=="cif" and l["atual"]), None)
+        linhas.append({"label":"CFD","tipo":"cfd","atual":False,
+                       "notas":uc["notas"] if uc else {d:None for d in todas},
+                       "media":uc["media"] if uc else None})
+
+        # Notas de reunião
+        nr_rows = db.execute(
+            "SELECT categoria, texto FROM notas_reuniao WHERE aluno_id=?", (a["id"],)
+        ).fetchall()
+        notas_r = {r["categoria"]: r["texto"] for r in nr_rows}
+
+        # Negativos última linha semestre
+        ul = next((l for l in reversed(linhas) if l["tipo"]=="semestre" and l["atual"]), None)
+        negas = []
+        if ul:
+            negas = [[d, n] for d, n in ul["notas"].items() if n is not None and n < 10]
+            negas.sort(key=lambda x: x[1])
+
+        # Foto
+        foto_url = None
+        if a["numero"]:
+            for ext in ("jpg","jpeg","png","webp"):
+                if os.path.exists(os.path.join(FOTOS_FOLDER, f"{a['numero']}.{ext}")):
+                    foto_url = url_for("foto_aluno", numero=a["numero"])
+                    break
+
+        alunos_json.append({
+            "id": a["id"], "nome": a["nome"], "numero": a["numero"] or "",
+            "turma": a["turma"], "foto_url": foto_url,
+            "disciplinas": todas, "abrevs": ABREVS,
+            "separador_idx": sep_idx, "linhas": linhas,
+            "notas_reuniao": notas_r, "negas": negas,
+        })
+
+    return render_template("apresentacao.html",
+                           turma=turma,
+                           alunos=alunos,
+                           alunos_json=json.dumps(alunos_json))
+
+
 @app.route("/admin/turma/<path:turma>")
 @login_required
 @admin_required

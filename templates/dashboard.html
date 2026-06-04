@@ -19,6 +19,9 @@
         {% endfor %}
       </div>
       {% endif %}
+      <a href="{{ url_for('apresentacao', turma=turma) }}" class="btn btn-primary btn-sm" target="_blank">
+      <i class="bi bi-projector me-1"></i>Modo Reunião
+    </a>
       {% if session.role == 'admin' %}
       <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-arrow-left me-1"></i>Todas as turmas

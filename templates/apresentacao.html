@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reunião — {{ turma }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root { --azul: #1a3c6e; --azul2: #2563eb; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: #0f172a; color: white; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+
+    /* Layout principal */
+    .ap-wrapper { display: flex; flex-direction: column; height: 100vh; }
+
+    /* Barra de topo */
+    .ap-topbar { background: var(--azul); padding: .6rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .ap-turma  { font-weight: 700; font-size: 1.1rem; opacity: .9; }
+    .ap-counter { font-size: .9rem; opacity: .7; }
+    .ap-close  { color: white; opacity: .7; text-decoration: none; font-size: 1.3rem; }
+    .ap-close:hover { opacity: 1; color: white; }
+
+    /* Corpo */
+    .ap-body { flex: 1; display: flex; overflow: hidden; }
+
+    /* Coluna esquerda: foto + nome + notas reunião */
+    .ap-left { width: 300px; flex-shrink: 0; background: #1e293b; display: flex; flex-direction: column; padding: 1.5rem; overflow-y: auto; }
+    .ap-foto  { width: 110px; height: 110px; border-radius: 50%; object-fit: cover; border: 3px solid var(--azul2); margin: 0 auto 1rem; display: block; background: var(--azul2); }
+    .ap-foto-placeholder { width: 110px; height: 110px; border-radius: 50%; background: var(--azul2); margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: rgba(255,255,255,.6); }
+    .ap-nome  { font-size: 1.15rem; font-weight: 700; text-align: center; margin-bottom: .3rem; }
+    .ap-meta  { font-size: .8rem; opacity: .6; text-align: center; margin-bottom: 1.2rem; }
+
+    .ap-nota-bloco { margin-bottom: 1rem; }
+    .ap-nota-titulo { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; margin-bottom: .3rem; opacity: .8; }
+    .ap-nota-texto  { font-size: .85rem; line-height: 1.5; opacity: .9; white-space: pre-wrap; }
+    .ap-nota-vazio  { font-size: .82rem; opacity: .35; font-style: italic; }
+
+    /* Coluna direita: tabela de notas */
+    .ap-right { flex: 1; overflow: auto; padding: 1.2rem 1.5rem; }
+
+    /* Alerta negativos */
+    .ap-alerta { background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.4); border-radius: 8px; padding: .6rem 1rem; margin-bottom: 1rem; font-size: .88rem; }
+
+    /* Tabela */
+    .ap-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .ap-table th { background: var(--azul); color: white; padding: 6px 8px; text-align: center; font-size: .75rem; white-space: nowrap; position: sticky; top: 0; }
+    .ap-table th.label-col { text-align: left; padding-left: 10px; min-width: 120px; }
+    .ap-table td { padding: 5px 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .ap-table td.label-col { text-align: left; padding-left: 10px; font-weight: 600; color: rgba(255,255,255,.85); white-space: nowrap; }
+    .ap-table tr:hover td { background: rgba(255,255,255,.04); }
+    .ap-table tr.cif-row td { background: rgba(37,99,235,.2); font-weight: 700; }
+    .ap-table tr.cfd-row td { background: var(--azul); font-weight: 700; }
+    .ap-table tr.atual-row td { background: rgba(245,158,11,.08); }
+    .ap-table tr.atual-row td.label-col { border-left: 3px solid #f59e0b; }
+    .ap-table tr.exame-row td { opacity: .5; }
+    .media-col { border-left: 1px solid rgba(255,255,255,.15) !important; }
+
+    .nc { border-radius: 4px; padding: 2px 7px; font-weight: 700; display: inline-block; min-width: 30px; font-size: .82rem; }
+    .nc-neg { background: #ef4444; }
+    .nc-med { background: #f59e0b; }
+    .nc-bom { background: #22c55e; color: #052e16; }
+    .nc-exc { background: #3b82f6; }
+    .nc-nd  { color: rgba(255,255,255,.3); }
+
+    /* Barra de navegação */
+    .ap-nav { background: #1e293b; padding: .8rem 1.5rem; display: flex; align-items: center; justify-content: center; gap: 1.5rem; flex-shrink: 0; border-top: 1px solid rgba(255,255,255,.08); }
+    .ap-nav .btn-nav { background: var(--azul); border: none; color: white; border-radius: 8px; padding: .5rem 1.5rem; font-weight: 600; font-size: 1rem; cursor: pointer; display: flex; align-items: center; gap: .5rem; transition: background .15s; }
+    .ap-nav .btn-nav:hover { background: var(--azul2); }
+    .ap-nav .btn-nav:disabled { opacity: .3; cursor: not-allowed; }
+    .ap-nav .aluno-index { font-size: .9rem; opacity: .6; min-width: 80px; text-align: center; }
+
+    /* Teclas de atalho hint */
+    .key-hint { font-size: .65rem; opacity: .4; display: block; }
+  </style>
+</head>
+<body>
+<div class="ap-wrapper">
+
+  <!-- Topo -->
+  <div class="ap-topbar">
+    <span class="ap-turma"><i class="bi bi-people-fill me-2"></i>Reunião — Turma {{ turma }}</span>
+    <div class="d-flex align-items-center gap-3">
+      <span class="ap-counter">{{ alunos | length }} aluno{{ 's' if alunos|length != 1 }}</span>
+      <a href="{{ url_for('ver_turma', turma=turma) }}" class="ap-close" title="Sair da apresentação">
+        <i class="bi bi-x-lg"></i>
+      </a>
+    </div>
+  </div>
+
+  <!-- Corpo -->
+  <div class="ap-body">
+
+    <!-- Esquerda: foto + notas -->
+    <div class="ap-left" id="painel-esq">
+      <div id="foto-container"></div>
+      <div id="nome-aluno" class="ap-nome"></div>
+      <div id="meta-aluno" class="ap-meta"></div>
+      <div id="notas-reuniao"></div>
+    </div>
+
+    <!-- Direita: tabela -->
+    <div class="ap-right" id="painel-dir">
+      <div id="alerta-neg"></div>
+      <div id="tabela-container"></div>
+    </div>
+  </div>
+
+  <!-- Navegação -->
+  <div class="ap-nav">
+    <button class="btn-nav" id="btn-ant" onclick="navegar(-1)" disabled>
+      <i class="bi bi-chevron-left"></i> Anterior
+      <span class="key-hint">← seta</span>
+    </button>
+    <span class="aluno-index" id="idx-label"></span>
+    <button class="btn-nav" id="btn-prox" onclick="navegar(1)">
+      Seguinte <i class="bi bi-chevron-right"></i>
+      <span class="key-hint">seta →</span>
+    </button>
+  </div>
+
+</div>
+
+<script>
+const ALUNOS = {{ alunos_json | safe }};
+let idx = 0;
+
+function corClasse(n) {
+  if (n === null || n === undefined || isNaN(n)) return 'nc-nd';
+  if (n < 10) return 'nc-neg';
+  if (n < 14) return 'nc-med';
+  if (n < 17) return 'nc-bom';
+  return 'nc-exc';
+}
+
+function fmt(n) {
+  if (n === null || n === undefined) return '—';
+  return Number.isInteger(n) ? n : n.toFixed(1);
+}
+
+function ncSpan(n) {
+  if (n === null || n === undefined) return `<span class="nc-nd">—</span>`;
+  return `<span class="nc ${corClasse(n)}">${fmt(n)}</span>`;
+}
+
+function mostrar(i) {
+  const a = ALUNOS[i];
+
+  // Foto
+  const fc = document.getElementById('foto-container');
+  if (a.foto_url) {
+    fc.innerHTML = `<img src="${a.foto_url}" class="ap-foto" alt="Foto">`;
+  } else {
+    fc.innerHTML = `<div class="ap-foto-placeholder"><i class="bi bi-person-fill"></i></div>`;
+  }
+
+  // Nome e meta
+  document.getElementById('nome-aluno').textContent = a.nome;
+  document.getElementById('meta-aluno').textContent = `Nº ${a.numero || '—'} · ${a.turma}`;
+
+  // Notas de reunião
+  const cats = [
+    {id:'observacoes',  label:'Observações Gerais',     icon:'bi-journal-text',        cor:'#60a5fa'},
+    {id:'preocupacoes', label:'Preocupações / Alertas', icon:'bi-exclamation-triangle', cor:'#f87171'},
+    {id:'positivos',    label:'Pontos Positivos',        icon:'bi-star',                cor:'#4ade80'},
+    {id:'apoio_caa',    label:'Medidas de Apoio / CAA',  icon:'bi-life-preserver',      cor:'#c084fc'},
+  ];
+  const nr = a.notas_reuniao || {};
+  let nrHtml = '';
+  cats.forEach(c => {
+    const txt = (nr[c.id] || '').trim();
+    nrHtml += `<div class="ap-nota-bloco">
+      <div class="ap-nota-titulo" style="color:${c.cor}"><i class="bi ${c.icon} me-1"></i>${c.label}</div>
+      ${txt ? `<div class="ap-nota-texto">${txt}</div>` : `<div class="ap-nota-vazio">Sem notas</div>`}
+    </div>`;
+  });
+  document.getElementById('notas-reuniao').innerHTML = nrHtml;
+
+  // Alerta negativos
+  const alertEl = document.getElementById('alerta-neg');
+  const negas = a.negas || [];
+  if (negas.length > 0) {
+    alertEl.innerHTML = `<div class="ap-alerta">
+      <i class="bi bi-exclamation-triangle-fill me-2" style="color:#f87171"></i>
+      <strong>Negativas:</strong>
+      ${negas.map(([d,n]) => `<span class="nc nc-neg ms-1">${d.substring(0,12)} — ${fmt(n)}</span>`).join('')}
+    </div>`;
+  } else {
+    alertEl.innerHTML = '';
+  }
+
+  // Tabela de notas
+  const discs = a.disciplinas;
+  const linhas = a.linhas;
+  if (!discs || discs.length === 0) {
+    document.getElementById('tabela-container').innerHTML = '<p style="opacity:.4">Sem notas registadas.</p>';
+  } else {
+    let html = `<table class="ap-table"><thead><tr>
+      <th class="label-col">Ano / Semestre</th>
+      ${discs.map((d,i) => `<th title="${d}"${i === a.separador_idx ? ' style="border-left:2px solid #22c55e"':''}>
+        ${a.abrevs[d] || d.substring(0,6)}</th>`).join('')}
+      <th class="media-col">Média</th>
+    </tr></thead><tbody>`;
+
+    linhas.forEach(l => {
+      const cls = l.tipo === 'cif' ? 'cif-row' : l.tipo === 'cfd' ? 'cfd-row' : l.tipo === 'exame' ? 'exame-row' : (l.atual ? 'atual-row' : '');
+      html += `<tr class="${cls}">
+        <td class="label-col">${l.label}</td>
+        ${discs.map((d,i) => {
+          const n = l.notas[d];
+          return `<td${i === a.separador_idx ? ' style="border-left:2px solid #22c55e33"':''}>${ncSpan(n !== undefined ? n : null)}</td>`;
+        }).join('')}
+        <td class="media-col">${ncSpan(l.media)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('tabela-container').innerHTML = html;
+  }
+
+  // Navegação
+  document.getElementById('idx-label').textContent = `${i+1} / ${ALUNOS.length}`;
+  document.getElementById('btn-ant').disabled  = i === 0;
+  document.getElementById('btn-prox').disabled = i === ALUNOS.length - 1;
+}
+
+function navegar(dir) {
+  const novo = idx + dir;
+  if (novo >= 0 && novo < ALUNOS.length) {
+    idx = novo;
+    mostrar(idx);
+    window.scrollTo(0,0);
+    document.getElementById('painel-dir').scrollTop = 0;
+  }
+}
+
+// Teclas de seta
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navegar(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   navegar(-1);
+});
+
+// Iniciar
+mostrar(0);
+</script>
+</body>
+</html>
