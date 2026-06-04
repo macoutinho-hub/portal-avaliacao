@@ -244,6 +244,12 @@
           style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:.3rem .9rem;cursor:pointer;font-size:.85rem;font-weight:600">
           <i class="bi bi-table me-1"></i>Vista Turma
         </button>
+        {% if slides_json != '[]' %}
+        <button onclick="abrirSlide(0)" id="btn-slides"
+          style="background:var(--azul2);border:none;color:white;border-radius:6px;padding:.3rem .9rem;cursor:pointer;font-size:.85rem;font-weight:600">
+          <i class="bi bi-collection-play me-1"></i>Slides
+        </button>
+        {% endif %}
         <button onclick="toggleFS()" id="btn-fs" title="Ecrã inteiro"
           style="background:none;border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:1.2rem">
           <i class="bi bi-fullscreen" id="fs-icon"></i>
@@ -294,22 +300,7 @@
   </div>
 </div>
 
-<!-- Aba slides -->
 {% if slides_json != '[]' %}
-<div class="slides-tab">
-  <button class="slides-tab-btn" onclick="toggleSlidesPanel()">
-    <i class="bi bi-collection-play d-block mb-1" style="writing-mode:horizontal-tb"></i>
-    Slides
-  </button>
-</div>
-
-<div class="slides-panel" id="slides-panel">
-  <div class="slides-panel-header">
-    <span style="font-weight:700; font-size:1rem"><i class="bi bi-collection-play me-2"></i>Slides da Turma</span>
-    <button onclick="toggleSlidesPanel()" style="background:none;border:none;color:white;font-size:1.3rem;cursor:pointer">✕</button>
-  </div>
-  <div class="slides-panel-body" id="slides-lista"></div>
-</div>
 
 <!-- Slide fullscreen -->
 <div class="slide-full" id="slide-full" style="display:none">
@@ -321,10 +312,15 @@
   <div class="slide-nav-bar">
     <button class="btn-nav" id="slide-btn-ant" onclick="navSlide(-1)">
       <i class="bi bi-chevron-left"></i> Anterior
+      <span style="font-size:.62rem;opacity:.4;display:block">← seta</span>
     </button>
+    <select id="slide-sel" onchange="abrirSlide(parseInt(this.value))"
+      style="background:#1e3a5f;color:white;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:.5rem 1rem;font-size:.88rem;min-width:200px;cursor:pointer">
+    </select>
     <span id="slide-idx" style="font-size:.9rem; opacity:.5; min-width:60px; text-align:center"></span>
     <button class="btn-nav" id="slide-btn-prox" onclick="navSlide(1)">
       Seguinte <i class="bi bi-chevron-right"></i>
+      <span style="font-size:.62rem;opacity:.4;display:block">seta →</span>
     </button>
   </div>
 </div>
@@ -579,29 +575,25 @@ function construirVistaTurma() {
 // ── Slides ──────────────────────────────────────────────────────────────────
 let slideIdx = 0;
 
-function toggleSlidesPanel() {
-  const p = document.getElementById('slides-panel');
-  if (!p) return;
-  p.classList.toggle('open');
-  if (p.classList.contains('open')) renderSlidesLista();
-}
-
-function renderSlidesLista() {
-  if (!SLIDES || !SLIDES.length) return;
-  const el = document.getElementById('slides-lista');
-  el.innerHTML = SLIDES.map((s,i) => `
-    <div class="slide-card ${i===slideIdx?'active':''}" onclick="abrirSlide(${i})">
-      <div class="slide-card-titulo">${s.titulo || '(sem título)'}</div>
-      <div class="slide-card-preview">${(s.conteudo||'').substring(0,60)}${(s.conteudo||'').length>60?'…':''}</div>
-    </div>`).join('');
-}
-
 function abrirSlide(i) {
   if (!SLIDES || !SLIDES[i]) return;
   slideIdx = i;
   const s = SLIDES[i];
   document.getElementById('slide-titulo-header').textContent = s.titulo || '';
   document.getElementById('slide-full').style.display = 'flex';
+
+  // Popular dropdown se ainda não estiver
+  const sel = document.getElementById('slide-sel');
+  if (sel && sel.options.length === 0) {
+    SLIDES.forEach((sl, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = `${idx+1}. ${sl.titulo || '(sem título)'}`;
+      sel.appendChild(opt);
+    });
+  }
+  if (sel) sel.value = i;
+
   renderSlideConteudo(s, i);
 }
 
