@@ -211,6 +211,7 @@ DISC_FAMILIAS = {
     "Matemática B":                         "família_mat",
     "Matemática Aplicada Ciências Sociais": "família_mat",
     "História A":                           "família_hist",
+    "História B":                           "família_hist",
     "História Geral":                       "família_hist",
     "Desenho A":                            "família_des",
     "Desenho Geral":                        "família_des",
