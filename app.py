@@ -581,7 +581,7 @@ def aluno(aluno_id):
         "Economia C":                       "Econ C",
         "Geografia A":                      "Geo A",
         "História Geral":                   "Hist B",
-        "Matemática Geral":                 "Mat B",
+        "Matemática Geral":                 "Mat G",
         "Matemática Aplicada Ciências Sociais": "MACS",
         "Filosofia A":                      "Filo A",
         "Ciência Política":                 "C. Pol",
