@@ -12,6 +12,9 @@
   .tabela-perfil td.row-label { text-align: left; padding-left: 10px; font-weight: 600; background: #f8f9fb; min-width: 110px; color: #374151; }
   .tabela-perfil tr.ano-atual td { background: #fffbeb !important; }
   .tabela-perfil tr.ano-atual td.row-label { border-left: 3px solid #f59e0b; }
+  .tabela-perfil tr.auto-av-row td { background: #f5f0ff; font-weight: 600; border-top: 2px dashed #9333ea; border-bottom: 2px dashed #9333ea; }
+  .tabela-perfil tr.auto-av-row td.row-label { color: #7e22ce; font-style: italic; }
+  .tabela-perfil tr.auto-av-row td.row-label::before { content: '★ '; font-style: normal; }
   .tabela-perfil tr.cif-row td { background: #0E4D7D; color: white; font-weight: 700; border-top: 3px solid #44B2E4 !important; }
   .tabela-perfil tr.cif-row td.row-label { background: #0E4D7D; color: #7BCAD7; letter-spacing:.5px; }
   .nota-texto { border-radius:4px; padding:2px 5px; font-weight:700; font-size:.75rem; background:#6b7280; color:white; display:inline-block; }
@@ -99,6 +102,10 @@
         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modal-add-disciplina">
           <i class="bi bi-columns-gap me-1"></i>Adicionar Disciplina
         </button>
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modal-auto-av"
+                style="border-color:#9333ea; color:#7e22ce">
+          <i class="bi bi-star me-1"></i>Auto-Avaliação
+        </button>
       </div>
       {% endif %}
       {% if not todas_disciplinas %}
@@ -120,6 +127,7 @@
             {% for linha in linhas %}
             <tr class="
               {% if linha.tipo == 'semestre' and linha.atual %}ano-atual
+              {% elif linha.tipo == 'auto_av' %}auto-av-row
               {% elif linha.tipo == 'cif' %}cif-row
               {% elif linha.tipo == 'exame' %}exame-row
               {% elif linha.tipo == 'cfd' %}cfd-row
@@ -128,7 +136,17 @@
               {% for disc in todas_disciplinas %}
               {% set n = linha.notas.get(disc) %}
               <td class="{% if loop.index0 == separador_idx %}separador-col{% endif %}">
-                {% if linha.tipo == 'semestre' %}
+                {% if linha.tipo == 'auto_av' and pode_editar %}
+                <span class="nota-cell {% if n is not none and n is number %}{% if n < 10 %}n-neg{% elif n < 14 %}n-med{% elif n < 17 %}n-bom{% else %}n-exc{% endif %}{% else %}n-nd{% endif %}"
+                      style="border:2px dashed #9333ea; cursor:pointer"
+                      data-aluno="{{ aluno.id }}"
+                      data-disciplina="{{ disc }}"
+                      data-ano="{{ aluno.ano_letivo }}"
+                      onclick="editarAutoAv(this)"
+                      title="Clique para inserir auto-avaliação">
+                  {% if n is not none %}{{ "%.0f"|format(n) }}{% else %}—{% endif %}
+                </span>
+              {% elif linha.tipo == 'semestre' %}
                 <span class="nota-cell {% if n is not none and n is number %}{% if n < 10 %}n-neg{% elif n < 14 %}n-med{% elif n < 17 %}n-bom{% else %}n-exc{% endif %}{% elif n is not none %}n-nd{% else %}n-nd{% endif %}"
                       data-aluno="{{ aluno.id }}"
                       data-disciplina="{{ disc }}"
@@ -316,6 +334,45 @@
 </div>
 {% endif %}
 
+<!-- ── Modal: Auto-Avaliação ─────────────────────────────────────────────── -->
+{% if pode_editar %}
+<div class="modal fade" id="modal-auto-av" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#6b21a8; color:white">
+        <h5 class="modal-title"><i class="bi bi-star me-2"></i>Auto-Avaliação — {{ aluno.nome.split()[0] }}</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('guardar_auto_av_form', aluno_id=aluno.id) }}">
+        <div class="modal-body" style="max-height:65vh; overflow-y:auto">
+          <p class="text-muted mb-3" style="font-size:.9rem">Insira a auto-avaliação do aluno por disciplina (1–20). Deixe em branco as que não se aplicam.</p>
+          <div class="row g-2">
+            {% for disc in todas_disciplinas %}
+            <div class="col-6 col-md-4 col-lg-3">
+              <label class="form-label mb-1 fw-semibold" style="font-size:.78rem; color:#6b21a8">{{ abreviaturas.get(disc, disc[:14]) }}</label>
+              <input type="number" name="aa_{{ loop.index0 }}" class="form-control form-control-sm"
+                     placeholder="—" min="1" max="20" step="1"
+                     value="{{ aa_canonical.get(disc, '') if aa_canonical else '' }}">
+            </div>
+            {% endfor %}
+          </div>
+          {% for disc in todas_disciplinas %}
+          <input type="hidden" name="disc_{{ loop.index0 }}" value="{{ disc }}">
+          {% endfor %}
+          <input type="hidden" name="n_discs" value="{{ todas_disciplinas|length }}">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn text-white fw-semibold" style="background:#6b21a8">
+            <i class="bi bi-save me-1"></i>Guardar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- ── Modal: Adicionar Disciplina ──────────────────────────────────────── -->
 {% if pode_editar %}
 <div class="modal fade" id="modal-add-disciplina" tabindex="-1">
@@ -375,6 +432,53 @@ function corClasse(n) {
   if (n < 14) return 'n-med';
   if (n < 17) return 'n-bom';
   return 'n-exc';
+}
+
+// Auto-avaliação inline
+function editarAutoAv(span) {
+  if (span.querySelector('input')) return;
+  const valorActual = span.textContent.trim() === '—' ? '' : span.textContent.trim();
+  const alunoId    = span.dataset.aluno;
+  const disciplina = span.dataset.disciplina;
+  const anoLetivo  = span.dataset.ano;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'nota-edit-input';
+  input.value = valorActual;
+  input.maxLength = 3;
+  input.style.borderColor = '#9333ea';
+  span.textContent = '';
+  span.appendChild(input);
+  input.focus(); input.select();
+
+  async function guardar() {
+    const val = input.value.trim();
+    try {
+      const resp = await fetch(`/aluno/${alunoId}/auto-avaliacao`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({disciplina, ano_letivo: anoLetivo, valor: val})
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        const v = data.valor;
+        span.textContent = v !== null ? v : '—';
+        span.className = 'nota-cell ' + (v === null ? 'n-nd' : corClasse(v));
+        span.style.border = '2px dashed #9333ea';
+        setTimeout(() => location.reload(), 600);
+      } else {
+        span.textContent = valorActual || '—';
+        alert('Erro: ' + data.erro);
+      }
+    } catch(e) { span.textContent = valorActual || '—'; }
+  }
+
+  input.addEventListener('blur', guardar);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { span.textContent = valorActual || '—'; span.removeEventListener('blur', guardar); }
+  });
 }
 
 // Auto-save notas de reunião

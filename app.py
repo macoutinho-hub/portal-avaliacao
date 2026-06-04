@@ -101,6 +101,18 @@ def init_db():
             UNIQUE(aluno_id, disciplina, ano_letivo)
         );
     """)
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS auto_avaliacao (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id   INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            disciplina TEXT NOT NULL,
+            ano_letivo TEXT NOT NULL,
+            valor      INTEGER,
+            UNIQUE(aluno_id, disciplina, ano_letivo)
+        );
+    """)
+    db.commit()
+
     for col_sql in [
         "ALTER TABLE alunos ADD COLUMN bi TEXT",
         "ALTER TABLE notas ADD COLUMN nota_texto TEXT",
@@ -687,6 +699,30 @@ def aluno(aluno_id):
                 "media": round(sum(vals_num) / len(vals_num), 1) if vals_num else None,
             })
 
+    # ── Carregar auto-avaliação ───────────────────────────────────────────────
+    aa_rows = db.execute(
+        "SELECT disciplina, valor FROM auto_avaliacao WHERE aluno_id=? AND ano_letivo=?",
+        (aluno_id, a["ano_letivo"])
+    ).fetchall()
+    aa_map = {r["disciplina"]: r["valor"] for r in aa_rows}
+    # Mapear para nomes canónicos
+    aa_canonical = {}
+    for d, v in aa_map.items():
+        can = disc_canonical.get(d, d)
+        aa_canonical[can] = v
+
+    # Linha de auto-avaliação (só aparece se existirem valores inseridos)
+    if aa_canonical:
+        aa_notas = {d: aa_canonical.get(d) for d in todas_disciplinas}
+        aa_vals  = [v for v in aa_notas.values() if isinstance(v, (int, float))]
+        linhas.append({
+            "label": "Auto-Avaliação",
+            "tipo":  "auto_av",
+            "atual": True,
+            "notas": aa_notas,
+            "media": round(sum(aa_vals) / len(aa_vals), 1) if aa_vals else None,
+        })
+
     # ── Carregar notas_finais (CIF/Exame/CFD oficiais) ───────────────────────
     # Procurar em todos os registos do mesmo aluno (por número de processo)
     if a["numero"]:
@@ -826,7 +862,88 @@ def aluno(aluno_id):
                            foto_url=foto_url,
                            notas_reuniao=notas_reuniao,
                            categorias_reuniao=CATEGORIAS_REUNIAO,
-                           pode_editar=pode_editar)
+                           pode_editar=pode_editar,
+                           aa_canonical=aa_canonical)
+
+# ─── Auto-avaliação ───────────────────────────────────────────────────────────
+
+@app.route("/aluno/<int:aluno_id>/auto-avaliacao", methods=["POST"])
+@login_required
+def guardar_auto_avaliacao(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        return jsonify({"ok": False, "erro": "Aluno não encontrado"}), 404
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
+        return jsonify({"ok": False, "erro": "Sem permissão"}), 403
+
+    data       = request.get_json()
+    disciplina = (data.get("disciplina") or "").strip()
+    ano_letivo = (data.get("ano_letivo") or a["ano_letivo"]).strip()
+    valor_str  = str(data.get("valor") or "").strip()
+
+    if not disciplina:
+        return jsonify({"ok": False, "erro": "Disciplina obrigatória"}), 400
+
+    if valor_str in ("", "-", "—"):
+        db.execute("DELETE FROM auto_avaliacao WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+                   (aluno_id, disciplina, ano_letivo))
+        db.commit()
+        return jsonify({"ok": True, "valor": None})
+
+    try:
+        valor = int(float(valor_str))
+        if not (1 <= valor <= 20):
+            return jsonify({"ok": False, "erro": "Valor deve ser entre 1 e 20"}), 400
+    except ValueError:
+        return jsonify({"ok": False, "erro": "Valor inválido"}), 400
+
+    db.execute(
+        "INSERT OR REPLACE INTO auto_avaliacao (aluno_id, disciplina, ano_letivo, valor) VALUES (?,?,?,?)",
+        (aluno_id, disciplina, ano_letivo, valor)
+    )
+    db.commit()
+    return jsonify({"ok": True, "valor": valor})
+
+
+@app.route("/aluno/<int:aluno_id>/auto-avaliacao-form", methods=["POST"])
+@login_required
+def guardar_auto_av_form(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a: return redirect(url_for("dashboard"))
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for("aluno", aluno_id=aluno_id))
+
+    n_discs = int(request.form.get("n_discs", 0))
+    guardadas = 0
+    for i in range(n_discs):
+        disc  = request.form.get(f"disc_{i}", "").strip()
+        val_s = request.form.get(f"aa_{i}", "").strip()
+        if not disc: continue
+        if not val_s:
+            db.execute("DELETE FROM auto_avaliacao WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+                       (aluno_id, disc, a["ano_letivo"]))
+            continue
+        try:
+            val = int(float(val_s))
+            if 1 <= val <= 20:
+                db.execute(
+                    "INSERT OR REPLACE INTO auto_avaliacao (aluno_id, disciplina, ano_letivo, valor) VALUES (?,?,?,?)",
+                    (aluno_id, disc, a["ano_letivo"], val)
+                )
+                guardadas += 1
+        except ValueError:
+            pass
+
+    db.commit()
+    if guardadas:
+        flash(f"Auto-avaliação guardada ({guardadas} disciplina(s)).", "success")
+    return redirect(url_for("aluno", aluno_id=aluno_id))
+
 
 # ─── Adicionar semestre manual ────────────────────────────────────────────────
 
