@@ -101,12 +101,12 @@ def init_db():
             UNIQUE(aluno_id, disciplina, ano_letivo)
         );
     """)
-    # Adicionar coluna bi se não existir
-    try:
-        db.execute("ALTER TABLE alunos ADD COLUMN bi TEXT")
-        db.commit()
-    except Exception:
-        pass
+    for col_sql in [
+        "ALTER TABLE alunos ADD COLUMN bi TEXT",
+        "ALTER TABLE notas ADD COLUMN nota_texto TEXT",
+    ]:
+        try: db.execute(col_sql); db.commit()
+        except Exception: pass
 
     # Valores por defeito das settings
     for key, val in [("ano_letivo_atual", "2025/2026"), ("semestre_atual", "2")]:
@@ -146,6 +146,30 @@ def admin_required(f):
 # ─── Utilitários de turma ─────────────────────────────────────────────────────
 
 import re as _re_global
+
+# Famílias de disciplinas equivalentes (mesma disciplina, nomes diferentes entre anos)
+DISC_FAMILIAS = {
+    "Matemática A":                         "família_mat",
+    "Matemática Geral":                     "família_mat",
+    "Matemática B":                         "família_mat",
+    "Matemática Aplicada Ciências Sociais": "família_mat",
+    "História A":                           "família_hist",
+    "História Geral":                       "família_hist",
+    "Desenho A":                            "família_des",
+    "Desenho Geral":                        "família_des",
+    "Inglês":                               "família_ing",
+    "Líng. Estrang. I - Inglês":            "família_ing",
+    "Filosofia":                            "família_filo",
+    "Filosofia A":                          "família_filo",
+}
+
+def membros_familia(disc):
+    """Devolve todos os nomes que pertencem à mesma família que `disc`."""
+    fam = DISC_FAMILIAS.get(disc)
+    if not fam:
+        return [disc]
+    return [d for d, f in DISC_FAMILIAS.items() if f == fam]
+
 
 def get_setting(db, key, default=None):
     r = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
@@ -389,18 +413,20 @@ def aluno(aluno_id):
         ).fetchall():
             todos_alunos_ids[outro["ano_letivo"]] = outro["id"]
 
-    # notas_por_ano: {ano_letivo: {disciplina: {periodo: nota}}}
+    # notas_por_ano: {ano_letivo: {disciplina: {periodo: nota_ou_texto}}}
     notas_por_ano = {}
     for ano, aid in todos_alunos_ids.items():
         rows = db.execute(
-            "SELECT disciplina, periodo, nota FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
+            "SELECT disciplina, periodo, nota, nota_texto FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
             (aid,)
         ).fetchall()
         if rows:
             notas_por_ano[ano] = {}
             for r in rows:
                 d = r["disciplina"]
-                notas_por_ano[ano].setdefault(d, {})[r["periodo"]] = r["nota"]
+                # Valor: nota_texto se preenchido, senão nota numérica
+                val = r["nota_texto"] if r["nota_texto"] else r["nota"]
+                notas_por_ano[ano].setdefault(d, {})[r["periodo"]] = val
 
     # ── Abreviaturas das disciplinas (apresentação na tabela) ─────────────────
     ABREVIATURAS = {
@@ -465,6 +491,30 @@ def aluno(aluno_id):
 
     todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
 
+    # ── Unificar disciplinas equivalentes entre anos ──────────────────────────
+    disc_ano_atual_set = set(notas_por_ano.get(a["ano_letivo"], {}).keys())
+    disc_canonical = {}
+    for d in todas_set:
+        fam = DISC_FAMILIAS.get(d)
+        if not fam:
+            disc_canonical[d] = d
+            continue
+        membros = [m for m in membros_familia(d) if m in disc_ano_atual_set]
+        if not membros:
+            for ano_r in sorted(notas_por_ano.keys(), reverse=True):
+                membros = [m for m in membros_familia(d) if m in notas_por_ano[ano_r]]
+                if membros: break
+        disc_canonical[d] = membros[0] if membros else d
+
+    notas_por_ano_unif = {}
+    for ano, disc_ano in notas_por_ano.items():
+        notas_por_ano_unif[ano] = {}
+        for d, periodos in disc_ano.items():
+            can = disc_canonical.get(d, d)
+            notas_por_ano_unif[ano].setdefault(can, {}).update(periodos)
+    notas_por_ano = notas_por_ano_unif
+    todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
+
     def _pos_disc(d):
         for i, nome in enumerate(ORDEM_TODAS):
             if d == nome or (len(nome) >= 6 and d.startswith(nome[:6])):
@@ -472,7 +522,6 @@ def aluno(aluno_id):
         return len(ORDEM_TODAS)
 
     todas_disciplinas = sorted(todas_set, key=_pos_disc)
-    # Separador: entre as gerais e as específicas
     gerais_presentes = [d for d in todas_disciplinas if _pos_disc(d) < N_GERAIS]
     separador_idx = len(gerais_presentes) if len(gerais_presentes) < len(todas_disciplinas) else None
 
@@ -718,6 +767,67 @@ def adicionar_semestre(aluno_id):
     return redirect(url_for("aluno", aluno_id=aluno_id))
 
 
+@app.route("/aluno/<int:aluno_id>/adicionar-disciplina", methods=["POST"])
+@login_required
+def adicionar_disciplina(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a: return redirect(url_for("dashboard"))
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for("aluno", aluno_id=aluno_id))
+
+    disciplina  = request.form.get("disciplina", "").strip()
+    ano_letivo  = request.form.get("ano_letivo", "").strip()
+    semestre    = int(request.form.get("semestre", 2))
+    nota_str    = request.form.get("nota", "").strip()
+
+    if not disciplina or not ano_letivo:
+        flash("Disciplina e ano letivo são obrigatórios.", "danger")
+        return redirect(url_for("aluno", aluno_id=aluno_id))
+
+    # Garantir registo do aluno para este ano letivo
+    existe = db.execute(
+        "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?", (a["numero"], ano_letivo)
+    ).fetchone()
+    if not existe:
+        db.execute(
+            "INSERT OR IGNORE INTO alunos (numero, nome, turma, ano_letivo) VALUES (?,?,?,?)",
+            (a["numero"], a["nome"], a["turma"], ano_letivo)
+        )
+        db.commit()
+        existe = db.execute(
+            "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?", (a["numero"], ano_letivo)
+        ).fetchone()
+
+    aid = existe["id"]
+    VALORES_TEXTO = {"AM", "NE", "NA", "NP", "ND"}
+    nota, nota_texto = None, None
+    if nota_str.upper() in VALORES_TEXTO:
+        nota_texto = nota_str.upper()
+    elif nota_str:
+        try:
+            nota = float(nota_str.replace(",", "."))
+        except ValueError:
+            pass
+
+    ex = db.execute(
+        "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+        (aid, disciplina, semestre)
+    ).fetchone()
+    if ex:
+        db.execute("UPDATE notas SET nota=?, nota_texto=? WHERE id=?", (nota, nota_texto, ex["id"]))
+    else:
+        db.execute(
+            "INSERT INTO notas (aluno_id, disciplina, periodo, nota, nota_texto) VALUES (?,?,?,?,?)",
+            (aid, disciplina, semestre, nota, nota_texto)
+        )
+    db.commit()
+    flash(f"Disciplina '{disciplina}' adicionada.", "success")
+    return redirect(url_for("aluno", aluno_id=aluno_id))
+
+
 # ─── Notas de reunião ─────────────────────────────────────────────────────────
 
 CATEGORIAS_REUNIAO = [
@@ -792,8 +902,15 @@ def editar_nota(aluno_id):
         return jsonify({"ok": False, "erro": "Dados incompletos"}), 400
 
     # Converter nota
+    # Valores especiais de texto (AM, NE, NA, etc.)
+    VALORES_TEXTO = {"AM", "NE", "NA", "NP", "ND"}
+    nota_texto = None
+    nota = None
+
     if nota_str in ("", "-", "—"):
-        nota = None
+        pass  # apagar
+    elif nota_str.upper() in VALORES_TEXTO:
+        nota_texto = nota_str.upper()
     else:
         try:
             nota = float(nota_str.replace(",", "."))
@@ -808,18 +925,20 @@ def editar_nota(aluno_id):
     ).fetchone()
 
     if existing:
-        if nota is None:
+        if nota is None and nota_texto is None:
             db.execute("DELETE FROM notas WHERE id=?", (existing["id"],))
         else:
-            db.execute("UPDATE notas SET nota=? WHERE id=?", (nota, existing["id"]))
-    elif nota is not None:
+            db.execute("UPDATE notas SET nota=?, nota_texto=? WHERE id=?",
+                       (nota, nota_texto, existing["id"]))
+    elif nota is not None or nota_texto is not None:
         db.execute(
-            "INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,?,?)",
-            (aluno_id, disciplina, periodo, nota)
+            "INSERT INTO notas (aluno_id, disciplina, periodo, nota, nota_texto) VALUES (?,?,?,?,?)",
+            (aluno_id, disciplina, periodo, nota, nota_texto)
         )
 
     db.commit()
-    return jsonify({"ok": True, "nota": nota})
+    display = nota_texto if nota_texto else nota
+    return jsonify({"ok": True, "nota": display, "is_texto": nota_texto is not None})
 
 
 # ─── Fotos ────────────────────────────────────────────────────────────────────

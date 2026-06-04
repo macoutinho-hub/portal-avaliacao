@@ -12,8 +12,9 @@
   .tabela-perfil td.row-label { text-align: left; padding-left: 10px; font-weight: 600; background: #f8f9fb; min-width: 110px; color: #374151; }
   .tabela-perfil tr.ano-atual td { background: #fffbeb !important; }
   .tabela-perfil tr.ano-atual td.row-label { border-left: 3px solid #f59e0b; }
-  .tabela-perfil tr.cif-row td { background: #f0f4ff; font-weight: 700; }
-  .tabela-perfil tr.cif-row td.row-label { color: #1a3c6e; }
+  .tabela-perfil tr.cif-row td { background: #1a3c6e; color: white; font-weight: 700; border-top: 3px solid #2563eb !important; }
+  .tabela-perfil tr.cif-row td.row-label { background: #1a3c6e; color: #93c5fd; letter-spacing:.5px; }
+  .nota-texto { border-radius:4px; padding:2px 5px; font-weight:700; font-size:.75rem; background:#6b7280; color:white; display:inline-block; }
   .tabela-perfil tr.exame-row td { background: #fafafa; font-style: italic; color: #6b7280; }
   .tabela-perfil tr.cfd-row td { background: #1a3c6e; color: white; font-weight: 700; }
   .tabela-perfil tr.cfd-row td.row-label { background: #1a3c6e; color: white; }
@@ -91,9 +92,12 @@
     <!-- Tabela principal -->
     <div class="p-3">
       {% if pode_editar %}
-      <div class="mb-3">
+      <div class="mb-3 d-flex gap-2">
         <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modal-add-semestre">
           <i class="bi bi-plus-lg me-1"></i>Adicionar Semestre
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modal-add-disciplina">
+          <i class="bi bi-columns-gap me-1"></i>Adicionar Disciplina
         </button>
       </div>
       {% endif %}
@@ -125,13 +129,16 @@
               {% set n = linha.notas.get(disc) %}
               <td class="{% if loop.index0 == separador_idx %}separador-col{% endif %}">
                 {% if linha.tipo == 'semestre' %}
-                <span class="nota-cell {% if n is not none %}{% if n < 10 %}n-neg{% elif n < 14 %}n-med{% elif n < 17 %}n-bom{% else %}n-exc{% endif %}{% else %}n-nd{% endif %}"
+                <span class="nota-cell {% if n is not none and n is number %}{% if n < 10 %}n-neg{% elif n < 14 %}n-med{% elif n < 17 %}n-bom{% else %}n-exc{% endif %}{% elif n is not none %}n-nd{% else %}n-nd{% endif %}"
                       data-aluno="{{ aluno.id }}"
                       data-disciplina="{{ disc }}"
                       data-periodo="{{ linha.label.split('—')[1].strip()[0] if '—' in linha.label else '' }}"
                       onclick="editarNota(this)"
                       title="Clique para editar">
-                  {{ "%.0f"|format(n) if n is not none and n == n|int else ("%.1f"|format(n) if n is not none else "—") }}
+                  {% if n is not none %}
+                    {% if n is number %}{{ "%.0f"|format(n) if n == n|int else "%.1f"|format(n) }}
+                    {% else %}<span class="nota-texto">{{ n }}</span>{% endif %}
+                  {% else %}—{% endif %}
                 </span>
               {% else %}
                 {% if n is not none %}
@@ -286,6 +293,54 @@
 </div>
 {% endif %}
 
+<!-- ── Modal: Adicionar Disciplina ──────────────────────────────────────── -->
+{% if pode_editar %}
+<div class="modal fade" id="modal-add-disciplina" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1a3c6e; color:white">
+        <h5 class="modal-title"><i class="bi bi-columns-gap me-2"></i>Adicionar Disciplina</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('adicionar_disciplina', aluno_id=aluno.id) }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Nome da Disciplina</label>
+            <input type="text" name="disciplina" class="form-control" placeholder="ex: Psicologia B" required list="discs-lista">
+            <datalist id="discs-lista">
+              {% for d in ["Matemática A","Matemática Geral","Matemática Aplicada Ciências Sociais","História A","História Geral","Desenho A","Desenho Geral","Biologia e Geologia","Física e Química A","Geometria Descritiva A","Economia A","Economia C","Geografia A","Filosofia A","Ciência Política","Psicologia B","Aplicações Informáticas B","Oficinas","Literatura Portuguesa"] %}
+              <option value="{{ d }}">
+              {% endfor %}
+            </datalist>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Ano Letivo</label>
+              <input type="text" name="ano_letivo" class="form-control" value="{{ aluno.ano_letivo }}" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Semestre</label>
+              <select name="semestre" class="form-select">
+                <option value="1">1º</option>
+                <option value="2" selected>2º</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Nota</label>
+              <input type="text" name="nota" class="form-control" placeholder="ex: 15 ou AM">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 </div>
 {% endblock %}
 
@@ -369,8 +424,14 @@ function editarNota(span) {
       const data = await resp.json();
       if (data.ok) {
         const nota = data.nota;
-        span.textContent = nota !== null ? (Number.isInteger(nota) ? nota : nota.toFixed(1)) : '—';
-        span.className = 'nota-cell ' + corClasse(nota);
+        const isTexto = data.is_texto;
+        if (nota !== null && isTexto) {
+          span.innerHTML = `<span class="nota-texto">${nota}</span>`;
+          span.className = 'nota-cell n-nd';
+        } else {
+          span.textContent = nota !== null ? (Number.isInteger(nota) ? nota : nota.toFixed(1)) : '—';
+          span.className = 'nota-cell ' + corClasse(nota);
+        }
         span.dataset.aluno = alunoId;
         span.dataset.disciplina = disciplina;
         span.dataset.periodo = periodo;
