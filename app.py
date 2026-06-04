@@ -104,9 +104,23 @@ def init_db():
     for col_sql in [
         "ALTER TABLE alunos ADD COLUMN bi TEXT",
         "ALTER TABLE notas ADD COLUMN nota_texto TEXT",
+        "ALTER TABLE notas ADD COLUMN nivel_curricular INTEGER",
     ]:
         try: db.execute(col_sql); db.commit()
         except Exception: pass
+
+    # Migrar dados existentes: preencher nivel_curricular a partir da turma do aluno
+    try:
+        db.execute("""
+            UPDATE notas SET nivel_curricular = (
+                SELECT CAST(SUBSTR(a.turma, 1, 2) AS INTEGER)
+                FROM alunos a WHERE a.id = notas.aluno_id
+            )
+            WHERE nivel_curricular IS NULL
+        """)
+        db.commit()
+    except Exception:
+        pass
 
     # Valores por defeito das settings
     for key, val in [("ano_letivo_atual", "2025/2026"), ("semestre_atual", "2")]:
@@ -413,20 +427,39 @@ def aluno(aluno_id):
         ).fetchall():
             todos_alunos_ids[outro["ano_letivo"]] = outro["id"]
 
-    # notas_por_ano: {ano_letivo: {disciplina: {periodo: nota_ou_texto}}}
-    notas_por_ano = {}
+    # Organizar por nivel_curricular (10/11/12) — independente do ano letivo
+    # Isto permite que uma aluna no 11º tenha disciplinas de 10º e 11º no mesmo ano
+    import re as _re_niv
+    _m0 = _re_niv.match(r"(\d+)", str(a["turma"] or ""))
+    _nivel_atual = int(_m0.group(1)) if _m0 else 11
+    _ano_inicio  = int(a["ano_letivo"].split("/")[0])
+
+    def nivel_para_rotulo(nivel):
+        return f"{nivel}º Ano"
+
+    # notas_por_nivel: {nivel(10/11/12): {disciplina: {periodo: val}}}
+    notas_por_nivel_raw = {}
     for ano, aid in todos_alunos_ids.items():
+        # Determinar o nivel base deste registo
+        al_info = db.execute("SELECT turma FROM alunos WHERE id=?", (aid,)).fetchone()
+        _mn = _re_niv.match(r"(\d+)", str((al_info["turma"] if al_info else "") or ""))
+        nivel_base = int(_mn.group(1)) if _mn else _nivel_atual
+
         rows = db.execute(
-            "SELECT disciplina, periodo, nota, nota_texto FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
+            "SELECT disciplina, periodo, nota, nota_texto, nivel_curricular FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
             (aid,)
         ).fetchall()
-        if rows:
-            notas_por_ano[ano] = {}
-            for r in rows:
-                d = r["disciplina"]
-                # Valor: nota_texto se preenchido, senão nota numérica
-                val = r["nota_texto"] if r["nota_texto"] else r["nota"]
-                notas_por_ano[ano].setdefault(d, {})[r["periodo"]] = val
+        for r in rows:
+            d   = r["disciplina"]
+            val = r["nota_texto"] if r["nota_texto"] else r["nota"]
+            # nivel: usar campo guardado se existir, senão usar nivel_base do registo
+            nivel = r["nivel_curricular"] if r["nivel_curricular"] else nivel_base
+            notas_por_nivel_raw.setdefault(nivel, {}).setdefault(d, {})[r["periodo"]] = val
+
+    # notas_por_ano (alias) — chave é o rótulo do ano curricular para retrocompatibilidade
+    notas_por_ano = {nivel_para_rotulo(n): d for n, d in sorted(notas_por_nivel_raw.items())}
+    # Guardar o nível actual para o CIF
+    _ano_atual_key = nivel_para_rotulo(_nivel_atual)
 
     # ── Abreviaturas das disciplinas (apresentação na tabela) ─────────────────
     ABREVIATURAS = {
@@ -525,40 +558,23 @@ def aluno(aluno_id):
     gerais_presentes = [d for d in todas_disciplinas if _pos_disc(d) < N_GERAIS]
     separador_idx = len(gerais_presentes) if len(gerais_presentes) < len(todas_disciplinas) else None
 
-    # ── Construir linhas da tabela ────────────────────────────────────────────
-    ano_atual = a["ano_letivo"]
+    # ── Construir linhas da tabela por nivel_curricular ──────────────────────
     linhas = []
 
-    def media_notas(notas_dict):
-        vals = [v for v in notas_dict.values() if v is not None]
-        return round(sum(vals) / len(vals), 1) if vals else None
-
-    # Extrair ano escolar da turma (ex: "10D1" → "10º Ano", "12A1 CT" → "12º Ano")
-    import re as _re
-    def ano_da_turma(turma_str):
-        m = _re.match(r"(\d+)", str(turma_str or ""))
-        return (m.group(1) + "º Ano") if m else "Ano ?"
-
-    for ano in sorted(notas_por_ano.keys()):
-        disc_ano = notas_por_ano[ano]
+    for rotulo_ano in sorted(notas_por_ano.keys()):  # ex: "10º Ano", "11º Ano"
+        disc_ano = notas_por_ano[rotulo_ano]
         periodos = sorted({p for d in disc_ano.values() for p in d})
-        # Obter a turma do aluno neste ano letivo
-        aluno_ano = db.execute(
-            "SELECT turma FROM alunos WHERE numero=? AND ano_letivo=?",
-            (a["numero"], ano)
-        ).fetchone()
-        turma_ano = aluno_ano["turma"] if aluno_ano else a["turma"]
-        ano_escolar = ano_da_turma(turma_ano)
+        e_atual  = (rotulo_ano == _ano_atual_key)
 
         for p in periodos:
             notas_linha = {d: disc_ano.get(d, {}).get(p) for d in todas_disciplinas}
-            vals = [v for v in notas_linha.values() if v is not None]
+            vals_num = [v for v in notas_linha.values() if isinstance(v, (int, float))]
             linhas.append({
-                "label": f"{ano_escolar} — {p}º Sem.",
+                "label": f"{rotulo_ano} — {p}º Sem.",
                 "tipo": "semestre",
-                "atual": ano == ano_atual,
+                "atual": e_atual,
                 "notas": notas_linha,
-                "media": round(sum(vals) / len(vals), 1) if vals else None,
+                "media": round(sum(vals_num) / len(vals_num), 1) if vals_num else None,
             })
 
     # ── Carregar notas_finais (CIF/Exame/CFD oficiais) ───────────────────────
@@ -598,7 +614,7 @@ def aluno(aluno_id):
                 if not periodos_d: continue
                 periodo_final = 2 if 2 in periodos_d else periodos_d[-1]
                 nota = disc_ano.get(d, {}).get(periodo_final)
-                if nota is not None: notas_2s.append(nota)
+                if isinstance(nota, (int, float)): notas_2s.append(nota)
             cif_notas[d] = round(sum(notas_2s) / len(notas_2s)) if notas_2s else None
 
     cif_vals = [v for v in cif_notas.values() if v is not None]
@@ -687,8 +703,12 @@ def aluno(aluno_id):
     turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
     pode_editar = session["role"] == "admin" or a["turma"] in turmas_user
 
+    # Lista completa de disciplinas para o modal "Adicionar Semestre"
+    todas_disciplinas_possiveis = [d for d in ORDEM_TODAS if d not in ("Hora de PT", "Tempo de Trabalho Autónomo")]
+
     return render_template("aluno.html", aluno=a,
                            todas_disciplinas=todas_disciplinas,
+                           todas_disciplinas_possiveis=todas_disciplinas_possiveis,
                            abreviaturas=ABREVIATURAS,
                            separador_idx=separador_idx,
                            linhas=linhas,
@@ -713,9 +733,12 @@ def adicionar_semestre(aluno_id):
         flash("Sem permissão.", "danger")
         return redirect(url_for("dashboard"))
 
-    ano_letivo = request.form.get("ano_letivo", "").strip()
-    semestre   = int(request.form.get("semestre", 1))
-    n_discs    = int(request.form.get("n_discs", 0))
+    ano_letivo       = request.form.get("ano_letivo", "").strip()
+    semestre         = int(request.form.get("semestre", 1))
+    n_discs          = int(request.form.get("n_discs", 0))
+    nivel_curricular = request.form.get("nivel_curricular", "")
+    try: nivel_curricular = int(nivel_curricular)
+    except: nivel_curricular = None
 
     if not ano_letivo:
         flash("Ano letivo obrigatório.", "danger")
@@ -738,27 +761,35 @@ def adicionar_semestre(aluno_id):
     aluno_id_ano = existe["id"]
     guardadas = 0
 
+    VALORES_TEXTO_S = {"AM", "NE", "NA", "NP", "ND"}
+
     for i in range(n_discs):
-        disc  = request.form.get(f"disc_{i}", "").strip()
+        disc   = request.form.get(f"disc_{i}", "").strip()
         nota_s = request.form.get(f"nota_{i}", "").strip()
-        if not disc or not nota_s:
+        if not disc or not nota_s or nota_s == "—":
             continue
-        try:
-            nota = float(nota_s)
-            if not (0 <= nota <= 20): continue
-        except ValueError:
-            continue
+
+        nota, nota_texto = None, None
+        if nota_s.upper() in VALORES_TEXTO_S:
+            nota_texto = nota_s.upper()
+        else:
+            try:
+                nota = float(nota_s.replace(",", "."))
+                if not (0 <= nota <= 20): continue
+            except ValueError:
+                continue
 
         ex = db.execute(
             "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
             (aluno_id_ano, disc, semestre)
         ).fetchone()
         if ex:
-            db.execute("UPDATE notas SET nota=? WHERE id=?", (nota, ex["id"]))
+            db.execute("UPDATE notas SET nota=?, nota_texto=?, nivel_curricular=? WHERE id=?",
+                       (nota, nota_texto, nivel_curricular, ex["id"]))
         else:
             db.execute(
-                "INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,?,?)",
-                (aluno_id_ano, disc, semestre, nota)
+                "INSERT INTO notas (aluno_id, disciplina, periodo, nota, nota_texto, nivel_curricular) VALUES (?,?,?,?,?,?)",
+                (aluno_id_ano, disc, semestre, nota, nota_texto, nivel_curricular)
             )
         guardadas += 1
 

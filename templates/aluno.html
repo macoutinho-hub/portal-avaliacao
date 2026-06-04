@@ -224,18 +224,20 @@
         <div class="modal-body">
           <div class="row g-3 mb-4">
             <div class="col-md-3">
-              <label class="form-label fw-semibold">Ano Escolar</label>
-              <select id="sel-ano-esc" class="form-select" onchange="calcAnoLetivo()">
+              <label class="form-label fw-semibold">Ano Curricular</label>
+              <select id="sel-ano-esc" name="nivel_curricular" class="form-select" onchange="calcAnoLetivo()" required>
                 <option value="">-- Escolher --</option>
                 <option value="10">10º Ano</option>
                 <option value="11">11º Ano</option>
                 <option value="12">12º Ano</option>
               </select>
+              <div class="form-text">Ano do currículo da disciplina</div>
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold">Ano Letivo</label>
               <input type="text" id="inp-ano-letivo" name="ano_letivo" class="form-control"
                      placeholder="ex: 2023/2024" required>
+              <div class="form-text">Quando foi frequentada</div>
             </div>
             <div class="col-md-3">
               <label class="form-label fw-semibold">Semestre</label>
@@ -264,22 +266,43 @@
             };
           })();
           </script>
-          <p class="text-muted mb-2" style="font-size:.85rem">Preencha só as disciplinas com nota. Deixe em branco as que não se aplicam.</p>
-          <div class="row g-2">
-            {% for disc in todas_disciplinas %}
+          <p class="text-muted mb-2" style="font-size:.85rem">Preencha só as disciplinas com nota (número ou AM/NE/NA). Deixe em branco as que não se aplicam.</p>
+
+          {% set discs_lista = todas_disciplinas_possiveis %}
+          {% set n = discs_lista|length %}
+
+          <!-- Disciplinas do perfil actual -->
+          {% set discs_perfil = todas_disciplinas %}
+          {% if discs_perfil %}
+          <div class="mb-2"><small class="text-muted fw-semibold text-uppercase" style="font-size:.7rem; letter-spacing:.5px">Disciplinas actuais</small></div>
+          <div class="row g-2 mb-3">
+            {% for disc in discs_lista if disc in discs_perfil %}
+            {% set i = loop.index0 %}
             <div class="col-6 col-md-4 col-lg-3">
-              <label class="form-label mb-1" style="font-size:.8rem; font-weight:600">{{ abreviaturas.get(disc, disc[:12]) }}</label>
-              <input type="number" name="nota_{{ loop.index0 }}" class="form-control form-control-sm"
-                     placeholder="—" min="0" max="20" step="1"
-                     data-disc="{{ disc }}">
+              <label class="form-label mb-1 fw-semibold" style="font-size:.78rem">{{ abreviaturas.get(disc, disc[:14]) }}</label>
+              <input type="text" name="nota_{{ i }}" class="form-control form-control-sm" placeholder="—" maxlength="4">
             </div>
             {% endfor %}
           </div>
-          <!-- Campo oculto com nomes das disciplinas -->
-          {% for disc in todas_disciplinas %}
+          {% endif %}
+
+          <!-- Outras disciplinas -->
+          <div class="mb-2"><small class="text-muted fw-semibold text-uppercase" style="font-size:.7rem; letter-spacing:.5px">Outras disciplinas (anos anteriores, etc.)</small></div>
+          <div class="row g-2">
+            {% for disc in discs_lista if disc not in discs_perfil %}
+            {% set i = loop.index0 %}
+            <div class="col-6 col-md-4 col-lg-3">
+              <label class="form-label mb-1" style="font-size:.78rem; color:#6b7280">{{ abreviaturas.get(disc, disc[:14]) }}</label>
+              <input type="text" name="nota_{{ i }}" class="form-control form-control-sm bg-light" placeholder="—" maxlength="4">
+            </div>
+            {% endfor %}
+          </div>
+
+          <!-- Campos ocultos com nomes -->
+          {% for disc in discs_lista %}
           <input type="hidden" name="disc_{{ loop.index0 }}" value="{{ disc }}">
           {% endfor %}
-          <input type="hidden" name="n_discs" value="{{ todas_disciplinas|length }}">
+          <input type="hidden" name="n_discs" value="{{ n }}">
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
