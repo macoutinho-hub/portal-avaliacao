@@ -1008,16 +1008,20 @@ def importar_notas_web():
             return s.split(" - ", 1)[1].strip() if " - " in s else s
 
         db = get_db()
-        # Cache alunos
+
+        # Cache alunos para o ano pretendido
         alunos_cache = {}
         for a in db.execute("SELECT id, nome, turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall():
             alunos_cache[(_normalizar(a["nome"]), a["turma"])] = a["id"]
-        alunos_por_nome = {}
-        for (n, t), aid in alunos_cache.items():
-            alunos_por_nome.setdefault(n, []).append((t, aid))
 
-        total_notas = 0
-        nao_enc     = set()
+        # Cache por nome normalizado em TODOS os anos (para criar registos de anos anteriores)
+        alunos_todos = {}
+        for a in db.execute("SELECT id, nome, numero FROM alunos").fetchall():
+            alunos_todos.setdefault(_normalizar(a["nome"]), []).append({"id": a["id"], "numero": a["numero"]})
+
+        total_notas   = 0
+        criados_auto  = 0
+        nao_enc       = set()
 
         for f in ficheiros:
             if not f.filename.endswith((".xlsx", ".xls")):
@@ -1058,11 +1062,41 @@ def importar_notas_web():
                 nome_val = row[7] if len(row) > 7 else None
                 if not nome_val or not str(nome_val).strip(): continue
                 nome_n = _normalizar(str(nome_val))
+                nome_str = str(nome_val).strip()
 
+                # 1. Tentar encontrar no ano pretendido
                 aluno_id = alunos_cache.get((nome_n, turma_atual))
-                if aluno_id is None and nome_n in alunos_por_nome:
-                    cands = alunos_por_nome[nome_n]
-                    aluno_id = cands[0][1] if len(cands) == 1 else None
+
+                # 2. Se não encontrado, criar registo para este ano usando número de outro ano
+                if aluno_id is None:
+                    numero_aluno = ""
+                    if nome_n in alunos_todos:
+                        # Usar o número do aluno encontrado noutro ano
+                        numero_aluno = alunos_todos[nome_n][0]["numero"] or ""
+
+                    # Criar registo do aluno para este ano letivo
+                    try:
+                        cur = db.execute(
+                            "INSERT OR IGNORE INTO alunos (numero, nome, turma, ano_letivo) VALUES (?,?,?,?)",
+                            (numero_aluno, nome_str, turma_atual or "", ano)
+                        )
+                        if cur.rowcount > 0:
+                            aluno_id = cur.lastrowid
+                            alunos_cache[(nome_n, turma_atual)] = aluno_id
+                            alunos_todos.setdefault(nome_n, []).append({"id": aluno_id, "numero": numero_aluno})
+                            criados_auto += 1
+                        else:
+                            # Já existe — buscar id
+                            r = db.execute(
+                                "SELECT id FROM alunos WHERE nome=? AND turma=? AND ano_letivo=?",
+                                (nome_str, turma_atual or "", ano)
+                            ).fetchone()
+                            if r:
+                                aluno_id = r["id"]
+                                alunos_cache[(nome_n, turma_atual)] = aluno_id
+                    except Exception:
+                        pass
+
                 if aluno_id is None:
                     nao_enc.add(f"{nome_val} ({turma_atual})")
                     continue
@@ -1085,6 +1119,8 @@ def importar_notas_web():
 
         db.commit()
         msg = f"Importação concluída: {total_notas} notas carregadas."
+        if criados_auto:
+            msg += f" {criados_auto} aluno(s) criado(s) automaticamente para {ano}."
         if nao_enc:
             msg += f" {len(nao_enc)} aluno(s) não encontrado(s)."
         flash(msg, "success" if not nao_enc else "warning")
