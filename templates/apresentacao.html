@@ -109,6 +109,30 @@
     .ap-table .sep-col { border-left: 2px solid #22c55e !important; }
     .ap-table .media-col { border-left: 1px solid rgba(255,255,255,.15) !important; font-weight: 800; }
 
+    /* Vista turma */
+    .vt-wrap { flex:1; overflow:auto; padding:1rem 1.2rem; }
+    .vt-table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    .vt-table th {
+      background:var(--azul); color:white; padding:6px 8px;
+      text-align:center; font-size:.78rem; white-space:nowrap;
+      position:sticky; top:0; z-index:2; font-weight:700;
+    }
+    .vt-table th.nome-col { text-align:left; padding-left:12px; min-width:160px; }
+    .vt-table td { padding:5px 5px; text-align:center; border-bottom:1px solid rgba(255,255,255,.06); }
+    .vt-table td.nome-col {
+      text-align:left; padding-left:10px; font-weight:700;
+      color:rgba(255,255,255,.85); white-space:nowrap; font-size:.85rem;
+    }
+    .vt-table tr:hover td { background:rgba(255,255,255,.04); }
+    .vt-table tr.vt-footer td {
+      background:#0a2540; font-weight:800; color:rgba(255,255,255,.7);
+      border-top:2px solid var(--azul2); font-size:.82rem; padding:7px 5px;
+    }
+    .vt-table tr.vt-footer td.nome-col { color:var(--azul3); }
+    .vt-sep-col { border-left:2px solid var(--azul2) !important; }
+    .vt-media-col { background:rgba(37,99,235,.15) !important; font-weight:800 !important; }
+    .vt-neg-col { background:rgba(220,38,38,.12) !important; font-weight:800 !important; }
+
     /* Células de nota */
     .nc {
       border-radius: 6px; padding: 3px 8px; font-weight: 800;
@@ -154,6 +178,10 @@
     <div style="display:flex; align-items:center; gap:1.5rem">
       <span style="font-size:.9rem; opacity:.5">{{ alunos|length }} aluno{{ 's' if alunos|length != 1 }}</span>
       <div style="display:flex; gap:.8rem; align-items:center">
+        <button onclick="toggleVista()" id="btn-vista"
+          style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:.3rem .9rem;cursor:pointer;font-size:.85rem;font-weight:600">
+          <i class="bi bi-table me-1"></i>Vista Turma
+        </button>
         <button onclick="toggleFS()" id="btn-fs" title="Ecrã inteiro"
           style="background:none;border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:1.2rem">
           <i class="bi bi-fullscreen" id="fs-icon"></i>
@@ -162,11 +190,12 @@
           <i class="bi bi-x-lg"></i>
         </a>
       </div>
+      </div>
     </div>
   </div>
 
   <!-- Corpo -->
-  <div class="ap-body">
+  <div class="ap-body" id="ap-body-aluno">
 
     <!-- Esquerda -->
     <div class="ap-left" id="painel-esq">
@@ -184,8 +213,13 @@
     </div>
   </div>
 
+  <!-- Vista Turma -->
+  <div class="vt-wrap" id="vista-turma" style="display:none">
+    <div id="vt-container"></div>
+  </div>
+
   <!-- Navegação -->
-  <div class="ap-nav">
+  <div class="ap-nav" id="ap-nav">
     <button class="btn-nav" id="btn-ant" onclick="navegar(-1)">
       <i class="bi bi-chevron-left"></i> Anterior
       <span class="key-hint">← seta</span>
@@ -334,6 +368,115 @@ document.addEventListener('keydown', e => {
   if (e.key==='ArrowRight'||e.key==='ArrowDown') navegar(1);
   if (e.key==='ArrowLeft' ||e.key==='ArrowUp')   navegar(-1);
 });
+
+let vistaAtual = 'aluno'; // 'aluno' | 'turma'
+
+function toggleVista() {
+  if (vistaAtual === 'aluno') {
+    vistaAtual = 'turma';
+    document.getElementById('ap-body-aluno').style.display = 'none';
+    document.getElementById('vista-turma').style.display = 'flex';
+    document.getElementById('ap-nav').style.display = 'none';
+    document.getElementById('btn-vista').innerHTML = '<i class="bi bi-person me-1"></i>Vista Aluno';
+    construirVistaTurma();
+  } else {
+    vistaAtual = 'aluno';
+    document.getElementById('ap-body-aluno').style.display = 'flex';
+    document.getElementById('vista-turma').style.display = 'none';
+    document.getElementById('ap-nav').style.display = 'flex';
+    document.getElementById('btn-vista').innerHTML = '<i class="bi bi-table me-1"></i>Vista Turma';
+  }
+}
+
+function construirVistaTurma() {
+  // Recolher todas as disciplinas presentes (usando as do primeiro aluno com dados como referência)
+  const discSet = new Set();
+  ALUNOS.forEach(a => (a.disciplinas||[]).forEach(d => discSet.add(d)));
+  const discs = Array.from(discSet);
+
+  // Para cada aluno, extrair a nota do semestre mais recente (linha "atual" tipo "semestre")
+  function notaActual(aluno, disc) {
+    const linhas = (aluno.linhas||[]).filter(l => l.tipo==='semestre' && l.atual);
+    // Pegar último semestre com dados
+    for (let i = linhas.length-1; i >= 0; i--) {
+      const v = linhas[i].notas[disc];
+      if (v !== null && v !== undefined) return v;
+    }
+    return null;
+  }
+
+  function ncVT(v) {
+    if (v === null || v === undefined) return '<span style="color:rgba(255,255,255,.2)">—</span>';
+    if (typeof v === 'string') return `<span style="background:#4b5563;color:white;border-radius:4px;padding:1px 5px;font-size:.75rem">${v}</span>`;
+    const cls = v<10?'nc-neg':v<14?'nc-med':v<17?'nc-bom':'nc-exc';
+    return `<span class="nc ${cls}" style="min-width:28px;font-size:.85rem">${v}</span>`;
+  }
+
+  let html = `<table class="vt-table"><thead><tr>
+    <th class="nome-col">#  Aluno</th>
+    ${discs.map((d,i) => `<th${i===ALUNOS[0]?.separador_idx?' class="vt-sep-col"':''}>${ALUNOS[0]?.abrevs[d]||d.substring(0,7)}</th>`).join('')}
+    <th class="vt-media-col vt-sep-col">Média</th>
+    <th class="vt-neg-col">Neg.</th>
+  </tr></thead><tbody>`;
+
+  const mediasTurma = {};
+  const negsTurma   = {};
+  discs.forEach(d => { mediasTurma[d] = []; negsTurma[d] = 0; });
+
+  ALUNOS.forEach((a, ri) => {
+    let vals = [], negs = 0;
+    const cells = discs.map((d,i) => {
+      const v = notaActual(a, d);
+      if (typeof v === 'number') {
+        vals.push(v);
+        mediasTurma[d].push(v);
+        if (v < 10) { negs++; negsTurma[d]++; }
+      }
+      return `<td${i===a.separador_idx?' class="vt-sep-col"':''}>${ncVT(v)}</td>`;
+    }).join('');
+
+    const med   = vals.length ? (vals.reduce((s,v)=>s+v,0)/vals.length) : null;
+    const medCls = med===null?'nc-nd':med<10?'nc-neg':med<14?'nc-med':med<17?'nc-bom':'nc-exc';
+    html += `<tr>
+      <td class="nome-col">${ri+1}. ${a.nome}</td>
+      ${cells}
+      <td class="vt-media-col vt-sep-col">${med!==null?`<span class="nc ${medCls}" style="font-size:.85rem">${med.toFixed(1)}</span>`:'—'}</td>
+      <td class="vt-neg-col">${negs>0?`<span style="background:#dc2626;color:white;border-radius:4px;padding:1px 6px;font-weight:800">${negs}</span>`:'—'}</td>
+    </tr>`;
+  });
+
+  // Rodapé: médias por disciplina
+  const medRow = discs.map((d,i) => {
+    const arr = mediasTurma[d];
+    const m = arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : null;
+    const cls = m===null?'':m<10?'nc-neg':m<14?'nc-med':m<17?'nc-bom':'nc-exc';
+    return `<td${i===ALUNOS[0]?.separador_idx?' class="vt-sep-col"':''}>${m!==null?`<span class="nc ${cls}" style="font-size:.82rem">${m.toFixed(1)}</span>`:'—'}</td>`;
+  }).join('');
+
+  const negRow = discs.map((d,i) => {
+    const n = negsTurma[d];
+    return `<td${i===ALUNOS[0]?.separador_idx?' class="vt-sep-col"':''}>${n>0?`<span style="color:#f87171;font-weight:800">${n}</span>`:'—'}</td>`;
+  }).join('');
+
+  const totalNegs = Object.values(negsTurma).reduce((s,v)=>s+v,0);
+
+  html += `</tbody><tfoot>
+    <tr class="vt-footer">
+      <td class="nome-col" style="color:var(--azul3)">Média da Turma</td>
+      ${medRow}
+      <td class="vt-media-col vt-sep-col"></td>
+      <td class="vt-neg-col"></td>
+    </tr>
+    <tr class="vt-footer">
+      <td class="nome-col" style="color:#f87171">Nº Negativas</td>
+      ${negRow}
+      <td class="vt-media-col vt-sep-col"></td>
+      <td class="vt-neg-col" style="color:#f87171;font-weight:800">${totalNegs||'—'}</td>
+    </tr>
+  </tfoot></table>`;
+
+  document.getElementById('vt-container').innerHTML = html;
+}
 
 function toggleFS() {
   if (!document.fullscreenElement) {
