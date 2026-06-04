@@ -1023,6 +1023,134 @@ def importar_notas_web():
             s = str(val).strip()
             return s.split(" - ", 1)[1].strip() if " - " in s else s
 
+        # Mapeamento de nomes abreviados (formato legado) → nomes completos
+        MAPA_DISC = {
+            "PORT.": "Português", "FILO.": "Filosofia",
+            "ED.FÍSICA": "Educação Física", "RELIGIÃO": "Religião",
+            "LE I-ING.": "Líng. Estrang. I - Inglês",
+            "MAT.A": "Matemática A", "MAT.B": "Matemática Geral",
+            "MAT.GERAL": "Matemática Geral",
+            "BIO.GEO.": "Biologia e Geologia",
+            "FÍS.QUÍM.A": "Física e Química A", "FIS.QUIM.A": "Física e Química A",
+            "GEOG.A": "Geografia A", "HIST.A": "História A",
+            "HIST. B": "História Geral", "HIST.B": "História Geral",
+            "DES.A": "Desenho A", "DES.GERAL": "Desenho Geral",
+            "ECON.A": "Economia A", "ECON.C": "Economia C",
+            "GEO.DESC.A": "Geometria Descritiva A",
+            "MACS": "Matemática Aplicada Ciências Sociais",
+            "BIO.": "Biologia", "FIS.": "Física", "QUIM.": "Química",
+            "PSIC.B": "Psicologia B", "AI.B": "Aplicações Informáticas B",
+            "C.POL.": "Ciência Política", "FILO.A": "Filosofia A",
+        }
+
+        def _nome_disc(abrev):
+            """Converte abreviatura para nome completo, se existir mapeamento."""
+            return MAPA_DISC.get(abrev.strip(), abrev.strip())
+
+        def _turma_legado(val):
+            """'23/24 - 10º ANO A1' → '10A1'"""
+            m = _re.search(r"(\d+)º ANO ([A-Z]\d+)", str(val or ""))
+            if m:
+                return m.group(1) + m.group(2)  # ex: "10A1"
+            return _extrair_turma(val)
+
+        def _detectar_formato_flat(ws):
+            """Detecta se o ficheiro é formato flat (uma linha por aluno×disciplina)."""
+            headers = [str(c.value or "").strip().lower() for c in ws[1]]
+            return any("disciplina" in h for h in headers) and any("nome do aluno" in h or "nome aluno" in h for h in headers)
+
+        def _importar_formato_flat(ws, db, semestre, ano, alunos_cache, alunos_todos):
+            """Importa ficheiro flat: uma linha por aluno×disciplina."""
+            headers = [str(c.value or "").strip() for c in ws[1]]
+            h = [x.lower() for x in headers]
+
+            def ci(names):
+                for n in names:
+                    for i, hh in enumerate(h):
+                        if n.lower() in hh: return i
+                return None
+
+            idx_num   = ci(["nº processo", "numero processo", "n.º processo", "aluno (nº"])
+            idx_nome  = ci(["nome do aluno", "nome aluno"])
+            idx_turma = ci(["turma"])
+            idx_disc  = ci(["disciplina"])
+            idx_1s    = ci(["nota 1º semestre", "nota 1o semestre", "1º semestre"])
+            idx_2s    = ci(["nota 2º semestre", "nota 2o semestre", "2º semestre"])
+            idx_ano   = ci(["ano letivo"])
+
+            if idx_nome is None or idx_disc is None:
+                return 0, 0, set()
+
+            criados = 0
+            total_notas = 0
+            nao_enc = set()
+
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                nome_val = row[idx_nome] if idx_nome is not None else None
+                if not nome_val or not str(nome_val).strip():
+                    continue
+
+                nome_str = str(nome_val).strip()
+                nome_n   = _normalizar(nome_str)
+                num_val  = str(row[idx_num]).strip() if idx_num is not None and row[idx_num] else ""
+                turma_raw = row[idx_turma] if idx_turma is not None else ""
+                turma_val = _turma_legado(turma_raw)
+                ano_val   = str(row[idx_ano]).strip() if idx_ano is not None and row[idx_ano] else ano
+                disc_raw  = str(row[idx_disc]).strip() if row[idx_disc] else ""
+                disc_nome = _nome_disc(disc_raw)
+
+                # Encontrar ou criar aluno para este ano letivo
+                aluno_id = alunos_cache.get((nome_n, turma_val))
+                if aluno_id is None:
+                    numero_aluno = num_val
+                    if not numero_aluno and nome_n in alunos_todos:
+                        numero_aluno = alunos_todos[nome_n][0]["numero"] or ""
+                    try:
+                        cur = db.execute(
+                            "INSERT OR IGNORE INTO alunos (numero, nome, turma, ano_letivo) VALUES (?,?,?,?)",
+                            (numero_aluno, nome_str, turma_val, ano_val)
+                        )
+                        if cur.rowcount > 0:
+                            aluno_id = cur.lastrowid
+                            criados += 1
+                        else:
+                            r = db.execute(
+                                "SELECT id FROM alunos WHERE nome=? AND turma=? AND ano_letivo=?",
+                                (nome_str, turma_val, ano_val)
+                            ).fetchone()
+                            if r: aluno_id = r["id"]
+                        if aluno_id:
+                            alunos_cache[(nome_n, turma_val)] = aluno_id
+                            alunos_todos.setdefault(nome_n, []).append({"id": aluno_id, "numero": numero_aluno})
+                    except Exception:
+                        pass
+
+                if aluno_id is None:
+                    nao_enc.add(f"{nome_str} ({turma_val})")
+                    continue
+
+                # Importar nota 1º semestre
+                n1 = _parse_nota(row[idx_1s] if idx_1s is not None else None)
+                if n1 is not None:
+                    ex = db.execute("SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=1",
+                                    (aluno_id, disc_nome)).fetchone()
+                    if ex: db.execute("UPDATE notas SET nota=? WHERE id=?", (n1, ex["id"]))
+                    else:  db.execute("INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,1,?)",
+                                      (aluno_id, disc_nome, n1))
+                    total_notas += 1
+
+                # Importar nota 2º semestre
+                n2 = _parse_nota(row[idx_2s] if idx_2s is not None else None)
+                if n2 is not None:
+                    ex = db.execute("SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=2",
+                                    (aluno_id, disc_nome)).fetchone()
+                    if ex: db.execute("UPDATE notas SET nota=? WHERE id=?", (n2, ex["id"]))
+                    else:  db.execute("INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,2,?)",
+                                      (aluno_id, disc_nome, n2))
+                    total_notas += 1
+
+            return total_notas, criados, nao_enc
+
         db = get_db()
 
         # Cache alunos para o ano pretendido
@@ -1045,8 +1173,19 @@ def importar_notas_web():
             path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
             f.save(path)
 
-            wb   = openpyxl.load_workbook(path, data_only=True)
-            ws   = wb.active
+            wb = openpyxl.load_workbook(path, data_only=True)
+            ws = wb.active
+
+            # ── Detecção automática do formato ─────────────────────────────
+            if _detectar_formato_flat(ws):
+                # Formato flat/legado (uma linha por aluno×disciplina)
+                n, c, ne = _importar_formato_flat(ws, db, semestre, ano, alunos_cache, alunos_todos)
+                total_notas  += n
+                criados_auto += c
+                nao_enc      |= ne
+                continue
+            # ── Formato grelha (largo, com NP.) ────────────────────────────
+
             rows = list(ws.iter_rows(values_only=True))
 
             header_idx = None
