@@ -401,6 +401,59 @@ def aluno(aluno_id):
                            resumo=resumo,
                            foto_url=None)
 
+# ─── Edição de nota ───────────────────────────────────────────────────────────
+
+@app.route("/aluno/<int:aluno_id>/editar-nota", methods=["POST"])
+@login_required
+def editar_nota(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        return jsonify({"ok": False, "erro": "Aluno não encontrado"}), 404
+
+    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and a["turma"] not in turmas_user:
+        return jsonify({"ok": False, "erro": "Sem permissão"}), 403
+
+    data = request.get_json()
+    disciplina = (data.get("disciplina") or "").strip()
+    periodo    = data.get("periodo")
+    nota_str   = str(data.get("nota") or "").strip()
+
+    if not disciplina or periodo is None:
+        return jsonify({"ok": False, "erro": "Dados incompletos"}), 400
+
+    # Converter nota
+    if nota_str in ("", "-", "—"):
+        nota = None
+    else:
+        try:
+            nota = float(nota_str.replace(",", "."))
+            if not (0 <= nota <= 20):
+                return jsonify({"ok": False, "erro": "Nota deve ser entre 0 e 20"}), 400
+        except ValueError:
+            return jsonify({"ok": False, "erro": "Valor inválido"}), 400
+
+    existing = db.execute(
+        "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+        (aluno_id, disciplina, periodo)
+    ).fetchone()
+
+    if existing:
+        if nota is None:
+            db.execute("DELETE FROM notas WHERE id=?", (existing["id"],))
+        else:
+            db.execute("UPDATE notas SET nota=? WHERE id=?", (nota, existing["id"]))
+    elif nota is not None:
+        db.execute(
+            "INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,?,?)",
+            (aluno_id, disciplina, periodo, nota)
+        )
+
+    db.commit()
+    return jsonify({"ok": True, "nota": nota})
+
+
 # ─── Admin routes ──────────────────────────────────────────────────────────────
 
 @app.route("/admin")

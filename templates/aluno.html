@@ -17,7 +17,12 @@
   .tabela-perfil tr.exame-row td { background: #fafafa; font-style: italic; color: #6b7280; }
   .tabela-perfil tr.cfd-row td { background: #1a3c6e; color: white; font-weight: 700; }
   .tabela-perfil tr.cfd-row td.row-label { background: #1a3c6e; color: white; }
-  .nota-cell { border-radius: 4px; padding: 2px 6px; font-weight: 600; display: inline-block; min-width: 28px; }
+  .nota-cell { border-radius: 4px; padding: 2px 6px; font-weight: 600; display: inline-block; min-width: 28px; cursor: pointer; }
+  .nota-cell:hover { opacity: .8; outline: 2px solid #2563eb; }
+  .nota-edit-input { width: 44px; border: 2px solid #2563eb; border-radius: 4px; text-align: center; font-weight: 600; font-size: .82rem; padding: 1px 3px; outline: none; }
+  .saving { opacity: .5; }
+  .edit-ok  { outline: 2px solid #22c55e !important; }
+  .edit-err { outline: 2px solid #ef4444 !important; }
   .n-neg  { background: #ef4444; color: white; }
   .n-med  { background: #f59e0b; color: white; }
   .n-bom  { background: #22c55e; color: white; }
@@ -112,6 +117,16 @@
               {% for disc in todas_disciplinas %}
               {% set n = linha.notas.get(disc) %}
               <td class="{% if loop.index0 == separador_idx %}separador-col{% endif %}">
+                {% if linha.tipo == 'semestre' %}
+                <span class="nota-cell {% if n is not none %}{% if n < 10 %}n-neg{% elif n < 14 %}n-med{% elif n < 17 %}n-bom{% else %}n-exc{% endif %}{% else %}n-nd{% endif %}"
+                      data-aluno="{{ aluno.id }}"
+                      data-disciplina="{{ disc }}"
+                      data-periodo="{{ linha.label.split('—')[1].strip()[0] if '—' in linha.label else '' }}"
+                      onclick="editarNota(this)"
+                      title="Clique para editar">
+                  {{ "%.0f"|format(n) if n is not none and n == n|int else ("%.1f"|format(n) if n is not none else "—") }}
+                </span>
+              {% else %}
                 {% if n is not none %}
                 <span class="nota-cell {% if n < 10 %}n-neg{% elif n < 14 %}n-med{% elif n < 17 %}n-bom{% else %}n-exc{% endif %}">
                   {{ "%.0f"|format(n) if n == n|int else "%.1f"|format(n) }}
@@ -119,6 +134,7 @@
                 {% else %}
                 <span class="n-nd">—</span>
                 {% endif %}
+              {% endif %}
               </td>
               {% endfor %}
               <td class="media-cell">
@@ -148,4 +164,77 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function corClasse(n) {
+  if (n === null || n === undefined || isNaN(n)) return 'n-nd';
+  if (n < 10) return 'n-neg';
+  if (n < 14) return 'n-med';
+  if (n < 17) return 'n-bom';
+  return 'n-exc';
+}
+
+function editarNota(span) {
+  if (span.querySelector('input')) return;
+
+  const valorActual = span.textContent.trim() === '—' ? '' : span.textContent.trim();
+  const alunoId    = span.dataset.aluno;
+  const disciplina = span.dataset.disciplina;
+  const periodo    = span.dataset.periodo;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'nota-edit-input';
+  input.value = valorActual;
+  input.maxLength = 4;
+
+  span.textContent = '';
+  span.appendChild(input);
+  input.focus();
+  input.select();
+
+  async function guardar() {
+    const novaVal = input.value.trim();
+    span.classList.add('saving');
+    try {
+      const resp = await fetch(`/aluno/${alunoId}/editar-nota`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({disciplina, periodo: parseInt(periodo), nota: novaVal})
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        const nota = data.nota;
+        span.textContent = nota !== null ? (Number.isInteger(nota) ? nota : nota.toFixed(1)) : '—';
+        span.className = 'nota-cell ' + corClasse(nota);
+        span.dataset.aluno = alunoId;
+        span.dataset.disciplina = disciplina;
+        span.dataset.periodo = periodo;
+        span.setAttribute('onclick', 'editarNota(this)');
+        span.classList.add('edit-ok');
+        setTimeout(() => { span.classList.remove('edit-ok'); location.reload(); }, 800);
+      } else {
+        span.textContent = valorActual || '—';
+        span.classList.add('edit-err');
+        setTimeout(() => span.classList.remove('edit-err'), 1500);
+        alert('Erro: ' + data.erro);
+      }
+    } catch(e) {
+      span.textContent = valorActual || '—';
+    }
+    span.classList.remove('saving');
+  }
+
+  input.addEventListener('blur', guardar);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') {
+      span.textContent = valorActual || '—';
+      span.removeEventListener('blur', guardar);
+    }
+  });
+}
+</script>
 {% endblock %}
