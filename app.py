@@ -308,18 +308,40 @@ def aluno(aluno_id):
         "Líng. Estrang. I - Inglês": "ING",
     }
 
-    # ── Lista ordenada de todas as disciplinas ────────────────────────────────
-    todas_disciplinas = sorted({d for ano_d in notas_por_ano.values() for d in ano_d})
+    # ── Ordem fixa das disciplinas ────────────────────────────────────────────
+    # Gerais primeiro (ordem definida), depois específicas
+    ORDEM_GERAIS = [
+        "Português", "Líng. Estrang. I - Inglês", "Inglês",
+        "Filosofia", "Educação Física", "Religião",
+        "Projeto", "Hora de PT", "Tempo de Trabalho Autónomo",
+    ]
+    ORDEM_ESPECIFICAS = [
+        "Matemática A", "Matemática Geral",
+        "Matemática Aplicada Ciências Sociais",
+        "Desenho A", "Desenho Geral",
+        "História A", "História Geral",
+        "Biologia e Geologia", "Biologia",
+        "Física e Química A", "Física", "Química",
+        "Geometria Descritiva A",
+        "Economia A", "Economia C",
+        "Geografia A",
+        "Filosofia A", "Ciência Política",
+        "Psicologia B", "Aplicações Informáticas B",
+        "Oficinas",
+    ]
 
-    # Separador: disciplinas específicas aparecem depois das gerais
-    # (heurística: disciplinas com sufixo A/B/C ou nomes específicos)
-    disc_especificas_keywords = ["_A", "_B", "_C", "Desenho", "História A", "Biologia e G",
-                                  "Física e Q", "Geometria", "Economia A", "Geografia"]
-    def e_especifica(d):
-        return any(k in d for k in disc_especificas_keywords)
+    todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
 
-    gerais  = [d for d in todas_disciplinas if not e_especifica(d)]
-    especif = [d for d in todas_disciplinas if e_especifica(d)]
+    def _pos_disc(d, ordem):
+        for i, nome in enumerate(ordem):
+            if d == nome or d.startswith(nome[:8]):
+                return i
+        return len(ordem)
+
+    gerais  = sorted([d for d in todas_set if _pos_disc(d, ORDEM_GERAIS) < len(ORDEM_GERAIS)],
+                     key=lambda d: _pos_disc(d, ORDEM_GERAIS))
+    especif = sorted([d for d in todas_set if d not in gerais],
+                     key=lambda d: _pos_disc(d, ORDEM_ESPECIFICAS))
     todas_disciplinas = gerais + especif
     separador_idx = len(gerais) if especif else None
 
@@ -359,8 +381,7 @@ def aluno(aluno_id):
                 "media": round(sum(vals) / len(vals), 1) if vals else None,
             })
 
-    # ── CIF: média das notas do 2º semestre (periodo=2) de cada ano leccionado ──
-    # Se o 2º semestre ainda não existir, usa o período mais recente disponível
+    # ── CIF: média das notas do 2º semestre de cada ano — arredondada à unidade ─
     cif_notas = {}
     for d in todas_disciplinas:
         notas_2s = []
@@ -368,15 +389,14 @@ def aluno(aluno_id):
             periodos_d = sorted(disc_ano.get(d, {}).keys())
             if not periodos_d:
                 continue
-            # Preferir período 2; se não existir, usar o último período disponível
             periodo_final = 2 if 2 in periodos_d else periodos_d[-1]
             nota = disc_ano.get(d, {}).get(periodo_final)
             if nota is not None:
                 notas_2s.append(nota)
-        cif_notas[d] = round(sum(notas_2s) / len(notas_2s), 1) if notas_2s else None
+        cif_notas[d] = round(sum(notas_2s) / len(notas_2s)) if notas_2s else None  # arredonda à unidade
 
     cif_vals = [v for v in cif_notas.values() if v is not None]
-    cif_media = round(sum(cif_vals) / len(cif_vals), 1) if cif_vals else None
+    cif_media = round(sum(cif_vals) / len(cif_vals)) if cif_vals else None  # arredonda à unidade
 
     linhas.append({
         "label": "CIF",
@@ -395,8 +415,7 @@ def aluno(aluno_id):
         "media": None,
     })
 
-    # ── CFD = CIF quando sem exame; com exame: (7.5×CIF + 2.5×Exame) / 10 ───
-    # Por agora sem exames → CFD = CIF
+    # ── CFD = CIF (sem exame); com exame: (7.5×CIF + 2.5×Exame)/10 arredondado ─
     cfd_notas = dict(cif_notas)
     linhas.append({
         "label": "CFD",
@@ -833,10 +852,17 @@ def apresentacao(turma):
             "Oficinas":"OFI","Hora de PT":"PT","Projeto":"PROJ",
             "Tempo de Trabalho Autónomo":"TTA","Líng. Estrang. I - Inglês":"ING",
         }
-        todas = sorted({d for ano_d in notas_por_ano.values() for d in ano_d})
-        disc_esp_kw = ["_A","_B","_C","Desenho","História A","Biologia e G","Física e Q","Geometria","Economia A","Geografia"]
-        gerais  = [d for d in todas if not any(k in d for k in disc_esp_kw)]
-        especif = [d for d in todas if any(k in d for k in disc_esp_kw)]
+        _ORDEM_G = ["Português","Líng. Estrang. I - Inglês","Inglês","Filosofia",
+                    "Educação Física","Religião","Projeto","Hora de PT","Tempo de Trabalho Autónomo"]
+        _ORDEM_E = ["Matemática A","Matemática Geral","Matemática Aplicada Ciências Sociais",
+                    "Desenho A","Desenho Geral","História A","História Geral",
+                    "Biologia e Geologia","Biologia","Física e Química A","Física","Química",
+                    "Geometria Descritiva A","Economia A","Economia C","Geografia A",
+                    "Filosofia A","Ciência Política","Psicologia B","Aplicações Informáticas B","Oficinas"]
+        def _p(d, o): return next((i for i,n in enumerate(o) if d==n or d.startswith(n[:8])), len(o))
+        todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
+        gerais  = sorted([d for d in todas_set if _p(d,_ORDEM_G)<len(_ORDEM_G)], key=lambda d:_p(d,_ORDEM_G))
+        especif = sorted([d for d in todas_set if d not in gerais], key=lambda d:_p(d,_ORDEM_E))
         todas = gerais + especif
         sep_idx = len(gerais) if especif else None
 
@@ -861,7 +887,7 @@ def apresentacao(turma):
                                 "atual": ano == a["ano_letivo"], "notas": nl,
                                 "media": round(sum(vals)/len(vals),1) if vals else None})
 
-        # CIF: média das notas do 2º semestre de cada ano leccionado
+        # CIF: média das notas do 2º semestre de cada ano — arredondada à unidade
         cif = {}
         for d in todas:
             ns = []
@@ -871,9 +897,9 @@ def apresentacao(turma):
                 pf = 2 if 2 in pds else pds[-1]
                 n = da_k.get(d, {}).get(pf)
                 if n is not None: ns.append(n)
-            cif[d] = round(sum(ns)/len(ns),1) if ns else None
+            cif[d] = round(sum(ns)/len(ns)) if ns else None  # arredondado à unidade
         cv = [v for v in cif.values() if v is not None]
-        cm = round(sum(cv)/len(cv),1) if cv else None
+        cm = round(sum(cv)/len(cv)) if cv else None
         linhas.append({"label":"CIF","tipo":"cif","atual":True,"notas":cif,"media":cm})
         linhas.append({"label":"Exame","tipo":"exame","atual":False,
                        "notas":{d:None for d in todas},"media":None})
