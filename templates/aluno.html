@@ -90,8 +90,15 @@
 
     <!-- Tabela principal -->
     <div class="p-3">
+      {% if pode_editar %}
+      <div class="mb-3">
+        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modal-add-semestre">
+          <i class="bi bi-plus-lg me-1"></i>Adicionar Semestre
+        </button>
+      </div>
+      {% endif %}
       {% if not todas_disciplinas %}
-      <p class="text-muted text-center py-4">Sem notas registadas.</p>
+      <p class="text-muted text-center py-4">Sem notas registadas. Use o botão acima para adicionar.</p>
       {% else %}
       <div class="table-responsive">
         <table class="tabela-perfil">
@@ -199,6 +206,59 @@
 
 </div>
 {% endblock %}
+
+<!-- ── Modal: Adicionar Semestre ─────────────────────────────────────────── -->
+{% if pode_editar %}
+<div class="modal fade" id="modal-add-semestre" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1a3c6e; color:white">
+        <h5 class="modal-title"><i class="bi bi-plus-lg me-2"></i>Adicionar Semestre</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('adicionar_semestre', aluno_id=aluno.id) }}">
+        <div class="modal-body">
+          <div class="row g-3 mb-4">
+            <div class="col-md-5">
+              <label class="form-label fw-semibold">Ano Letivo</label>
+              <input type="text" name="ano_letivo" class="form-control" placeholder="ex: 2023/2024" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Semestre</label>
+              <select name="semestre" class="form-select">
+                <option value="1">1º Semestre</option>
+                <option value="2">2º Semestre</option>
+              </select>
+            </div>
+          </div>
+          <p class="text-muted mb-2" style="font-size:.85rem">Preencha só as disciplinas com nota. Deixe em branco as que não se aplicam.</p>
+          <div class="row g-2">
+            {% for disc in todas_disciplinas %}
+            <div class="col-6 col-md-4 col-lg-3">
+              <label class="form-label mb-1" style="font-size:.8rem; font-weight:600">{{ abreviaturas.get(disc, disc[:12]) }}</label>
+              <input type="number" name="nota_{{ loop.index0 }}" class="form-control form-control-sm"
+                     placeholder="—" min="0" max="20" step="1"
+                     data-disc="{{ disc }}">
+            </div>
+            {% endfor %}
+          </div>
+          <!-- Campo oculto com nomes das disciplinas -->
+          {% for disc in todas_disciplinas %}
+          <input type="hidden" name="disc_{{ loop.index0 }}" value="{{ disc }}">
+          {% endfor %}
+          <input type="hidden" name="n_discs" value="{{ todas_disciplinas|length }}">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i>Guardar Notas
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% block extra_js %}
 <script>

@@ -620,6 +620,75 @@ def aluno(aluno_id):
                            categorias_reuniao=CATEGORIAS_REUNIAO,
                            pode_editar=pode_editar)
 
+# ─── Adicionar semestre manual ────────────────────────────────────────────────
+
+@app.route("/aluno/<int:aluno_id>/adicionar-semestre", methods=["POST"])
+@login_required
+def adicionar_semestre(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        flash("Aluno não encontrado.", "danger")
+        return redirect(url_for("dashboard"))
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for("dashboard"))
+
+    ano_letivo = request.form.get("ano_letivo", "").strip()
+    semestre   = int(request.form.get("semestre", 1))
+    n_discs    = int(request.form.get("n_discs", 0))
+
+    if not ano_letivo:
+        flash("Ano letivo obrigatório.", "danger")
+        return redirect(url_for("aluno", aluno_id=aluno_id))
+
+    # Garantir que existe registo do aluno para este ano letivo
+    existe = db.execute(
+        "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?", (a["numero"], ano_letivo)
+    ).fetchone()
+    if not existe:
+        db.execute(
+            "INSERT OR IGNORE INTO alunos (numero, nome, turma, ano_letivo) VALUES (?,?,?,?)",
+            (a["numero"], a["nome"], a["turma"], ano_letivo)
+        )
+        db.commit()
+        existe = db.execute(
+            "SELECT id FROM alunos WHERE numero=? AND ano_letivo=?", (a["numero"], ano_letivo)
+        ).fetchone()
+
+    aluno_id_ano = existe["id"]
+    guardadas = 0
+
+    for i in range(n_discs):
+        disc  = request.form.get(f"disc_{i}", "").strip()
+        nota_s = request.form.get(f"nota_{i}", "").strip()
+        if not disc or not nota_s:
+            continue
+        try:
+            nota = float(nota_s)
+            if not (0 <= nota <= 20): continue
+        except ValueError:
+            continue
+
+        ex = db.execute(
+            "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+            (aluno_id_ano, disc, semestre)
+        ).fetchone()
+        if ex:
+            db.execute("UPDATE notas SET nota=? WHERE id=?", (nota, ex["id"]))
+        else:
+            db.execute(
+                "INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,?,?)",
+                (aluno_id_ano, disc, semestre, nota)
+            )
+        guardadas += 1
+
+    db.commit()
+    flash(f"✓ {guardadas} nota(s) guardada(s) para {ano_letivo} {semestre}º Semestre.", "success")
+    return redirect(url_for("aluno", aluno_id=aluno_id))
+
+
 # ─── Notas de reunião ─────────────────────────────────────────────────────────
 
 CATEGORIAS_REUNIAO = [
