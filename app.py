@@ -69,9 +69,19 @@ def init_db():
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             aluno_id     INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
             disciplina   TEXT NOT NULL,
-            periodo      INTEGER NOT NULL,  -- 1, 2 ou 3
+            periodo      INTEGER NOT NULL,
             nota         REAL,
             observacoes  TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS notas_reuniao (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id     INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            categoria    TEXT NOT NULL,
+            texto        TEXT NOT NULL DEFAULT '',
+            updated_at   TEXT,
+            updated_by   INTEGER REFERENCES users(id),
+            UNIQUE(aluno_id, categoria)
         );
     """)
     db.commit()
@@ -403,13 +413,79 @@ def aluno(aluno_id):
                 foto_url = url_for("foto_aluno", numero=a["numero"])
                 break
 
+    # Notas de reunião
+    notas_reun_rows = db.execute(
+        "SELECT categoria, texto, updated_at FROM notas_reuniao WHERE aluno_id=?",
+        (aluno_id,)
+    ).fetchall()
+    notas_reuniao = {r["categoria"]: {"texto": r["texto"], "updated_at": r["updated_at"]}
+                     for r in notas_reun_rows}
+
+    # Permissão de edição
+    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
+    pode_editar = session["role"] == "admin" or a["turma"] in turmas_user
+
     return render_template("aluno.html", aluno=a,
                            todas_disciplinas=todas_disciplinas,
                            abreviaturas=ABREVIATURAS,
                            separador_idx=separador_idx,
                            linhas=linhas,
                            resumo=resumo,
-                           foto_url=foto_url)
+                           foto_url=foto_url,
+                           notas_reuniao=notas_reuniao,
+                           categorias_reuniao=CATEGORIAS_REUNIAO,
+                           pode_editar=pode_editar)
+
+# ─── Notas de reunião ─────────────────────────────────────────────────────────
+
+CATEGORIAS_REUNIAO = [
+    ("observacoes",   "Observações Gerais",      "bi-journal-text",       "#2563eb"),
+    ("preocupacoes",  "Preocupações / Alertas",  "bi-exclamation-triangle","#dc3545"),
+    ("positivos",     "Pontos Positivos",         "bi-star",               "#16a34a"),
+    ("apoio_caa",     "Medidas de Apoio / CAA",   "bi-life-preserver",     "#9333ea"),
+]
+
+@app.route("/aluno/<int:aluno_id>/notas-reuniao", methods=["POST"])
+@login_required
+def guardar_nota_reuniao(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        return jsonify({"ok": False, "erro": "Aluno não encontrado"}), 404
+
+    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and a["turma"] not in turmas_user:
+        return jsonify({"ok": False, "erro": "Sem permissão"}), 403
+
+    data = request.get_json()
+    categoria = data.get("categoria", "").strip()
+    texto     = data.get("texto", "").strip()
+
+    cats_validas = [c[0] for c in CATEGORIAS_REUNIAO]
+    if categoria not in cats_validas:
+        return jsonify({"ok": False, "erro": "Categoria inválida"}), 400
+
+    from datetime import datetime as _dt
+    agora = _dt.now().strftime("%Y-%m-%d %H:%M")
+
+    existing = db.execute(
+        "SELECT id FROM notas_reuniao WHERE aluno_id=? AND categoria=?",
+        (aluno_id, categoria)
+    ).fetchone()
+
+    if existing:
+        db.execute(
+            "UPDATE notas_reuniao SET texto=?, updated_at=?, updated_by=? WHERE id=?",
+            (texto, agora, session["user_id"], existing["id"])
+        )
+    else:
+        db.execute(
+            "INSERT INTO notas_reuniao (aluno_id, categoria, texto, updated_at, updated_by) VALUES (?,?,?,?,?)",
+            (aluno_id, categoria, texto, agora, session["user_id"])
+        )
+    db.commit()
+    return jsonify({"ok": True, "updated_at": agora})
+
 
 # ─── Edição de nota ───────────────────────────────────────────────────────────
 

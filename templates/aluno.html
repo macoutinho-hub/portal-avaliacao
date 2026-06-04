@@ -163,6 +163,49 @@
     </div>
   </div>
 
+  <!-- ── NOTAS PARA REUNIÃO ──────────────────────────────────────────── -->
+  <div class="card border-0 shadow mb-4">
+    <div class="card-header py-3" style="background:#1a3c6e">
+      <h5 class="mb-0 fw-semibold text-white">
+        <i class="bi bi-clipboard2-pulse me-2"></i>Notas para Reunião
+        {% if not pode_editar %}
+        <small class="opacity-75 fw-normal" style="font-size:.8rem">(só leitura)</small>
+        {% endif %}
+      </h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        {% for cat_id, cat_label, cat_icon, cat_cor in categorias_reuniao %}
+        {% set nr = notas_reuniao.get(cat_id, {}) %}
+        <div class="col-12 col-md-6">
+          <div class="p-3 rounded border h-100" style="border-color: {{ cat_cor }}20 !important; background: {{ cat_cor }}08">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <i class="bi {{ cat_icon }}" style="color:{{ cat_cor }}"></i>
+              <span class="fw-semibold" style="color:{{ cat_cor }}; font-size:.9rem">{{ cat_label }}</span>
+              <span class="ms-auto text-muted updated-at-{{ cat_id }}" style="font-size:.72rem">
+                {% if nr.updated_at %}{{ nr.updated_at }}{% endif %}
+              </span>
+            </div>
+            {% if pode_editar %}
+            <textarea
+              class="form-control nota-reuniao-textarea border-0 bg-transparent"
+              style="resize:vertical; min-height:90px; font-size:.88rem"
+              data-aluno="{{ aluno.id }}"
+              data-categoria="{{ cat_id }}"
+              placeholder="Clique para adicionar notas..."
+            >{{ nr.texto if nr.texto else '' }}</textarea>
+            {% else %}
+            <div class="text-muted" style="font-size:.88rem; min-height:60px; white-space:pre-wrap">
+              {{ nr.texto if nr.texto else '—' }}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}
 
@@ -174,6 +217,45 @@ function corClasse(n) {
   if (n < 14) return 'n-med';
   if (n < 17) return 'n-bom';
   return 'n-exc';
+}
+
+// Auto-save notas de reunião
+document.querySelectorAll('.nota-reuniao-textarea').forEach(ta => {
+  let timer = null;
+  const alunoId  = ta.dataset.aluno;
+  const categoria = ta.dataset.categoria;
+
+  ta.addEventListener('input', () => {
+    clearTimeout(timer);
+    ta.style.borderColor = '#f59e0b';
+    timer = setTimeout(() => guardarNotaReuniao(ta, alunoId, categoria), 1200);
+  });
+
+  ta.addEventListener('blur', () => {
+    clearTimeout(timer);
+    guardarNotaReuniao(ta, alunoId, categoria);
+  });
+});
+
+async function guardarNotaReuniao(ta, alunoId, categoria) {
+  try {
+    const resp = await fetch(`/aluno/${alunoId}/notas-reuniao`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({categoria, texto: ta.value})
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      ta.style.borderColor = '#22c55e';
+      const span = document.querySelector(`.updated-at-${categoria}`);
+      if (span) span.textContent = data.updated_at;
+      setTimeout(() => ta.style.borderColor = '', 1000);
+    } else {
+      ta.style.borderColor = '#ef4444';
+    }
+  } catch(e) {
+    ta.style.borderColor = '#ef4444';
+  }
 }
 
 function editarNota(span) {
