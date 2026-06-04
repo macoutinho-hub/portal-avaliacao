@@ -102,6 +102,8 @@
     .ap-table tr:hover td { background: rgba(255,255,255,.04); }
     .ap-table tr.atual-row td { background: rgba(245,158,11,.1); }
     .ap-table tr.atual-row td.label-col { border-left: 3px solid #f59e0b; color: #fcd34d; }
+    .ap-table tr.auto-av-row td { background: rgba(147,51,234,.15); font-weight:700; border-top:2px dashed #9333ea; border-bottom:2px dashed #9333ea; }
+    .ap-table tr.auto-av-row td.label-col { color:#c084fc; font-style:italic; }
     .ap-table tr.cif-row td  { background: var(--azul); font-weight: 900; font-size: 1rem; border-top: 2px solid var(--azul2); }
     .ap-table tr.cif-row td.label-col { color: #93c5fd; letter-spacing: .5px; }
     .ap-table tr.cfd-row td  { background: #0f2a4a; font-weight: 900; }
@@ -171,19 +173,28 @@
       justify-content:center; gap:1.5rem; flex-shrink:0;
     }
 
-    /* Vista turma */
-    .vt-wrap { flex:1; overflow:auto; padding:1rem 1.2rem; }
-    .vt-table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    /* Vista turma — sem scroll horizontal */
+    .vt-wrap { flex:1; overflow-y:auto; overflow-x:hidden; padding:.8rem 1rem; }
+    .vt-table {
+      width:100%; border-collapse:collapse; table-layout:fixed;
+      font-size:clamp(.65rem, 1.1vw, .85rem);
+    }
     .vt-table th {
-      background:var(--azul); color:white; padding:6px 8px;
-      text-align:center; font-size:.78rem; white-space:nowrap;
+      background:var(--azul); color:white; padding:5px 3px;
+      text-align:center; font-size:clamp(.6rem, .9vw, .75rem);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       position:sticky; top:0; z-index:2; font-weight:700;
     }
-    .vt-table th.nome-col { text-align:left; padding-left:12px; min-width:160px; }
-    .vt-table td { padding:5px 5px; text-align:center; border-bottom:1px solid rgba(255,255,255,.06); }
+    .vt-table th.nome-col { text-align:left; padding-left:8px; width:16%; }
+    .vt-table td {
+      padding:4px 2px; text-align:center;
+      border-bottom:1px solid rgba(255,255,255,.06);
+      overflow:hidden;
+    }
     .vt-table td.nome-col {
-      text-align:left; padding-left:10px; font-weight:700;
-      color:rgba(255,255,255,.85); white-space:nowrap; font-size:.85rem;
+      text-align:left; padding-left:8px; font-weight:700;
+      color:rgba(255,255,255,.85); white-space:nowrap;
+      overflow:hidden; text-overflow:ellipsis; font-size:clamp(.65rem,.9vw,.82rem);
     }
     .vt-table tr:hover td { background:rgba(255,255,255,.04); }
     .vt-table tr.vt-footer td {
@@ -428,7 +439,7 @@ function mostrar(i) {
     </tr></thead><tbody>`;
 
     linhas.forEach(l => {
-      const cls = l.tipo==='cif' ? 'cif-row' : l.tipo==='cfd' ? 'cfd-row' : l.tipo==='exame' ? 'exame-row' : (l.atual ? 'atual-row' : '');
+      const cls = l.tipo==='cif' ? 'cif-row' : l.tipo==='cfd' ? 'cfd-row' : l.tipo==='exame' ? 'exame-row' : l.tipo==='auto_av' ? 'auto-av-row' : (l.atual ? 'atual-row' : '');
       html += `<tr class="${cls}">
         <td class="label-col">${l.label}</td>
         ${discs.map((d,i) => {
@@ -501,9 +512,9 @@ function construirVistaTurma() {
 
   function ncVT(v) {
     if (v === null || v === undefined) return '<span style="color:rgba(255,255,255,.2)">—</span>';
-    if (typeof v === 'string') return `<span style="background:#4b5563;color:white;border-radius:4px;padding:1px 5px;font-size:.75rem">${v}</span>`;
+    if (typeof v === 'string') return `<span style="background:#4b5563;color:white;border-radius:3px;padding:1px 3px;font-size:.7rem">${v}</span>`;
     const cls = v<10?'nc-neg':v<14?'nc-med':v<17?'nc-bom':'nc-exc';
-    return `<span class="nc ${cls}" style="min-width:28px;font-size:.85rem">${v}</span>`;
+    return `<span class="nc ${cls}" style="min-width:20px;padding:2px 4px;font-size:clamp(.65rem,.9vw,.82rem)">${v}</span>`;
   }
 
   let html = `<table class="vt-table"><thead><tr>

@@ -1739,6 +1739,29 @@ def apresentacao(turma):
         ).fetchall()
         notas_r = {r["categoria"]: r["texto"] for r in nr_rows}
 
+        # Auto-avaliação (inserir antes do CIF se existir)
+        aa_rows_ap = db.execute(
+            "SELECT disciplina, valor FROM auto_avaliacao WHERE aluno_id=? AND ano_letivo=?",
+            (a["id"], a["ano_letivo"])
+        ).fetchall()
+        if aa_rows_ap:
+            aa_map_ap = {}
+            for r in aa_rows_ap:
+                can = next((disc_canonical_ap.get(r["disciplina"], r["disciplina"])
+                            for disc_canonical_ap in [{}]), r["disciplina"])
+                aa_map_ap[r["disciplina"]] = r["valor"]
+            aa_notas_ap = {d: aa_map_ap.get(d) for d in todas}
+            aa_vals_ap  = [v for v in aa_notas_ap.values() if v is not None]
+            # Inserir antes da linha CIF
+            cif_idx = next((i for i, l in enumerate(linhas) if l["tipo"] == "cif"), len(linhas))
+            linhas.insert(cif_idx, {
+                "label": "Auto-Avaliação",
+                "tipo":  "auto_av",
+                "atual": True,
+                "notas": aa_notas_ap,
+                "media": round(sum(aa_vals_ap)/len(aa_vals_ap), 1) if aa_vals_ap else None,
+            })
+
         # Negativos última linha semestre
         ul = next((l for l in reversed(linhas) if l["tipo"]=="semestre" and l["atual"]), None)
         negas = []
