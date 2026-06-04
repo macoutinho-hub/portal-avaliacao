@@ -1180,8 +1180,8 @@ def importar_aludisc():
                 if not bi_raw or not cod:
                     continue
 
-                # Normalizar BI (só dígitos)
-                bi = _re2.sub(r'[^0-9]', '', bi_raw)
+                # Normalizar BI: primeiros 8 dígitos (ignora dígitos de controlo)
+                bi = _re2.sub(r'[^0-9]', '', bi_raw)[:8]
 
                 # Determinar ano letivo (ex: 2025 → "2024/2025")
                 try:
@@ -1399,9 +1399,10 @@ def importar_notas_web():
                     nao_enc.add(f"{nome_str} ({turma_val})")
                     continue
 
-                # Guardar BI se disponível
+                # Guardar BI se disponível (normalizado: primeiros 8 dígitos)
                 if idx_bi is not None and row[idx_bi]:
-                    bi_val = _re.sub(r'[^0-9]', '', str(row[idx_bi]))  # só dígitos
+                    bi_digits = _re.sub(r'[^0-9]', '', str(row[idx_bi]))
+                    bi_val = bi_digits[:8]  # primeiros 8 dígitos = número do BI
                     if bi_val:
                         try:
                             db.execute("UPDATE alunos SET bi=? WHERE id=? AND (bi IS NULL OR bi='')",
