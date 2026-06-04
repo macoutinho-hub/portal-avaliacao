@@ -216,11 +216,21 @@
       <form method="post" action="{{ url_for('adicionar_semestre', aluno_id=aluno.id) }}">
         <div class="modal-body">
           <div class="row g-3 mb-4">
-            <div class="col-md-5">
-              <label class="form-label fw-semibold">Ano Letivo</label>
-              <input type="text" name="ano_letivo" class="form-control" placeholder="ex: 2023/2024" required>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Ano Escolar</label>
+              <select id="sel-ano-esc" class="form-select" onchange="calcAnoLetivo()">
+                <option value="">-- Escolher --</option>
+                <option value="10">10º Ano</option>
+                <option value="11">11º Ano</option>
+                <option value="12">12º Ano</option>
+              </select>
             </div>
             <div class="col-md-4">
+              <label class="form-label fw-semibold">Ano Letivo</label>
+              <input type="text" id="inp-ano-letivo" name="ano_letivo" class="form-control"
+                     placeholder="ex: 2023/2024" required>
+            </div>
+            <div class="col-md-3">
               <label class="form-label fw-semibold">Semestre</label>
               <select name="semestre" class="form-select">
                 <option value="1">1º Semestre</option>
@@ -228,6 +238,25 @@
               </select>
             </div>
           </div>
+          <script>
+          // Calcular ano letivo automaticamente a partir do ano escolar
+          // Ano actual do aluno deduzido da turma
+          (function(){
+            const turma = "{{ aluno.turma }}";
+            const anoLetAtual = "{{ aluno.ano_letivo }}";
+            const m = turma.match(/^(\d+)/);
+            const anoEscAtual = m ? parseInt(m[1]) : 12;
+            const anoInicio = parseInt(anoLetAtual.split('/')[0]);
+
+            window.calcAnoLetivo = function() {
+              const sel = parseInt(document.getElementById('sel-ano-esc').value);
+              if (isNaN(sel)) return;
+              const diff = sel - anoEscAtual;
+              const ini = anoInicio + diff;
+              document.getElementById('inp-ano-letivo').value = ini + '/' + (ini+1);
+            };
+          })();
+          </script>
           <p class="text-muted mb-2" style="font-size:.85rem">Preencha só as disciplinas com nota. Deixe em branco as que não se aplicam.</p>
           <div class="row g-2">
             {% for disc in todas_disciplinas %}
