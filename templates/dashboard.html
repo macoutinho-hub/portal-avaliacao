@@ -22,6 +22,9 @@
       <a href="{{ url_for('apresentacao', turma=turma) }}" class="btn btn-primary btn-sm" target="_blank">
       <i class="bi bi-projector me-1"></i>Modo Reunião
     </a>
+    <a href="{{ url_for('importar_pauta', turma=turma) }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-file-earmark-spreadsheet me-1"></i>Importar Pauta
+    </a>
       {% if session.role == 'admin' %}
       <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-arrow-left me-1"></i>Todas as turmas

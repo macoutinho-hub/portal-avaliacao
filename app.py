@@ -84,6 +84,11 @@ def init_db():
             UNIQUE(aluno_id, categoria)
         );
 
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS notas_finais (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             aluno_id     INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
@@ -101,7 +106,13 @@ def init_db():
         db.execute("ALTER TABLE alunos ADD COLUMN bi TEXT")
         db.commit()
     except Exception:
-        pass  # coluna já existe
+        pass
+
+    # Valores por defeito das settings
+    for key, val in [("ano_letivo_atual", "2025/2026"), ("semestre_atual", "2")]:
+        db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, val))
+    db.commit()
+    db.close()
     db.commit()
     # Create default admin if not exists
     cur = db.execute("SELECT id FROM users WHERE role='admin'")
@@ -136,10 +147,19 @@ def admin_required(f):
 
 import re as _re_global
 
+def get_setting(db, key, default=None):
+    r = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return r["value"] if r else default
+
 def ano_letivo_atual(db):
-    """Devolve o ano letivo mais recente na BD."""
+    """Devolve o ano letivo actual das settings (ou o mais recente na BD como fallback)."""
+    s = get_setting(db, "ano_letivo_atual")
+    if s: return s
     r = db.execute("SELECT ano_letivo FROM alunos ORDER BY ano_letivo DESC LIMIT 1").fetchone()
     return r["ano_letivo"] if r else "2025/2026"
+
+def semestre_atual(db):
+    return int(get_setting(db, "semestre_atual") or "2")
 
 def base_turma(turma):
     """Remove sufixo de curso: '12A1 CT' → '12A1', '10A1' → '10A1'."""
@@ -1230,6 +1250,293 @@ def upload_fotos():
         n_fotos = 0
 
     return render_template("upload_fotos.html", n_fotos=n_fotos)
+
+
+# ─── Configurações (admin) ────────────────────────────────────────────────────
+
+@app.route("/admin/configuracoes", methods=["GET", "POST"])
+@login_required
+@admin_required
+def configuracoes():
+    db = get_db()
+    if request.method == "POST":
+        ano = request.form.get("ano_letivo", "").strip()
+        sem = request.form.get("semestre", "").strip()
+        if ano:
+            db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('ano_letivo_atual',?)", (ano,))
+        if sem in ("1", "2"):
+            db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('semestre_atual',?)", (sem,))
+        db.commit()
+        flash("Configurações guardadas.", "success")
+        return redirect(url_for("configuracoes"))
+    ano = get_setting(db, "ano_letivo_atual", "2025/2026")
+    sem = get_setting(db, "semestre_atual", "2")
+    return render_template("configuracoes.html", ano_letivo=ano, semestre=sem)
+
+
+# ─── Importar Pauta (PT / admin) ──────────────────────────────────────────────
+
+def parse_pauta_excel(ws):
+    """
+    Devolve (turma_str, ano_letivo_str, semestre_int, alunos_list).
+    alunos_list: [{numero, nome, {disciplina: {cf, cif, ce, cfd}}}]
+    """
+    import re as _r
+    rows = list(ws.iter_rows(values_only=True))
+
+    # Detectar linha de disciplinas (tem 'PORT' ou similar)
+    disc_row_idx = None
+    for i, row in enumerate(rows):
+        vals = [str(v or "") for v in row]
+        if any("PORT" in v or "FILO" in v or "FÍSICA" in v for v in vals):
+            disc_row_idx = i
+            break
+    if disc_row_idx is None:
+        return None, None, None, []
+
+    disc_row = rows[disc_row_idx]
+    sub_row  = rows[disc_row_idx + 1] if disc_row_idx + 1 < len(rows) else []
+
+    # Mapa: disc_name → {CF: col, CIF: col, CE: col, CFD: col}
+    disc_map = {}
+    skip_cols = {1, 3}  # Matrícula, Nome
+    for ci, v in enumerate(disc_row):
+        if not v or not str(v).strip(): continue
+        s = str(v).strip()
+        if any(k in s for k in ["N.º", "Nome", "Averb", "Afixado"]):
+            continue
+        # É uma disciplina
+        # Encontrar CF, CIF, CE, CFD nas colunas seguintes
+        disc_map[s] = {}
+        for offset in range(0, 20):
+            if ci + offset >= len(sub_row): break
+            sv = str(sub_row[ci + offset] or "").strip()
+            if sv in ("CF", "CIF", "CE", "CFD") and sv not in disc_map[s]:
+                disc_map[s][sv] = ci + offset
+
+    # Turma e ano letivo a partir dos metadados
+    turma_str = ""
+    ano_letivo_str = ""
+    semestre_int = 1
+    for row in rows[:disc_row_idx]:
+        for v in row:
+            if not v: continue
+            s = str(v)
+            m = _r.search(r"Turma:\s*(\w+)", s)
+            if m: turma_str = m.group(1).strip()
+            m = _r.search(r"(\d{4})\s*/\s*(\d{4})", s)
+            if m: ano_letivo_str = f"{m.group(1)}/{m.group(2)}"
+            m = _r.search(r"(\d)[.ºo]\s*semestre", s, _r.I)
+            if m: semestre_int = int(m.group(1))
+
+    # Encontrar colunas de matrícula e nome
+    col_num  = next((ci for ci, v in enumerate(disc_row) if v and "N.º" in str(v)), 1)
+    col_nome = next((ci for ci, v in enumerate(disc_row) if v and "Nome" in str(v)), 3)
+
+    # Ler dados dos alunos
+    alunos = []
+    for row in rows[disc_row_idx + 2:]:
+        num  = str(row[col_num] or "").strip() if col_num < len(row) else ""
+        nome = str(row[col_nome] or "").strip() if col_nome < len(row) else ""
+        if not num or not nome or not num.isdigit():
+            continue
+        notas = {}
+        for disc, cols in disc_map.items():
+            d = {}
+            for field, ci in cols.items():
+                raw = row[ci] if ci < len(row) else None
+                if raw is None: continue
+                s = str(raw).strip().replace(" ", "")
+                if s in ("-", "", "AM", "NA", "NE", "—"): continue
+                try: d[field] = float(s)
+                except: pass
+            if d: notas[disc] = d
+        alunos.append({"numero": num, "nome": nome, "notas": notas})
+
+    return turma_str, ano_letivo_str, semestre_int, alunos
+
+
+@app.route("/turma/<path:turma>/importar-pauta", methods=["GET", "POST"])
+@login_required
+def importar_pauta(turma):
+    db = get_db()
+    tb = base_turma(turma)
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and tb not in turmas_user:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for("dashboard"))
+
+    ano_conf = ano_letivo_atual(db)
+    sem_conf = semestre_atual(db)
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.endswith((".xlsx", ".xls")):
+            flash("Carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_pauta", turma=turma))
+
+        path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+        f.save(path)
+
+        wb  = openpyxl.load_workbook(path, data_only=True)
+        ws  = wb.active
+        turma_doc, ano_doc, sem_doc, alunos_doc = parse_pauta_excel(ws)
+
+        # Usar semestre/ano da pauta se detectados, senão usar configuração
+        ano_usar = ano_doc or ano_conf
+        sem_usar = sem_doc or sem_conf
+
+        # Cache alunos da turma
+        turmas_reais = turmas_base_para_sql(tb, db, ano_usar) or [turma]
+        ph = ",".join("?" * len(turmas_reais))
+        alunos_db = db.execute(
+            f"SELECT id, numero, nome FROM alunos WHERE turma IN ({ph}) AND ano_letivo=?",
+            turmas_reais + [ano_usar]
+        ).fetchall()
+
+        import unicodedata as _uc3, re as _re4
+        def _norm(s):
+            s = _uc3.normalize("NFKD", str(s or ""))
+            s = s.encode("ascii","ignore").decode()
+            return _re4.sub(r"\s+"," ",s).strip().lower()
+
+        cache_num  = {a["numero"]: a["id"] for a in alunos_db}
+        cache_nome = {_norm(a["nome"]): a["id"] for a in alunos_db}
+
+        total_notas = 0
+        nao_enc = []
+
+        for al in alunos_doc:
+            aluno_id = cache_num.get(al["numero"]) or cache_nome.get(_norm(al["nome"]))
+            if aluno_id is None:
+                nao_enc.append(al["nome"])
+                continue
+
+            for disc_abrev, campos in al["notas"].items():
+                disc_nome = MAPA_DISC_GLOBAL.get(disc_abrev, disc_abrev.rstrip(" (a)(b)(macs)").strip())
+
+                cf  = campos.get("CF")
+                cif = campos.get("CIF")
+                ce  = campos.get("CE")
+                cfd = campos.get("CFD")
+
+                # Importar CF como nota do semestre
+                if cf is not None:
+                    ex = db.execute(
+                        "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+                        (aluno_id, disc_nome, sem_usar)
+                    ).fetchone()
+                    if ex:
+                        db.execute("UPDATE notas SET nota=? WHERE id=?", (cf, ex["id"]))
+                    else:
+                        db.execute(
+                            "INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,?,?)",
+                            (aluno_id, disc_nome, sem_usar, cf)
+                        )
+                    total_notas += 1
+
+                # Importar CIF/CE/CFD em notas_finais se presentes
+                if any(v is not None for v in [cif, ce, cfd]):
+                    ex = db.execute(
+                        "SELECT id FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+                        (aluno_id, disc_nome, ano_usar)
+                    ).fetchone()
+                    ce_conv = round(ce / 10, 1) if ce and ce > 20 else ce
+                    if ex:
+                        db.execute(
+                            "UPDATE notas_finais SET cif=?, exame_f1=?, cfd=? WHERE id=?",
+                            (round(cif) if cif else None, ce_conv, round(cfd) if cfd else None, ex["id"])
+                        )
+                    else:
+                        db.execute(
+                            "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, cfd) VALUES (?,?,?,?,?,?)",
+                            (aluno_id, disc_nome, ano_usar, round(cif) if cif else None, ce_conv, round(cfd) if cfd else None)
+                        )
+
+        db.commit()
+        msg = f"✓ {total_notas} notas importadas da pauta ({turma_doc or tb}, {ano_usar} {sem_usar}º S.)."
+        if nao_enc:
+            msg += f" {len(nao_enc)} aluno(s) não encontrado(s)."
+        flash(msg, "success" if not nao_enc else "warning")
+        return redirect(url_for("ver_turma", turma=tb))
+
+    return render_template("importar_pauta.html", turma=tb,
+                           ano_conf=ano_conf, sem_conf=sem_conf)
+
+
+# Mapeamento global de abreviaturas de disciplinas (pauta → nome completo)
+MAPA_DISC_GLOBAL = {
+    "PORT.": "Português", "FILO.": "Filosofia",
+    "ED.FÍSICA": "Educação Física", "RELIGIÃO": "Religião",
+    "LE I-ING.": "Líng. Estrang. I - Inglês",
+    "MAT. G (a)": "Matemática A", "MAT. G (b)": "Matemática Geral",
+    "MAT. G (macs)": "Matemática Aplicada Ciências Sociais",
+    "BIO.GEO.": "Biologia e Geologia", "FÍS.QUÍM.A": "Física e Química A",
+    "GEOG.A": "Geografia A", "HIST. G (b)": "História Geral",
+    "HIST. G (a)": "História A", "HIST.A": "História A",
+    "DES.G": "Desenho Geral", "DES.A": "Desenho A",
+    "ECON.A": "Economia A", "GEO.DESC.A": "Geometria Descritiva A",
+    "PROJ.": "Projeto", "PT": "Hora de PT",
+}
+
+
+# ─── Ferramenta de auditoria de notas em falta (admin) ────────────────────────
+
+@app.route("/admin/auditoria-notas")
+@login_required
+@admin_required
+def auditoria_notas():
+    db = get_db()
+    ano = ano_letivo_atual(db)
+
+    # Alunos do 11º e 12º ano actual
+    rows = db.execute(
+        "SELECT id, numero, nome, turma FROM alunos WHERE ano_letivo=? ORDER BY turma, nome",
+        (ano,)
+    ).fetchall()
+
+    resultados = []
+    for a in rows:
+        tb = base_turma(a["turma"])
+        # Detectar ano escolar
+        import re as _r5
+        m = _r5.match(r"(\d+)", tb)
+        ano_esc = int(m.group(1)) if m else 0
+        if ano_esc not in (11, 12):
+            continue
+
+        # Semestres esperados de anos anteriores
+        anos_esperados = []
+        if ano_esc == 11:
+            anos_esperados = [(ano.split("/")[0][:3] + str(int(ano.split("/")[0][-1]) - 1) + "/" + ano.split("/")[0], 1),
+                             (ano.split("/")[0][:3] + str(int(ano.split("/")[0][-1]) - 1) + "/" + ano.split("/")[0], 2)]
+            # 10º ano = ano letivo anterior
+            ano_ant = f"{int(ano.split('/')[0])-1}/{int(ano.split('/')[1])-1}"
+            anos_esperados = [(ano_ant, 1), (ano_ant, 2)]
+        elif ano_esc == 12:
+            ano_ant1 = f"{int(ano.split('/')[0])-2}/{int(ano.split('/')[1])-2}"
+            ano_ant2 = f"{int(ano.split('/')[0])-1}/{int(ano.split('/')[1])-1}"
+            anos_esperados = [(ano_ant1, 1), (ano_ant1, 2), (ano_ant2, 1), (ano_ant2, 2)]
+
+        # Verificar quais anos/semestres têm notas
+        falta = []
+        for ano_esp, sem_esp in anos_esperados:
+            count = db.execute(
+                """SELECT COUNT(*) FROM notas n
+                   JOIN alunos al ON al.id = n.aluno_id
+                   WHERE al.numero=? AND al.ano_letivo=? AND n.periodo=?""",
+                (a["numero"], ano_esp, sem_esp)
+            ).fetchone()[0]
+            if count == 0:
+                falta.append(f"{ano_esp} {sem_esp}ºS")
+
+        if falta:
+            resultados.append({
+                "id": a["id"], "nome": a["nome"], "turma": a["turma"],
+                "ano_esc": f"{ano_esc}º Ano", "falta": falta
+            })
+
+    return render_template("auditoria_notas.html", resultados=resultados, ano=ano)
 
 
 @app.route("/admin/importar-aludisc", methods=["GET", "POST"])

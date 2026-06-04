@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Configurações{% endblock %}
+{% block content %}
+<div class="px-3" style="max-width:500px">
+  <h2 class="fw-bold mb-4"><i class="bi bi-gear me-2 text-primary"></i>Configurações do Portal</h2>
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ano Letivo Actual</label>
+          <input type="text" name="ano_letivo" class="form-control" value="{{ ano_letivo }}" placeholder="ex: 2025/2026">
+          <div class="form-text">Define o ano letivo que aparece no dashboard e na importação de pautas.</div>
+        </div>
+        <div class="mb-4">
+          <label class="form-label fw-semibold">Semestre Actual</label>
+          <select name="semestre" class="form-select">
+            <option value="1" {% if semestre == '1' %}selected{% endif %}>1º Semestre</option>
+            <option value="2" {% if semestre == '2' %}selected{% endif %}>2º Semestre</option>
+          </select>
+          <div class="form-text">Semestre usado por defeito quando o PT importa uma pauta.</div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-save me-1"></i>Guardar
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

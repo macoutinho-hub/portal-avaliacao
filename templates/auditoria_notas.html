@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Auditoria de Notas{% endblock %}
+{% block content %}
+<div class="px-3">
+  <h2 class="fw-bold mb-2"><i class="bi bi-clipboard-check me-2 text-primary"></i>Auditoria de Notas — Anos Anteriores</h2>
+  <p class="text-muted mb-4">Alunos do 11º e 12º ano ({{ ano }}) com semestres de anos anteriores em falta.</p>
+
+  {% if not resultados %}
+  <div class="alert alert-success border-0 shadow-sm">
+    <i class="bi bi-check-circle-fill me-2"></i>Todos os alunos têm os semestres anteriores preenchidos.
+  </div>
+  {% else %}
+  <div class="alert alert-warning border-0 shadow-sm mb-4">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <strong>{{ resultados|length }}</strong> aluno(s) com semestres em falta.
+  </div>
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-4">Aluno</th>
+              <th>Turma</th>
+              <th>Ano</th>
+              <th>Semestres em falta</th>
+              <th>Acção</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in resultados %}
+            <tr>
+              <td class="ps-4 fw-semibold">{{ r.nome }}</td>
+              <td><span class="badge" style="background:#2563eb">{{ r.turma }}</span></td>
+              <td class="text-muted">{{ r.ano_esc }}</td>
+              <td>
+                {% for f in r.falta %}
+                <span class="badge bg-warning text-dark me-1">{{ f }}</span>
+                {% endfor %}
+              </td>
+              <td>
+                <a href="{{ url_for('aluno', aluno_id=r.id) }}" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-pencil"></i> Editar
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
