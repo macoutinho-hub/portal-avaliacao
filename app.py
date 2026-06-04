@@ -163,18 +163,9 @@ import re as _re_global
 
 # Famílias de disciplinas equivalentes (mesma disciplina, nomes diferentes entre anos)
 DISC_FAMILIAS = {
-    "Matemática A":                         "família_mat",
-    "Matemática Geral":                     "família_mat",
-    "Matemática B":                         "família_mat",
-    "Matemática Aplicada Ciências Sociais": "família_mat",
-    "História A":                           "família_hist",
-    "História Geral":                       "família_hist",
-    "Desenho A":                            "família_des",
-    "Desenho Geral":                        "família_des",
-    "Inglês":                               "família_ing",
-    "Líng. Estrang. I - Inglês":            "família_ing",
-    "Filosofia":                            "família_filo",
-    "Filosofia A":                          "família_filo",
+    # Apenas nomes genuinamente equivalentes para o MESMO aluno
+    "Inglês":                    "família_ing",
+    "Líng. Estrang. I - Inglês": "família_ing",
 }
 
 def nome_match(nome_a, nome_b):
