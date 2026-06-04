@@ -418,9 +418,17 @@ def aluno(aluno_id):
             })
 
     # ── Carregar notas_finais (CIF/Exame/CFD oficiais) ───────────────────────
+    # Procurar em todos os registos do mesmo aluno (por número de processo)
+    if a["numero"]:
+        todos_ids = [r["id"] for r in db.execute(
+            "SELECT id FROM alunos WHERE numero=?", (a["numero"],)
+        ).fetchall()]
+    else:
+        todos_ids = [aluno_id]
+    placeholders = ",".join("?" * len(todos_ids))
     nf_rows = db.execute(
-        "SELECT disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd FROM notas_finais "
-        "WHERE aluno_id=?", (aluno_id,)
+        f"SELECT disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd FROM notas_finais "
+        f"WHERE aluno_id IN ({placeholders})", todos_ids
     ).fetchall()
     # Indexar por disciplina (preferir o ano mais recente)
     nf_cif  = {}
@@ -1203,11 +1211,12 @@ def importar_aludisc():
                 if ex1 is not None and ex1 > 20: ex1 = round(ex1 / 10, 1)
                 if ex2 is not None and ex2 > 20: ex2 = round(ex2 / 10, 1)
 
-                # Encontrar aluno pelo BI
+                # Encontrar aluno pelo BI — usar o mais recente disponível
                 aluno_id = None
                 if bi in bi_map:
-                    # Preferir o ano letivo exacto, senão qualquer
-                    aluno_id = bi_map[bi].get(ano_letivo) or list(bi_map[bi].values())[0]
+                    anos_disponiveis = bi_map[bi]
+                    aluno_id = (anos_disponiveis.get(ano_letivo)
+                                or anos_disponiveis.get(max(anos_disponiveis.keys())))
 
                 if aluno_id is None:
                     sem_bi.add(bi)
