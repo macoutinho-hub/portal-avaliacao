@@ -307,61 +307,79 @@ def aluno(aluno_id):
                 d = r["disciplina"]
                 notas_por_ano[ano].setdefault(d, {})[r["periodo"]] = r["nota"]
 
-    # ── Abreviaturas das disciplinas ──────────────────────────────────────────
+    # ── Abreviaturas das disciplinas (apresentação na tabela) ─────────────────
     ABREVIATURAS = {
-        "Português": "POR", "Inglês": "ING", "Filosofia": "FIL",
-        "Educação Física": "EF", "Religião": "REL", "Matemática A": "MAT_A",
-        "Matemática Geral": "MAT_G", "Desenho A": "DES_A", "Desenho Geral": "DES_G",
-        "História A": "HIST_A", "História Geral": "HIST_G", "Geografia A": "GEO_A",
-        "Biologia": "BIO", "Biologia e Geologia": "BG", "Física": "FIS",
-        "Física e Química A": "FQ_A", "Química": "QUI",
-        "Economia A": "ECO_A", "Economia C": "ECO_C",
-        "Geometria Descritiva A": "GD_A",
-        "Aplicações Informáticas B": "AI_B",
-        "Psicologia B": "PSI_B", "Ciência Política": "CP",
-        "Filosofia A": "FIL_A",
-        "Oficinas": "OFI",
-        "Hora de PT": "PT", "Projeto": "PROJ",
-        "Tempo de Trabalho Autónomo": "TTA",
-        "Líng. Estrang. I - Inglês": "ING",
+        "Português":                        "Port",
+        "Líng. Estrang. I - Inglês":        "Ing",
+        "Inglês":                           "Ing",
+        "Filosofia":                        "Filo",
+        "Educação Física":                  "Ed. Fís",
+        "Religião":                         "Rel",
+        "Projeto":                          "Proj",
+        "Matemática A":                     "Mat A",
+        "Desenho A":                        "Des A",
+        "Desenho Geral":                    "Des G",
+        "História A":                       "Hist A",
+        "Biologia e Geologia":              "Bio Geo",
+        "Biologia":                         "Bio",
+        "Física e Química A":               "FQ A",
+        "Física":                           "Fís",
+        "Química":                          "Quím",
+        "Geometria Descritiva A":           "GDA",
+        "Economia A":                       "Econ A",
+        "Economia C":                       "Econ C",
+        "Geografia A":                      "Geo A",
+        "História Geral":                   "Hist B",
+        "Matemática Geral":                 "Mat B",
+        "Matemática Aplicada Ciências Sociais": "MACS",
+        "Filosofia A":                      "Filo A",
+        "Ciência Política":                 "C. Pol",
+        "Psicologia B":                     "Psic B",
+        "Aplicações Informáticas B":        "AI B",
+        "Oficinas":                         "Ofic",
+        "Literatura Portuguesa":            "Lit. P",
+        "Alemão":                           "Alem",
+        "Espanhol":                         "Esp",
+        "Francês":                          "Fr",
+        "Hora de PT":                       "PT",
+        "Tempo de Trabalho Autónomo":       "TTA",
     }
 
     # ── Ordem fixa das disciplinas ────────────────────────────────────────────
-    # Gerais primeiro (ordem definida), depois específicas
-    ORDEM_GERAIS = [
+    ORDEM_TODAS = [
+        # Gerais (antes do separador verde)
         "Português", "Líng. Estrang. I - Inglês", "Inglês",
-        "Filosofia", "Educação Física", "Religião",
-        "Projeto", "Hora de PT", "Tempo de Trabalho Autónomo",
-    ]
-    ORDEM_ESPECIFICAS = [
-        "Matemática A", "Matemática Geral",
-        "Matemática Aplicada Ciências Sociais",
-        "Desenho A", "Desenho Geral",
-        "História A", "História Geral",
+        "Filosofia", "Educação Física", "Religião", "Projeto",
+        # Específicas principais (logo após separador)
+        "Matemática A", "Desenho A", "Desenho Geral", "História A",
+        # Outras específicas
         "Biologia e Geologia", "Biologia",
         "Física e Química A", "Física", "Química",
         "Geometria Descritiva A",
         "Economia A", "Economia C",
         "Geografia A",
+        "História Geral",
+        "Matemática Geral", "Matemática Aplicada Ciências Sociais",
         "Filosofia A", "Ciência Política",
-        "Psicologia B", "Aplicações Informáticas B",
-        "Oficinas",
+        "Psicologia B", "Aplicações Informáticas B", "Oficinas",
+        "Literatura Portuguesa", "Alemão", "Espanhol", "Francês",
+        # Por último: disciplinas de gestão/apoio
+        "Hora de PT", "Tempo de Trabalho Autónomo",
     ]
+    N_GERAIS = 7  # índice onde começa o separador (após Projeto)
 
     todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
 
-    def _pos_disc(d, ordem):
-        for i, nome in enumerate(ordem):
-            if d == nome or d.startswith(nome[:8]):
+    def _pos_disc(d):
+        for i, nome in enumerate(ORDEM_TODAS):
+            if d == nome or (len(nome) >= 6 and d.startswith(nome[:6])):
                 return i
-        return len(ordem)
+        return len(ORDEM_TODAS)
 
-    gerais  = sorted([d for d in todas_set if _pos_disc(d, ORDEM_GERAIS) < len(ORDEM_GERAIS)],
-                     key=lambda d: _pos_disc(d, ORDEM_GERAIS))
-    especif = sorted([d for d in todas_set if d not in gerais],
-                     key=lambda d: _pos_disc(d, ORDEM_ESPECIFICAS))
-    todas_disciplinas = gerais + especif
-    separador_idx = len(gerais) if especif else None
+    todas_disciplinas = sorted(todas_set, key=_pos_disc)
+    # Separador: entre as gerais e as específicas
+    gerais_presentes = [d for d in todas_disciplinas if _pos_disc(d) < N_GERAIS]
+    separador_idx = len(gerais_presentes) if len(gerais_presentes) < len(todas_disciplinas) else None
 
     # ── Construir linhas da tabela ────────────────────────────────────────────
     ano_atual = a["ano_letivo"]
@@ -901,30 +919,34 @@ def apresentacao(turma):
 
         # Disciplinas e abreviaturas
         ABREVS = {
-            "Português":"POR","Inglês":"ING","Filosofia":"FIL","Educação Física":"EF",
-            "Religião":"REL","Matemática A":"MAT_A","Matemática Geral":"MAT_G",
-            "Desenho A":"DES_A","Desenho Geral":"DES_G","História A":"HIST_A",
-            "História Geral":"HIST_G","Geografia A":"GEO_A","Biologia":"BIO",
-            "Biologia e Geologia":"BG","Física":"FIS","Física e Química A":"FQ_A",
-            "Química":"QUI","Economia A":"ECO_A","Economia C":"ECO_C",
-            "Geometria Descritiva A":"GD_A","Aplicações Informáticas B":"AI_B",
-            "Psicologia B":"PSI_B","Ciência Política":"CP","Filosofia A":"FIL_A",
-            "Oficinas":"OFI","Hora de PT":"PT","Projeto":"PROJ",
-            "Tempo de Trabalho Autónomo":"TTA","Líng. Estrang. I - Inglês":"ING",
+            "Português":"Port","Líng. Estrang. I - Inglês":"Ing","Inglês":"Ing",
+            "Filosofia":"Filo","Educação Física":"Ed. Fís","Religião":"Rel","Projeto":"Proj",
+            "Matemática A":"Mat A","Desenho A":"Des A","Desenho Geral":"Des G","História A":"Hist A",
+            "Biologia e Geologia":"Bio Geo","Biologia":"Bio",
+            "Física e Química A":"FQ A","Física":"Fís","Química":"Quím",
+            "Geometria Descritiva A":"GDA","Economia A":"Econ A","Economia C":"Econ C",
+            "Geografia A":"Geo A","História Geral":"Hist B",
+            "Matemática Geral":"Mat B","Matemática Aplicada Ciências Sociais":"MACS",
+            "Filosofia A":"Filo A","Ciência Política":"C. Pol",
+            "Psicologia B":"Psic B","Aplicações Informáticas B":"AI B","Oficinas":"Ofic",
+            "Literatura Portuguesa":"Lit. P","Alemão":"Alem","Espanhol":"Esp","Francês":"Fr",
+            "Hora de PT":"PT","Tempo de Trabalho Autónomo":"TTA",
         }
-        _ORDEM_G = ["Português","Líng. Estrang. I - Inglês","Inglês","Filosofia",
-                    "Educação Física","Religião","Projeto","Hora de PT","Tempo de Trabalho Autónomo"]
-        _ORDEM_E = ["Matemática A","Matemática Geral","Matemática Aplicada Ciências Sociais",
-                    "Desenho A","Desenho Geral","História A","História Geral",
-                    "Biologia e Geologia","Biologia","Física e Química A","Física","Química",
-                    "Geometria Descritiva A","Economia A","Economia C","Geografia A",
-                    "Filosofia A","Ciência Política","Psicologia B","Aplicações Informáticas B","Oficinas"]
-        def _p(d, o): return next((i for i,n in enumerate(o) if d==n or d.startswith(n[:8])), len(o))
+        _ORDEM = ["Português","Líng. Estrang. I - Inglês","Inglês","Filosofia",
+                  "Educação Física","Religião","Projeto",
+                  "Matemática A","Desenho A","Desenho Geral","História A",
+                  "Biologia e Geologia","Biologia","Física e Química A","Física","Química",
+                  "Geometria Descritiva A","Economia A","Economia C","Geografia A",
+                  "História Geral","Matemática Geral","Matemática Aplicada Ciências Sociais",
+                  "Filosofia A","Ciência Política","Psicologia B","Aplicações Informáticas B","Oficinas",
+                  "Literatura Portuguesa","Alemão","Espanhol","Francês",
+                  "Hora de PT","Tempo de Trabalho Autónomo"]
+        _N_G = 7
+        def _p(d): return next((i for i,n in enumerate(_ORDEM) if d==n or (len(n)>=6 and d.startswith(n[:6]))), len(_ORDEM))
         todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
-        gerais  = sorted([d for d in todas_set if _p(d,_ORDEM_G)<len(_ORDEM_G)], key=lambda d:_p(d,_ORDEM_G))
-        especif = sorted([d for d in todas_set if d not in gerais], key=lambda d:_p(d,_ORDEM_E))
-        todas = gerais + especif
-        sep_idx = len(gerais) if especif else None
+        todas = sorted(todas_set, key=_p)
+        gerais_p = [d for d in todas if _p(d) < _N_G]
+        sep_idx = len(gerais_p) if len(gerais_p) < len(todas) else None
 
         import re as _re
         def ano_turma(t):
