@@ -2121,6 +2121,13 @@ def importar_pauta(turma):
 
                 # Importar CF como nota do semestre
                 if cf is not None:
+                    # Apagar registos de disciplinas equivalentes (mesma família) para o mesmo período
+                    for _membro in membros_familia(disc_nome):
+                        if _membro != disc_nome:
+                            db.execute(
+                                "DELETE FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+                                (aluno_id, _membro, sem_usar)
+                            )
                     ex = db.execute(
                         "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
                         (aluno_id, disc_nome, sem_usar)
@@ -2629,6 +2636,14 @@ def importar_notas_web():
                             _disc_nome = "Desenho A"
                         _cf = _campos.get("CF")
                         if _cf is not None:
+                            # Apagar registos de disciplinas equivalentes (mesma família) para o mesmo período
+                            _fam_membros = membros_familia(_disc_nome)
+                            for _membro in _fam_membros:
+                                if _membro != _disc_nome:
+                                    db.execute(
+                                        "DELETE FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+                                        (_aid, _membro, _sem_usar)
+                                    )
                             _ex = db.execute(
                                 "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
                                 (_aid, _disc_nome, _sem_usar)
