@@ -78,6 +78,7 @@
     #tabela-area { margin-bottom: 0; flex-shrink: 0; }
 
     /* ── Abas de notas ── */
+    #notas-tabs { flex: 1; display: flex; flex-direction: column; min-height: 0; }
     .notas-tabs-wrap {
       border-top: 2px solid var(--borda);
       margin: .8rem -1.2rem 0;
@@ -214,6 +215,19 @@
       background:#0a1628; border-top:1px solid var(--borda);
       padding:.7rem 2rem; display:flex; align-items:center;
       justify-content:center; gap:1.5rem; flex-shrink:0;
+    }
+
+    /* ── iPad / ecrãs até 1024px ── */
+    @media (max-width: 1024px) {
+      .ap-left { width: 220px; padding: 1rem .8rem; }
+      .ap-foto { width: 100px; height: 100px; }
+      .ap-nome { font-size: 1.4rem; }
+      .ap-meta { font-size: .9rem; }
+      .ap-sem-badge { font-size: .95rem; padding: .5rem; }
+      .ap-table { font-size: .95rem; }
+      .ap-table th.label-col { min-width: 110px; font-size: .9rem; }
+      .notas-tab-pane { font-size: 1.1rem; }
+      #tabela-area { overflow-x: auto; }
     }
 
     /* Vista turma — sem scroll horizontal */
