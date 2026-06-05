@@ -140,7 +140,7 @@
     .ap-table tr.cif-row td  { background: var(--azul); font-weight: 900; font-size: 1rem; border-top: 2px solid var(--azul2); }
     .ap-table tr.cif-row td.label-col { color: #93c5fd; letter-spacing: .5px; }
     .ap-table tr.cfd-row td  { background: #0f2a4a; font-weight: 900; }
-    .ap-table tr.exame-row td { opacity: .45; font-style: italic; }
+    .ap-table tr.exame-row td { font-style: italic; }
     .ap-table .sep-col { border-left: 2px solid #22c55e !important; }
     .ap-table .media-col { border-left: 1px solid rgba(255,255,255,.15) !important; font-weight: 800; }
 
@@ -439,6 +439,11 @@ const ALUNOS = {{ alunos_json | safe }};
 const SLIDES = {{ slides_json | safe }};
 let idx = 0;
 
+function ncPt(n) {
+  // Escala 0-200 pontos (sem cor de classificação)
+  if (n === null || n === undefined) return '<span class="nc nc-nd">—</span>';
+  return `<span class="nc">${n}</span>`;
+}
 function nc(n) {
   if (n === null || n === undefined) return '<span class="nc nc-nd">—</span>';
   if (typeof n === 'string') return `<span class="nc nc-txt">${n}</span>`;
@@ -558,9 +563,10 @@ function mostrar(i) {
         <td class="label-col">${l.label}</td>
         ${discs.map((d,i) => {
           const v = l.notas[d];
-          return `<td${i===a.separador_idx?' class="sep-col"':''}>${nc(v!==undefined?v:null)}</td>`;
+          const render = l.escala===200 ? ncPt : nc;
+          return `<td${i===a.separador_idx?' class="sep-col"':''}>${render(v!==undefined?v:null)}</td>`;
         }).join('')}
-        <td class="media-col">${nc(l.media)}</td>
+        <td class="media-col">${l.escala===200 ? ncPt(l.media) : nc(l.media)}</td>
       </tr>`;
     });
     html += '</tbody></table>';

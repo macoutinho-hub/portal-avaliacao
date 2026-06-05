@@ -1837,8 +1837,34 @@ def apresentacao(turma):
         cv = [v for v in cif.values() if v is not None]
         cm = round(sum(cv)/len(cv)) if cv else None
         linhas.append({"label":"CIF","tipo":"cif","atual":True,"notas":cif,"media":cm})
-        linhas.append({"label":"Exame","tipo":"exame","atual":False,
-                       "notas":{d:None for d in todas},"media":None})
+
+        # ── Notas de exame da tabela notas_finais ────────────────────────────
+        if a["numero"]:
+            ap_ids = [r["id"] for r in db.execute(
+                "SELECT id FROM alunos WHERE numero=?", (a["numero"],)
+            ).fetchall()]
+        else:
+            ap_ids = [a["id"]]
+        ap_ph = ",".join("?" * len(ap_ids))
+        nf_ap = db.execute(
+            f"SELECT disciplina, exame_f1, exame_f2 FROM notas_finais WHERE aluno_id IN ({ap_ph})",
+            ap_ids
+        ).fetchall()
+        ap_ex1, ap_ex2 = {}, {}
+        for r in nf_ap:
+            if r["exame_f1"] is not None: ap_ex1[r["disciplina"]] = r["exame_f1"]
+            if r["exame_f2"] is not None: ap_ex2[r["disciplina"]] = r["exame_f2"]
+
+        # Converter 0-20 → 0-200 pontos (inteiro)
+        ex1_notas = {d: (round(ap_ex1[d] * 10) if ap_ex1.get(d) is not None else None) for d in todas}
+        ex2_notas = {d: (round(ap_ex2[d] * 10) if ap_ex2.get(d) is not None else None) for d in todas}
+        ex1_vals = [v for v in ex1_notas.values() if v is not None]
+        ex2_vals = [v for v in ex2_notas.values() if v is not None]
+        linhas.append({"label":"Exame 1ª Fase","tipo":"exame","escala":200,"atual":False,
+                       "notas":ex1_notas,"media":round(sum(ex1_vals)/len(ex1_vals)) if ex1_vals else None})
+        linhas.append({"label":"Exame 2ª Fase","tipo":"exame","escala":200,"atual":False,
+                       "notas":ex2_notas,"media":round(sum(ex2_vals)/len(ex2_vals)) if ex2_vals else None})
+
         linhas.append({"label":"CFD","tipo":"cfd","atual":False,"notas":dict(cif),"media":cm})
 
         # Notas de reunião
