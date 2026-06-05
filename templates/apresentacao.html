@@ -141,6 +141,10 @@
     .ap-table tr.cif-row td.label-col { color: #93c5fd; letter-spacing: .5px; }
     .ap-table tr.cfd-row td  { background: #0f2a4a; font-weight: 900; }
     .ap-table tr.exame-row td { font-style: italic; }
+    .ap-table.compact-rows td { padding: 4px 6px; }
+    .ap-table.compact-rows th { padding: 6px 7px; }
+    .ap-table.compact-rows td.label-col { font-size: .95rem; }
+    .ap-table.compact-rows { font-size: 1rem; }
     .ap-table .sep-col { border-left: 2px solid #22c55e !important; }
     .ap-table .media-col { border-left: 1px solid rgba(255,255,255,.15) !important; font-weight: 800; }
 
@@ -551,7 +555,8 @@ function mostrar(i) {
   if (!discs.length) {
     document.getElementById('tabela-container').innerHTML = '<p style="opacity:.35; padding:2rem">Sem notas.</p>';
   } else {
-    let html = `<table class="ap-table"><thead><tr>
+    const compactCls = (a.turma || '').match(/^12/) ? ' compact-rows' : '';
+    let html = `<table class="ap-table${compactCls}"><thead><tr>
       <th class="label-col">Ano / Semestre</th>
       ${discs.map((d,i) => `<th title="${d}"${i===a.separador_idx?' class="sep-col"':''}>${a.abrevs[d]||d.substring(0,7)}</th>`).join('')}
       <th class="media-col">Média</th>

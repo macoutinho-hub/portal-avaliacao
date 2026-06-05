@@ -860,7 +860,19 @@ def aluno(aluno_id):
         "media": cif_media,
     })
 
-    # ── Exame (F1 ou o melhor entre F1/F2) ───────────────────────────────────
+    # ── Exame: 2 linhas (1ª/2ª Fase), escala 0-200, só se houver valores ────
+    ex1_notas = {d: (round(nf_ex1[d] * 10) if nf_ex1.get(d) is not None else None) for d in todas_disciplinas}
+    ex2_notas = {d: (round(nf_ex2[d] * 10) if nf_ex2.get(d) is not None else None) for d in todas_disciplinas}
+    ex1_vals = [v for v in ex1_notas.values() if v is not None]
+    ex2_vals = [v for v in ex2_notas.values() if v is not None]
+    if ex1_vals:
+        linhas.append({"label": "Exame 1ª Fase", "tipo": "exame", "escala": 200, "atual": False,
+                       "notas": ex1_notas, "media": round(sum(ex1_vals) / len(ex1_vals))})
+    if ex2_vals:
+        linhas.append({"label": "Exame 2ª Fase", "tipo": "exame", "escala": 200, "atual": False,
+                       "notas": ex2_notas, "media": round(sum(ex2_vals) / len(ex2_vals))})
+
+    # exame_notas em escala 0-20 para cálculo do CFD
     exame_notas = {}
     for d in todas_disciplinas:
         f1 = nf_ex1.get(d)
@@ -873,15 +885,6 @@ def aluno(aluno_id):
             exame_notas[d] = f2
         else:
             exame_notas[d] = None
-
-    ex_vals = [v for v in exame_notas.values() if v is not None]
-    linhas.append({
-        "label": "Exame",
-        "tipo": "exame",
-        "atual": False,
-        "notas": exame_notas,
-        "media": round(sum(ex_vals) / len(ex_vals), 1) if ex_vals else None,
-    })
 
     # ── CFD: oficial ou calculado (7.5×CIF + 2.5×Exame)/10 ──────────────────
     cfd_notas = {}
@@ -1860,10 +1863,12 @@ def apresentacao(turma):
         ex2_notas = {d: (round(ap_ex2[d] * 10) if ap_ex2.get(d) is not None else None) for d in todas}
         ex1_vals = [v for v in ex1_notas.values() if v is not None]
         ex2_vals = [v for v in ex2_notas.values() if v is not None]
-        linhas.append({"label":"Exame 1ª Fase","tipo":"exame","escala":200,"atual":False,
-                       "notas":ex1_notas,"media":round(sum(ex1_vals)/len(ex1_vals)) if ex1_vals else None})
-        linhas.append({"label":"Exame 2ª Fase","tipo":"exame","escala":200,"atual":False,
-                       "notas":ex2_notas,"media":round(sum(ex2_vals)/len(ex2_vals)) if ex2_vals else None})
+        if ex1_vals:
+            linhas.append({"label":"Exame 1ª Fase","tipo":"exame","escala":200,"atual":False,
+                           "notas":ex1_notas,"media":round(sum(ex1_vals)/len(ex1_vals))})
+        if ex2_vals:
+            linhas.append({"label":"Exame 2ª Fase","tipo":"exame","escala":200,"atual":False,
+                           "notas":ex2_notas,"media":round(sum(ex2_vals)/len(ex2_vals))})
 
         linhas.append({"label":"CFD","tipo":"cfd","atual":False,"notas":dict(cif),"media":cm})
 

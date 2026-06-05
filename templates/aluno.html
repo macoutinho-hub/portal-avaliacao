@@ -166,9 +166,13 @@
                 </span>
               {% else %}
                 {% if n is not none %}
+                {% if linha.escala == 200 %}
+                <span class="nota-cell" style="background:#4b5563;color:white">{{ n | int }}</span>
+                {% else %}
                 <span class="nota-cell {% if n < 10 %}n-neg{% elif n < 14 %}n-med{% elif n < 17 %}n-bom{% else %}n-exc{% endif %}">
                   {{ "%.0f"|format(n) if n == n|int else "%.1f"|format(n) }}
                 </span>
+                {% endif %}
                 {% else %}
                 <span class="n-nd">—</span>
                 {% endif %}
@@ -177,9 +181,13 @@
               {% endfor %}
               <td class="media-cell">
                 {% if linha.media is not none %}
+                {% if linha.escala == 200 %}
+                <span class="nota-cell" style="background:#4b5563;color:white">{{ linha.media | int }}</span>
+                {% else %}
                 <span class="nota-cell {% if linha.media < 10 %}n-neg{% elif linha.media < 14 %}n-med{% elif linha.media < 17 %}n-bom{% else %}n-exc{% endif %}">
                   {{ "%.1f"|format(linha.media) }}
                 </span>
+                {% endif %}
                 {% else %}<span class="n-nd">—</span>{% endif %}
               </td>
             </tr>
