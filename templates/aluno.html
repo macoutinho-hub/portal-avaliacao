@@ -2,6 +2,12 @@
 {% block title %}{{ aluno.nome }}{% endblock %}
 
 {% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+<style>
+  .ql-toolbar.ql-snow { background:#f8f9fb; border-radius:6px 6px 0 0 !important; }
+  .ql-container.ql-snow { border-radius:0 0 6px 6px !important; }
+  .ql-editor { min-height:120px; font-size:.95rem; }
+</style>
 <style>
   .perfil-header { background: #0E4D7D; color: white; border-radius: 12px 12px 0 0; padding: 1.2rem 1.5rem; border-bottom: 3px solid #44B2E4; }
   .perfil-foto { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,.4); background: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: white; flex-shrink: 0; }
@@ -229,6 +235,35 @@
     </div>
   </div>
 
+<!-- ── Síntese Global ─────────────────────────────────────────────────── -->
+{% set sintese_nr = notas_reuniao.get('sintese', {}) %}
+<div class="card border-0 shadow mb-4">
+  <div class="card-header py-3" style="background:#0c4a6e">
+    <h5 class="mb-0 fw-semibold text-white">
+      <i class="bi bi-text-paragraph me-2"></i>Síntese Global
+      <small class="opacity-75 fw-normal" style="font-size:.8rem"> — texto livre para a reunião</small>
+    </h5>
+  </div>
+  <div class="card-body">
+    {% if pode_editar %}
+    <div id="quill-sintese" style="background:white"></div>
+    <input type="hidden" id="sintese-aluno-id" value="{{ aluno.id }}">
+    <div class="d-flex justify-content-between align-items-center mt-2">
+      <span class="text-muted updated-at-sintese" style="font-size:.75rem">
+        {% if sintese_nr.updated_at %}Guardado: {{ sintese_nr.updated_at }}{% endif %}
+      </span>
+      <span id="sintese-status" style="font-size:.75rem"></span>
+    </div>
+    {% else %}
+    {% if sintese_nr.texto %}
+    <div style="font-size:.95rem; line-height:1.6">{{ sintese_nr.texto | safe }}</div>
+    {% else %}
+    <div class="text-muted fst-italic">Sem síntese registada.</div>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+
 <!-- ── Modal: Adicionar Semestre ─────────────────────────────────────────── -->
 {% if pode_editar %}
 <div class="modal fade" id="modal-add-semestre" tabindex="-1">
@@ -425,6 +460,61 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script>
+{% if pode_editar %}
+(function() {
+  const quillSintese = new Quill('#quill-sintese', {
+    theme: 'snow',
+    modules: { toolbar: [
+      ['bold', 'italic', 'underline'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      ['clean']
+    ]}
+  });
+
+  // Carregar conteúdo guardado
+  const conteudoInicial = {{ sintese_nr.texto | tojson if sintese_nr.texto else '""' }};
+  if (conteudoInicial) quillSintese.root.innerHTML = conteudoInicial;
+
+  const alunoId = document.getElementById('sintese-aluno-id').value;
+  const statusEl = document.getElementById('sintese-status');
+  const updatedAtEl = document.querySelector('.updated-at-sintese');
+  let sinteseTimer = null;
+
+  quillSintese.on('text-change', () => {
+    clearTimeout(sinteseTimer);
+    statusEl.textContent = '...';
+    statusEl.style.color = '#f59e0b';
+    sinteseTimer = setTimeout(guardarSintese, 1500);
+  });
+
+  async function guardarSintese() {
+    const html = quillSintese.root.innerHTML;
+    try {
+      const resp = await fetch(`/aluno/${alunoId}/notas-reuniao`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({categoria: 'sintese', texto: html})
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        statusEl.textContent = 'Guardado ✓';
+        statusEl.style.color = '#22c55e';
+        if (updatedAtEl) updatedAtEl.textContent = 'Guardado: ' + data.updated_at;
+        setTimeout(() => { statusEl.textContent = ''; }, 2000);
+      } else {
+        statusEl.textContent = 'Erro ao guardar';
+        statusEl.style.color = '#ef4444';
+      }
+    } catch(e) {
+      statusEl.textContent = 'Erro ao guardar';
+      statusEl.style.color = '#ef4444';
+    }
+  }
+})();
+{% endif %}
+</script>
 <script>
 function corClasse(n) {
   if (n === null || n === undefined || isNaN(n)) return 'n-nd';

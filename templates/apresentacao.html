@@ -39,65 +39,96 @@
 
     /* ── Coluna esquerda: dados do aluno ── */
     .ap-left {
-      width: 340px; flex-shrink: 0;
+      width: 300px; flex-shrink: 0;
       background: var(--card); border-right: 1px solid var(--borda);
       display: flex; flex-direction: column; padding: 1.5rem 1.2rem;
       overflow-y: auto;
     }
-    .ap-foto-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 1.2rem; }
+    .ap-foto-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 1rem; }
     .ap-foto {
-      width: 130px; height: 130px; border-radius: 50%;
+      width: 150px; height: 150px; border-radius: 50%;
       object-fit: cover; border: 4px solid var(--azul2);
     }
     .ap-foto-ph {
-      width: 130px; height: 130px; border-radius: 50%;
+      width: 150px; height: 150px; border-radius: 50%;
       background: var(--azul2); display: flex; align-items: center;
-      justify-content: center; font-size: 4rem; color: rgba(255,255,255,.5);
+      justify-content: center; font-size: 5rem; color: rgba(255,255,255,.5);
     }
-    .ap-nome { font-size: 1.5rem; font-weight: 800; text-align: center; margin-top: .7rem; line-height: 1.2; }
-    .ap-meta { font-size: .95rem; opacity: .5; text-align: center; margin-top: .3rem; margin-bottom: 1rem; }
+    .ap-nome { font-size: 1.9rem; font-weight: 800; text-align: center; margin-top: .7rem; line-height: 1.2; }
+    .ap-meta { font-size: 1.05rem; opacity: .5; text-align: center; margin-top: .3rem; margin-bottom: 1rem; }
 
     /* Médias destacadas */
     .ap-medias { display: flex; gap: .8rem; justify-content: center; margin-bottom: 1.2rem; flex-wrap: wrap; }
     .ap-media-box { text-align: center; }
     .ap-media-val {
-      font-size: 2.2rem; font-weight: 900; border-radius: 10px;
-      padding: .1rem .7rem; display: inline-block;
+      font-size: 2.8rem; font-weight: 900; border-radius: 10px;
+      padding: .1rem .9rem; display: inline-block;
     }
-    .ap-media-lbl { font-size: .7rem; opacity: .6; margin-top: .1rem; }
+    .ap-media-lbl { font-size: .85rem; opacity: .6; margin-top: .2rem; }
 
     /* Alerta negativas */
     .ap-alerta {
       background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.5);
-      border-radius: 8px; padding: .7rem; margin-bottom: 1rem; font-size: .95rem;
+      border-radius: 8px; padding: .8rem; margin-bottom: 1rem; font-size: 1.05rem;
     }
-    .ap-alerta-item { display: flex; align-items: center; gap: .5rem; margin-top: .3rem; }
+    .ap-alerta-item { display: flex; align-items: center; gap: .6rem; margin-top: .4rem; }
 
-    /* Notas para reunião */
-    .ap-nota-bloco { margin-bottom: .9rem; }
-    .ap-nota-titulo { font-size: .75rem; font-weight: 700; text-transform: uppercase;
-                      letter-spacing: .5px; margin-bottom: .2rem; }
-    .ap-nota-texto  { font-size: .9rem; line-height: 1.45; opacity: .85; white-space: pre-wrap; }
-    .ap-nota-vazio  { font-size: .85rem; opacity: .28; font-style: italic; }
+    /* ── Coluna direita: tabela + notas ── */
+    .ap-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    #tabela-area { flex: 1; overflow: auto; padding: .8rem 1.2rem; }
 
-    /* ── Coluna direita: tabela ── */
-    .ap-right { flex: 1; overflow: auto; padding: 1rem 1.5rem; }
+    /* ── Barra de notas inferior ── */
+    .notas-bar {
+      flex-shrink: 0;
+      border-top: 2px solid var(--borda);
+      background: rgba(0,0,0,.18);
+      padding: .9rem 1.4rem;
+      display: flex; gap: 1.2rem;
+      max-height: 38vh; overflow-y: auto;
+    }
+    .notas-bar-cat { flex: 1; min-width: 0; }
+    .notas-bar-titulo {
+      font-size: .9rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .5px; margin-bottom: .35rem; display: flex; align-items: center; gap: .4rem;
+    }
+    .notas-bar-texto {
+      font-size: 1.3rem; line-height: 1.55; opacity: .92; white-space: pre-wrap;
+    }
+    .notas-sintese-area {
+      flex-shrink: 0;
+      border-top: 1px solid var(--borda);
+      background: rgba(6,182,212,.06);
+      padding: .8rem 1.4rem;
+      max-height: 35vh; overflow-y: auto;
+    }
+    .notas-sintese-titulo {
+      font-size: .9rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .5px; color: #67e8f9; margin-bottom: .4rem;
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .notas-sintese-texto {
+      font-size: 1.35rem; line-height: 1.65; opacity: .94;
+    }
+    .notas-sintese-texto p { margin-bottom: .5rem; }
+    .notas-sintese-texto ul, .notas-sintese-texto ol { padding-left: 1.5rem; margin-bottom: .4rem; }
+    .notas-sintese-texto li { margin-bottom: .25rem; }
+    .notas-sintese-texto strong { color: white; }
 
     /* Tabela de notas */
-    .ap-table { width: 100%; border-collapse: collapse; font-size: 1rem; }
+    .ap-table { width: 100%; border-collapse: collapse; font-size: 1.2rem; }
     .ap-table th {
-      background: var(--azul); color: white; padding: 8px 6px;
-      text-align: center; font-size: .82rem; white-space: nowrap;
+      background: var(--azul); color: white; padding: 9px 7px;
+      text-align: center; font-size: 1rem; white-space: nowrap;
       position: sticky; top: 0; z-index: 2; font-weight: 700;
     }
-    .ap-table th.label-col { text-align: left; padding-left: 14px; min-width: 130px; font-size: .9rem; }
+    .ap-table th.label-col { text-align: left; padding-left: 14px; min-width: 150px; font-size: 1.05rem; }
     .ap-table td {
-      padding: 7px 5px; text-align: center;
+      padding: 8px 6px; text-align: center;
       border-bottom: 1px solid rgba(255,255,255,.06);
     }
     .ap-table td.label-col {
       text-align: left; padding-left: 14px; font-weight: 700;
-      color: rgba(255,255,255,.8); white-space: nowrap; font-size: .95rem;
+      color: rgba(255,255,255,.8); white-space: nowrap; font-size: 1.1rem;
     }
     .ap-table tr:hover td { background: rgba(255,255,255,.04); }
     .ap-table tr.atual-row td { background: rgba(245,158,11,.1); }
@@ -222,8 +253,8 @@
 
     /* Células de nota */
     .nc {
-      border-radius: 6px; padding: 3px 8px; font-weight: 800;
-      display: inline-block; min-width: 36px; font-size: .95rem;
+      border-radius: 6px; padding: 4px 10px; font-weight: 800;
+      display: inline-block; min-width: 42px; font-size: 1.1rem;
     }
     .nc-neg { background: #dc2626; }
     .nc-med { background: #d97706; }
@@ -296,12 +327,15 @@
       <div id="meta-aluno" class="ap-meta"></div>
       <div id="medias-box" class="ap-medias"></div>
       <div id="alerta-neg"></div>
-      <div id="notas-reuniao"></div>
     </div>
 
-    <!-- Direita -->
+    <!-- Direita: tabela + notas + síntese -->
     <div class="ap-right" id="painel-dir">
-      <div id="tabela-container"></div>
+      <div id="tabela-area">
+        <div id="tabela-container"></div>
+      </div>
+      <div id="notas-bar"></div>
+      <div id="sintese-area"></div>
     </div>
   </div>
 
@@ -426,25 +460,41 @@ function mostrar(i) {
     alertEl.innerHTML = '';
   }
 
-  // Notas reunião
+  // Notas reunião — barra inferior
   const cats = [
-    {id:'observacoes',  label:'Observações',    icon:'bi-journal-text',        cor:'#60a5fa'},
+    {id:'observacoes',  label:'Observações',    icon:'bi-journal-text',         cor:'#60a5fa'},
     {id:'preocupacoes', label:'Preocupações',    icon:'bi-exclamation-triangle', cor:'#f87171'},
-    {id:'positivos',    label:'Pontos Positivos',icon:'bi-star',                cor:'#4ade80'},
-    {id:'apoio_caa',    label:'Apoio / CAA',     icon:'bi-life-preserver',      cor:'#c084fc'},
+    {id:'positivos',    label:'Pontos Positivos',icon:'bi-star',                 cor:'#4ade80'},
+    {id:'apoio_caa',    label:'Apoio / CAA',     icon:'bi-life-preserver',       cor:'#c084fc'},
   ];
   const nr = a.notas_reuniao || {};
-  let nrHtml = '';
-  cats.forEach(c => {
-    const txt = (nr[c.id]||'').trim();
-    if (txt) {
-      nrHtml += `<div class="ap-nota-bloco">
-        <div class="ap-nota-titulo" style="color:${c.cor}"><i class="bi ${c.icon} me-1"></i>${c.label}</div>
-        <div class="ap-nota-texto">${txt}</div>
+  const catsAtivas = cats.filter(c => (nr[c.id]||'').trim());
+  const sintese = (nr['sintese']||'').trim();
+
+  let barHtml = '';
+  if (catsAtivas.length) {
+    barHtml = '<div class="notas-bar">';
+    catsAtivas.forEach(c => {
+      barHtml += `<div class="notas-bar-cat">
+        <div class="notas-bar-titulo" style="color:${c.cor}">
+          <i class="bi ${c.icon}"></i>${c.label}
+        </div>
+        <div class="notas-bar-texto">${nr[c.id]}</div>
       </div>`;
-    }
-  });
-  document.getElementById('notas-reuniao').innerHTML = nrHtml || '<div class="ap-nota-vazio">Sem notas para a reunião</div>';
+    });
+    barHtml += '</div>';
+  }
+  document.getElementById('notas-bar').innerHTML = barHtml;
+
+  // Síntese global
+  let sinteseHtml = '';
+  if (sintese) {
+    sinteseHtml = `<div class="notas-sintese-area">
+      <div class="notas-sintese-titulo"><i class="bi bi-text-paragraph"></i>Síntese Global</div>
+      <div class="notas-sintese-texto">${sintese}</div>
+    </div>`;
+  }
+  document.getElementById('sintese-area').innerHTML = sinteseHtml;
 
   // Tabela
   const discs  = a.disciplinas || [];
@@ -477,7 +527,7 @@ function mostrar(i) {
   document.getElementById('idx-label').textContent = `${i+1}/${ALUNOS.length}`;
   document.getElementById('btn-ant').disabled  = (i <= 0);
   document.getElementById('btn-prox').disabled = (i >= ALUNOS.length - 1);
-  document.getElementById('painel-dir').scrollTop = 0;
+  document.getElementById('tabela-area').scrollTop = 0;
   document.getElementById('painel-esq').scrollTop = 0;
 }
 

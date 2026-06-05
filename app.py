@@ -1150,7 +1150,7 @@ def guardar_nota_reuniao(aluno_id):
     categoria = data.get("categoria", "").strip()
     texto     = data.get("texto", "").strip()
 
-    cats_validas = [c[0] for c in CATEGORIAS_REUNIAO]
+    cats_validas = [c[0] for c in CATEGORIAS_REUNIAO] + ['sintese']
     if categoria not in cats_validas:
         return jsonify({"ok": False, "erro": "Categoria inválida"}), 400
 
