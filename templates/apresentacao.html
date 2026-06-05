@@ -74,19 +74,21 @@
     .ap-alerta-item { display: flex; align-items: center; gap: .6rem; margin-top: .4rem; }
 
     /* ── Coluna direita: tabela + abas de notas ── */
-    .ap-right { flex: 1; overflow-y: auto; padding: .8rem 1.2rem 0; }
-    #tabela-area { margin-bottom: 0; }
+    .ap-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: .8rem 1.2rem 0; }
+    #tabela-area { margin-bottom: 0; flex-shrink: 0; }
 
     /* ── Abas de notas ── */
     .notas-tabs-wrap {
       border-top: 2px solid var(--borda);
       margin: .8rem -1.2rem 0;
+      flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;
     }
     .notas-tabs-bar {
       display: flex; gap: 0;
       background: rgba(0,0,0,.25);
       border-bottom: 1px solid var(--borda);
       overflow-x: auto;
+      flex-shrink: 0;
     }
     .notas-tab-btn {
       background: none; border: none; color: rgba(255,255,255,.5);
@@ -98,6 +100,7 @@
     }
     .notas-tab-btn:hover { color: rgba(255,255,255,.8); }
     .notas-tab-btn.active { color: white; border-bottom-color: var(--azul2); }
+    .notas-tabs-body { flex: 1; overflow-y: auto; min-height: 0; }
     .notas-tab-pane {
       padding: 1rem 1.4rem 1.2rem;
       font-size: 1.3rem; line-height: 1.6; opacity: .92;
@@ -483,13 +486,13 @@ function mostrar(i) {
       <i class="bi ${a.icon}" style="color:${a.cor}"></i>${a.label}
     </button>`;
   });
-  tabsHtml += '</div>';
+  tabsHtml += '</div><div class="notas-tabs-body">';
   abas.forEach((ab, i) => {
     const cls = ab.id === 'sintese' ? 'sintese-pane' : '';
     const conteudo = ab.isHtml ? ab.conteudo : `<div class="notas-tab-plain">${ab.conteudo}</div>`;
     tabsHtml += `<div class="notas-tab-pane ${cls}" id="pane-${ab.id}" style="display:${i===0?'block':'none'}">${conteudo}</div>`;
   });
-  tabsHtml += '</div>';
+  tabsHtml += '</div></div>';
   document.getElementById('notas-tabs').innerHTML = tabsHtml;
 
   // Tabela
