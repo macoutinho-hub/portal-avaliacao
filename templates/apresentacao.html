@@ -187,7 +187,8 @@
     }
 
     /* Vista turma — sem scroll horizontal */
-    .vt-wrap { flex:1; overflow-y:auto; overflow-x:hidden; padding:.8rem 1rem; }
+    .vt-wrap { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+    #vt-container { flex:1; overflow-y:auto; overflow-x:hidden; padding:.8rem 1rem; }
     .vt-table {
       width:100%; border-collapse:collapse; table-layout:fixed;
       font-size:clamp(.65rem, 1.1vw, .85rem);
@@ -306,6 +307,12 @@
 
   <!-- Vista Turma -->
   <div class="vt-wrap" id="vista-turma" style="display:none">
+    <div style="display:flex; align-items:center; gap:.8rem; padding:.6rem 1.2rem; background:rgba(0,0,0,.2); border-bottom:1px solid var(--borda); flex-shrink:0">
+      <span style="font-size:.85rem; opacity:.6">Semestre:</span>
+      <select id="vt-semestre-sel" onchange="construirVistaTurma()"
+        style="background:#1e3a5f;color:white;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:.3rem .8rem;font-size:.85rem;cursor:pointer">
+      </select>
+    </div>
     <div id="vt-container"></div>
   </div>
 
@@ -496,6 +503,7 @@ function toggleVista() {
     document.getElementById('vista-turma').style.display = 'flex';
     document.getElementById('ap-nav').style.display = 'none';
     document.getElementById('btn-vista').innerHTML = '<i class="bi bi-person me-1"></i>Vista Aluno';
+    popularSemestresSel();
     construirVistaTurma();
   } else {
     vistaAtual = 'aluno';
@@ -506,18 +514,43 @@ function toggleVista() {
   }
 }
 
+function popularSemestresSel() {
+  // Recolher todos os labels de semestre disponíveis (de todos os alunos)
+  const labelsSet = new Set();
+  let labelAtual = null;
+  ALUNOS.forEach(a => {
+    (a.linhas||[]).filter(l => l.tipo==='semestre').forEach(l => {
+      labelsSet.add(l.label);
+      if (l.atual) labelAtual = l.label;
+    });
+  });
+  const labels = Array.from(labelsSet).sort();
+  const sel = document.getElementById('vt-semestre-sel');
+  sel.innerHTML = '';
+  labels.forEach(lbl => {
+    const o = document.createElement('option');
+    o.value = lbl; o.textContent = lbl;
+    if (lbl === labelAtual) o.selected = true;
+    sel.appendChild(o);
+  });
+  // Selecionar o semestre atual mais recente por defeito
+  if (labelAtual) sel.value = labelAtual;
+}
+
 function construirVistaTurma() {
   // Recolher todas as disciplinas presentes (usando as do primeiro aluno com dados como referência)
   const discSet = new Set();
   ALUNOS.forEach(a => (a.disciplinas||[]).forEach(d => discSet.add(d)));
   const discs = Array.from(discSet);
 
-  // Para cada aluno, extrair a nota do semestre mais recente (linha "atual" tipo "semestre")
+  // Semestre selecionado
+  const semSel = document.getElementById('vt-semestre-sel').value;
+
+  // Para cada aluno, extrair a nota do semestre selecionado
   function notaActual(aluno, disc) {
-    const linhas = (aluno.linhas||[]).filter(l => l.tipo==='semestre' && l.atual);
-    // Pegar último semestre com dados
-    for (let i = linhas.length-1; i >= 0; i--) {
-      const v = linhas[i].notas[disc];
+    const linha = (aluno.linhas||[]).find(l => l.tipo==='semestre' && l.label===semSel);
+    if (linha) {
+      const v = linha.notas[disc];
       if (v !== null && v !== undefined) return v;
     }
     return null;
