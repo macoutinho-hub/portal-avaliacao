@@ -19,6 +19,8 @@
       height: 100%; background: var(--fundo);
       color: white; font-family: 'Segoe UI', system-ui, sans-serif;
       overflow: hidden;
+      overscroll-behavior: none;
+      position: fixed; width: 100%;
     }
 
     /* ── Layout principal ── */
@@ -217,17 +219,24 @@
       justify-content:center; gap:1.5rem; flex-shrink:0;
     }
 
-    /* ── iPad / ecrãs até 1024px ── */
-    @media (max-width: 1024px) {
-      .ap-left { width: 220px; padding: 1rem .8rem; }
-      .ap-foto { width: 100px; height: 100px; }
-      .ap-nome { font-size: 1.4rem; }
-      .ap-meta { font-size: .9rem; }
-      .ap-sem-badge { font-size: .95rem; padding: .5rem; }
-      .ap-table { font-size: .95rem; }
-      .ap-table th.label-col { min-width: 110px; font-size: .9rem; }
-      .notas-tab-pane { font-size: 1.1rem; }
-      #tabela-area { overflow-x: auto; }
+    /* ── iPad / ecrãs até 1180px ── */
+    @media (max-width: 1180px) {
+      .ap-left { width: 190px; padding: .8rem .7rem; }
+      .ap-foto { width: 90px; height: 90px; }
+      .ap-nome { font-size: 1.2rem; }
+      .ap-meta { font-size: .85rem; }
+      .ap-sem-badge { font-size: .85rem; padding: .4rem .6rem; }
+      /* Tabela: sempre visível, cabe no ecrã */
+      #tabela-area { overflow-x: hidden; }
+      .ap-table { width: 100%; font-size: .75rem; }
+      .ap-table th, .ap-table td { padding: .3rem .25rem; }
+      .ap-table th.label-col { min-width: 90px; font-size: .75rem; padding-left: 6px; }
+      /* Abas */
+      .notas-tab-btn { font-size: .85rem; padding: .5rem .9rem; }
+      .notas-tab-pane { font-size: 1rem; }
+      /* Topo */
+      .ap-turma { font-size: 1.1rem; }
+      .ap-top { padding: .5rem 1rem; }
     }
 
     /* Vista turma — sem scroll horizontal */
