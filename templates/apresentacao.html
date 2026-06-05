@@ -219,6 +219,24 @@
       justify-content:center; gap:1.5rem; flex-shrink:0;
     }
 
+    /* ── Modo projeção 16:9 ── */
+    body.proj-mode .ap-left { width: 260px; padding: 1.5rem 1rem; }
+    body.proj-mode .ap-foto { width: 130px; height: 130px; }
+    body.proj-mode .ap-nome { font-size: 1.7rem; }
+    body.proj-mode .ap-meta { font-size: 1rem; }
+    body.proj-mode .ap-sem-badge { font-size: 1.1rem; padding: .7rem 1rem; }
+    body.proj-mode .ap-right { padding: .6rem 1.5rem 0; }
+    body.proj-mode .ap-table { font-size: 1.25rem; }
+    body.proj-mode .ap-table th { padding: .5rem .6rem; }
+    body.proj-mode .ap-table td { padding: .45rem .5rem; }
+    body.proj-mode .ap-table th.label-col { min-width: 170px; font-size: 1.1rem; }
+    body.proj-mode .notas-tab-btn { font-size: 1.1rem; padding: .65rem 1.6rem; }
+    body.proj-mode .notas-tab-pane { font-size: 1.4rem; line-height: 1.7; padding: 1.2rem 1.8rem; }
+    body.proj-mode .ap-turma { font-size: 1.5rem; }
+    body.proj-mode .ap-top { padding: .7rem 2rem; }
+    body.proj-mode .ap-nav { padding: 1rem 2rem; }
+    body.proj-mode .btn-nav { font-size: 1.15rem; padding: .8rem 2.5rem; }
+
     /* ── iPad / ecrãs até 1180px ── */
     @media (max-width: 1180px) {
       .ap-left { width: 190px; padding: .8rem .7rem; }
@@ -236,7 +254,7 @@
       .notas-tab-pane { font-size: 1rem; }
       /* Topo */
       .ap-turma { font-size: 1.1rem; }
-      .ap-top { padding: .5rem 1rem; }
+      .ap-top { padding: .5rem 1rem .5rem max(1rem, env(safe-area-inset-left, 1rem)); }
     }
 
     /* Vista turma — sem scroll horizontal */
@@ -328,6 +346,10 @@
           <i class="bi bi-collection-play me-1"></i>Slides
         </button>
         {% endif %}
+        <button onclick="abrirProjecao()" title="Abrir janela de projeção"
+          style="background:none;border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:1.2rem">
+          <i class="bi bi-tv"></i>
+        </button>
         <button onclick="toggleFS()" id="btn-fs" title="Ecrã inteiro"
           style="background:none;border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:1.2rem">
           <i class="bi bi-fullscreen" id="fs-icon"></i>
@@ -788,6 +810,41 @@ function toggleFS() {
     document.getElementById('fs-icon').className = 'bi bi-fullscreen';
   }
 }
+
+// ── Janela de projeção ──
+let janelaProj = null;
+function abrirProjecao() {
+  const url = window.location.href.split('?')[0] + '?proj=1';
+  janelaProj = window.open(url, 'projecao', 'width=1280,height=720');
+}
+// Sincroniza aluno na janela de projeção quando muda
+const _mostrarOrig = mostrar;
+mostrar = function(i) {
+  _mostrarOrig(i);
+  if (janelaProj && !janelaProj.closed) {
+    try { janelaProj.mostrar(i); } catch(e) {}
+  }
+};
+// Activar modo projeção se ?proj=1
+if (new URLSearchParams(window.location.search).get('proj') === '1') {
+  document.body.classList.add('proj-mode');
+  // Esconder botão de projeção na janela de projeção
+  document.querySelectorAll('button[onclick="abrirProjecao()"]').forEach(b => b.style.display = 'none');
+}
+
+// iOS Safari: bloqueia pull-to-dismiss fora de zonas com scroll
+document.addEventListener('touchmove', function(e) {
+  const scrollable = e.target.closest('.notas-tabs-body, .ap-left, #vt-container, .slides-panel-body');
+  if (!scrollable) { e.preventDefault(); return; }
+  // Permite scroll apenas se o elemento tem conteúdo para rolar
+  const atTop = scrollable.scrollTop <= 0;
+  const atBottom = scrollable.scrollTop + scrollable.clientHeight >= scrollable.scrollHeight;
+  const goingUp = e.touches[0].clientY > (e._startY || e.touches[0].clientY);
+  if ((atTop && goingUp) || (atBottom && !goingUp)) e.preventDefault();
+}, { passive: false });
+document.addEventListener('touchstart', function(e) {
+  if (e.touches[0]) e.touches[0]._startY = e.touches[0].clientY;
+}, { passive: true });
 document.addEventListener('fullscreenchange', () => {
   document.getElementById('fs-icon').className =
     document.fullscreenElement ? 'bi bi-fullscreen-exit' : 'bi bi-fullscreen';
