@@ -83,6 +83,14 @@
                 <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#edit-{{ u.id }}">
                   <i class="bi bi-pencil"></i>
                 </button>
+                <!-- Personificar (só para não-admins) -->
+                {% if u.role != 'admin' %}
+                <form method="post" action="{{ url_for('impersonar', uid=u.id) }}" class="d-inline">
+                  <button class="btn btn-sm btn-outline-warning" title="Personificar {{ u.nome }}">
+                    <i class="bi bi-person-badge"></i>
+                  </button>
+                </form>
+                {% endif %}
                 <!-- Apagar (não apaga admin principal) -->
                 {% if u.email != 'admin@escola.pt' %}
                 <form method="post" action="{{ url_for('apagar_utilizador', uid=u.id) }}" class="d-inline"

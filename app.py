@@ -174,7 +174,9 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if session.get("role") != "admin":
+        # Verifica o role original (caso esteja em modo de impersonação)
+        role_efectivo = session.get("original_role") or session.get("role")
+        if role_efectivo != "admin":
             flash("Acesso restrito a administradores.", "danger")
             return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
@@ -388,6 +390,51 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+# ─── Impersonação ──────────────────────────────────────────────────────────────
+
+@app.route("/admin/impersonar/<int:uid>", methods=["POST"])
+@login_required
+@admin_required
+def impersonar(uid):
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    if not user:
+        flash("Utilizador não encontrado.", "danger")
+        return redirect(url_for("admin_panel"))
+    if user["role"] == "admin":
+        flash("Não é possível personificar outro administrador.", "danger")
+        return redirect(url_for("admin_panel"))
+
+    # Guardar sessão original do admin
+    session["original_user_id"] = session["user_id"]
+    session["original_nome"]    = session["nome"]
+    session["original_role"]    = session["role"]
+    session["original_turma"]   = session.get("turma", "")
+
+    # Assumir identidade do PT
+    session["user_id"] = user["id"]
+    session["nome"]    = user["nome"]
+    session["role"]    = user["role"]
+    session["turma"]   = user["turma"] or ""
+
+    flash(f"A personificar {user['nome']}. Clica em «Sair da personificação» para voltar.", "warning")
+    return redirect(url_for("dashboard"))
+
+@app.route("/admin/sair-impersonacao")
+@login_required
+def sair_impersonacao():
+    if "original_user_id" not in session:
+        return redirect(url_for("dashboard"))
+
+    # Restaurar sessão original
+    session["user_id"] = session.pop("original_user_id")
+    session["nome"]    = session.pop("original_nome")
+    session["role"]    = session.pop("original_role")
+    session["turma"]   = session.pop("original_turma")
+
+    flash("Sessão de personificação terminada.", "success")
+    return redirect(url_for("admin_panel"))
 
 @app.route("/alterar-password", methods=["GET", "POST"])
 @login_required

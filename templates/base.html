@@ -96,7 +96,14 @@
     </button>
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav ms-auto align-items-center gap-2">
-        {% if session.role == 'admin' %}
+        {% if session.original_role == 'admin' %}
+        <li class="nav-item">
+          <a class="btn btn-warning btn-sm fw-semibold" href="{{ url_for('sair_impersonacao') }}">
+            <i class="bi bi-person-x me-1"></i>Sair da personificação
+          </a>
+        </li>
+        {% endif %}
+        {% if session.role == 'admin' or session.original_role == 'admin' %}
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
             <i class="bi bi-shield-lock me-1"></i>Admin
@@ -151,6 +158,14 @@
 </nav>
 
 <div class="container-fluid py-4">
+  {% if session.original_role == 'admin' %}
+  <div class="alert alert-warning d-flex align-items-center justify-content-between mx-3 mb-3" role="alert">
+    <span><i class="bi bi-person-badge me-2"></i>A personificar <strong>{{ session.nome }}</strong> ({{ session.turma or 'sem turma' }})</span>
+    <a href="{{ url_for('sair_impersonacao') }}" class="btn btn-sm btn-warning fw-semibold">
+      <i class="bi bi-person-x me-1"></i>Sair da personificação
+    </a>
+  </div>
+  {% endif %}
   {% with msgs = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in msgs %}
     <div class="alert alert-{{ cat }} alert-dismissible fade show mx-3" role="alert">
