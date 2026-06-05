@@ -474,7 +474,7 @@
   });
 
   // Carregar conteúdo guardado
-  const conteudoInicial = {{ sintese_nr.texto | tojson if sintese_nr.texto else '""' }};
+  const conteudoInicial = {{ notas_reuniao.get('sintese', {}).get('texto', '') | tojson }};
   if (conteudoInicial) quillSintese.root.innerHTML = conteudoInicial;
 
   const alunoId = document.getElementById('sintese-aluno-id').value;
