@@ -73,46 +73,42 @@
     }
     .ap-alerta-item { display: flex; align-items: center; gap: .6rem; margin-top: .4rem; }
 
-    /* ── Coluna direita: tabela + notas ── */
-    .ap-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    #tabela-area { flex: 1; overflow: auto; padding: .8rem 1.2rem; }
+    /* ── Coluna direita: tabela + abas de notas ── */
+    .ap-right { flex: 1; overflow-y: auto; padding: .8rem 1.2rem 0; }
+    #tabela-area { margin-bottom: 0; }
 
-    /* ── Barra de notas inferior ── */
-    .notas-bar {
-      flex-shrink: 0;
+    /* ── Abas de notas ── */
+    .notas-tabs-wrap {
       border-top: 2px solid var(--borda);
-      background: rgba(0,0,0,.18);
-      padding: .9rem 1.4rem;
-      display: flex; gap: 1.2rem;
-      max-height: 38vh; overflow-y: auto;
+      margin: .8rem -1.2rem 0;
     }
-    .notas-bar-cat { flex: 1; min-width: 0; }
-    .notas-bar-titulo {
-      font-size: .9rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .5px; margin-bottom: .35rem; display: flex; align-items: center; gap: .4rem;
+    .notas-tabs-bar {
+      display: flex; gap: 0;
+      background: rgba(0,0,0,.25);
+      border-bottom: 1px solid var(--borda);
+      overflow-x: auto;
     }
-    .notas-bar-texto {
-      font-size: 1.3rem; line-height: 1.55; opacity: .92; white-space: pre-wrap;
-    }
-    .notas-sintese-area {
-      flex-shrink: 0;
-      border-top: 1px solid var(--borda);
-      background: rgba(6,182,212,.06);
-      padding: .8rem 1.4rem;
-      max-height: 35vh; overflow-y: auto;
-    }
-    .notas-sintese-titulo {
-      font-size: .9rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .5px; color: #67e8f9; margin-bottom: .4rem;
+    .notas-tab-btn {
+      background: none; border: none; color: rgba(255,255,255,.5);
+      padding: .6rem 1.4rem; font-size: 1rem; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      border-bottom: 3px solid transparent; margin-bottom: -1px;
+      transition: color .15s, border-color .15s;
       display: flex; align-items: center; gap: .4rem;
     }
-    .notas-sintese-texto {
-      font-size: 1.35rem; line-height: 1.65; opacity: .94;
+    .notas-tab-btn:hover { color: rgba(255,255,255,.8); }
+    .notas-tab-btn.active { color: white; border-bottom-color: var(--azul2); }
+    .notas-tab-pane {
+      padding: 1rem 1.4rem 1.2rem;
+      font-size: 1.3rem; line-height: 1.6; opacity: .92;
     }
-    .notas-sintese-texto p { margin-bottom: .5rem; }
-    .notas-sintese-texto ul, .notas-sintese-texto ol { padding-left: 1.5rem; margin-bottom: .4rem; }
-    .notas-sintese-texto li { margin-bottom: .25rem; }
-    .notas-sintese-texto strong { color: white; }
+    .notas-tab-pane.sintese-pane { background: rgba(6,182,212,.05); }
+    .notas-tab-pane p { margin-bottom: .5rem; }
+    .notas-tab-pane ul, .notas-tab-pane ol { padding-left: 1.5rem; margin-bottom: .4rem; }
+    .notas-tab-pane li { margin-bottom: .25rem; }
+    .notas-tab-pane strong { color: white; }
+    .notas-tab-vazio { opacity: .3; font-style: italic; font-size: 1.1rem; }
+    .notas-tab-plain { white-space: pre-wrap; }
 
     /* Tabela de notas */
     .ap-table { width: 100%; border-collapse: collapse; font-size: 1.2rem; }
@@ -329,13 +325,12 @@
       <div id="alerta-neg"></div>
     </div>
 
-    <!-- Direita: tabela + notas + síntese -->
+    <!-- Direita: tabela + abas de notas -->
     <div class="ap-right" id="painel-dir">
       <div id="tabela-area">
         <div id="tabela-container"></div>
       </div>
-      <div id="notas-bar"></div>
-      <div id="sintese-area"></div>
+      <div id="notas-tabs"></div>
     </div>
   </div>
 
@@ -460,41 +455,42 @@ function mostrar(i) {
     alertEl.innerHTML = '';
   }
 
-  // Notas reunião — barra inferior
+  // Abas de notas
   const cats = [
-    {id:'observacoes',  label:'Observações',    icon:'bi-journal-text',         cor:'#60a5fa'},
-    {id:'preocupacoes', label:'Preocupações',    icon:'bi-exclamation-triangle', cor:'#f87171'},
-    {id:'positivos',    label:'Pontos Positivos',icon:'bi-star',                 cor:'#4ade80'},
-    {id:'apoio_caa',    label:'Apoio / CAA',     icon:'bi-life-preserver',       cor:'#c084fc'},
+    {id:'observacoes',  label:'Observações',     icon:'bi-journal-text',         cor:'#60a5fa'},
+    {id:'preocupacoes', label:'Preocupações',     icon:'bi-exclamation-triangle', cor:'#f87171'},
+    {id:'positivos',    label:'Pontos Positivos', icon:'bi-star',                 cor:'#4ade80'},
+    {id:'apoio_caa',    label:'Apoio / CAA',      icon:'bi-life-preserver',       cor:'#c084fc'},
   ];
   const nr = a.notas_reuniao || {};
-  const catsAtivas = cats.filter(c => (nr[c.id]||'').trim());
   const sintese = (nr['sintese']||'').trim();
+  const catsAtivas = cats.filter(c => (nr[c.id]||'').trim());
 
-  let barHtml = '';
-  if (catsAtivas.length) {
-    barHtml = '<div class="notas-bar">';
-    catsAtivas.forEach(c => {
-      barHtml += `<div class="notas-bar-cat">
-        <div class="notas-bar-titulo" style="color:${c.cor}">
-          <i class="bi ${c.icon}"></i>${c.label}
-        </div>
-        <div class="notas-bar-texto">${nr[c.id]}</div>
-      </div>`;
-    });
-    barHtml += '</div>';
-  }
-  document.getElementById('notas-bar').innerHTML = barHtml;
+  // Montar abas: Síntese sempre primeiro, depois categorias com conteúdo
+  const abas = [
+    {id:'sintese', label:'Síntese', icon:'bi-text-paragraph', cor:'#67e8f9',
+     conteudo: sintese || '<span class="notas-tab-vazio">Sem síntese registada</span>',
+     isHtml: true},
+    ...catsAtivas.map(c => ({
+      id: c.id, label: c.label, icon: c.icon, cor: c.cor,
+      conteudo: nr[c.id], isHtml: false
+    }))
+  ];
 
-  // Síntese global
-  let sinteseHtml = '';
-  if (sintese) {
-    sinteseHtml = `<div class="notas-sintese-area">
-      <div class="notas-sintese-titulo"><i class="bi bi-text-paragraph"></i>Síntese Global</div>
-      <div class="notas-sintese-texto">${sintese}</div>
-    </div>`;
-  }
-  document.getElementById('sintese-area').innerHTML = sinteseHtml;
+  let tabsHtml = '<div class="notas-tabs-wrap"><div class="notas-tabs-bar">';
+  abas.forEach((a, i) => {
+    tabsHtml += `<button class="notas-tab-btn${i===0?' active':''}" onclick="activarAba('${a.id}')">
+      <i class="bi ${a.icon}" style="color:${a.cor}"></i>${a.label}
+    </button>`;
+  });
+  tabsHtml += '</div>';
+  abas.forEach((ab, i) => {
+    const cls = ab.id === 'sintese' ? 'sintese-pane' : '';
+    const conteudo = ab.isHtml ? ab.conteudo : `<div class="notas-tab-plain">${ab.conteudo}</div>`;
+    tabsHtml += `<div class="notas-tab-pane ${cls}" id="pane-${ab.id}" style="display:${i===0?'block':'none'}">${conteudo}</div>`;
+  });
+  tabsHtml += '</div>';
+  document.getElementById('notas-tabs').innerHTML = tabsHtml;
 
   // Tabela
   const discs  = a.disciplinas || [];
@@ -527,8 +523,17 @@ function mostrar(i) {
   document.getElementById('idx-label').textContent = `${i+1}/${ALUNOS.length}`;
   document.getElementById('btn-ant').disabled  = (i <= 0);
   document.getElementById('btn-prox').disabled = (i >= ALUNOS.length - 1);
-  document.getElementById('tabela-area').scrollTop = 0;
+  document.getElementById('painel-dir').scrollTop = 0;
   document.getElementById('painel-esq').scrollTop = 0;
+}
+
+function activarAba(id) {
+  document.querySelectorAll('.notas-tab-btn').forEach(b =>
+    b.classList.toggle('active', b.getAttribute('onclick').includes(`'${id}'`))
+  );
+  document.querySelectorAll('.notas-tab-pane').forEach(p =>
+    p.style.display = p.id === `pane-${id}` ? 'block' : 'none'
+  );
 }
 
 function navegar(dir) {
