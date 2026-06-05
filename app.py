@@ -561,8 +561,8 @@ def aluno(aluno_id):
         flash("Aluno não encontrado.", "danger")
         return redirect(url_for("dashboard"))
     # Verificar permissão (suporta múltiplas turmas)
-    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
-    if session["role"] != "admin" and a["turma"] not in turmas_user:
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
         flash("Não tem permissão para ver este aluno.", "danger")
         return redirect(url_for("dashboard"))
 
@@ -885,8 +885,8 @@ def aluno(aluno_id):
                      for r in notas_reun_rows}
 
     # Permissão de edição
-    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
-    pode_editar = session["role"] == "admin" or a["turma"] in turmas_user
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    pode_editar = session["role"] == "admin" or base_turma(a["turma"]) in turmas_user
 
     # Lista completa de disciplinas para o modal "Adicionar Semestre"
     todas_disciplinas_possiveis = [d for d in ORDEM_TODAS if d not in ("Hora de PT", "Tempo de Trabalho Autónomo")]
@@ -1142,8 +1142,8 @@ def guardar_nota_reuniao(aluno_id):
     if not a:
         return jsonify({"ok": False, "erro": "Aluno não encontrado"}), 404
 
-    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
-    if session["role"] != "admin" and a["turma"] not in turmas_user:
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
         return jsonify({"ok": False, "erro": "Sem permissão"}), 403
 
     data = request.get_json()
@@ -1186,8 +1186,8 @@ def editar_nota(aluno_id):
     if not a:
         return jsonify({"ok": False, "erro": "Aluno não encontrado"}), 404
 
-    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
-    if session["role"] != "admin" and a["turma"] not in turmas_user:
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
         return jsonify({"ok": False, "erro": "Sem permissão"}), 403
 
     data = request.get_json()
@@ -1657,8 +1657,8 @@ def apresentacao(turma):
     db = get_db()
 
     # Verificar permissão
-    turmas_user = [t.strip() for t in (session.get("turma") or "").split(",")]
-    if session["role"] != "admin" and turma not in turmas_user:
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(turma) not in turmas_user:
         flash("Sem permissão para esta turma.", "danger")
         return redirect(url_for("dashboard"))
 
