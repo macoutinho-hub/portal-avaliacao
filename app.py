@@ -672,25 +672,34 @@ def aluno(aluno_id):
     # notas_por_nivel: {nivel(10/11/12): {disciplina: {periodo: val}}}
     notas_por_nivel_raw = {}
     nivel_to_aid = {}  # {nivel_int: aluno_id} — para saber qual aluno_id editar/apagar
+
+    # Pré-computar nivel_base por aluno_id (com base na turma do registo)
+    nivel_base_for_aid = {}
     for ano, aid in todos_alunos_ids.items():
-        # Determinar o nivel base deste registo
         al_info = db.execute("SELECT turma FROM alunos WHERE id=?", (aid,)).fetchone()
         _mn = _re_niv.match(r"(\d+)", str((al_info["turma"] if al_info else "") or ""))
-        nivel_base = int(_mn.group(1)) if _mn else _nivel_atual
-        nivel_to_aid[nivel_base] = aid  # último vence (ano mais recente por causa do sort)
+        nivel_base_for_aid[aid] = int(_mn.group(1)) if _mn else _nivel_atual
 
-        rows = db.execute(
-            "SELECT disciplina, periodo, nota, nota_texto, nivel_curricular FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
-            (aid,)
-        ).fetchall()
-        for r in rows:
-            d   = r["disciplina"]
-            val = r["nota_texto"] if r["nota_texto"] else r["nota"]
-            # nivel: usar campo guardado se existir, senão usar nivel_base do registo
-            nivel = r["nivel_curricular"] if r["nivel_curricular"] else nivel_base
-            notas_por_nivel_raw.setdefault(nivel, {}).setdefault(d, {})[r["periodo"]] = val
-            # garantir que o nivel explícito também tem o aluno_id mapeado
-            nivel_to_aid.setdefault(nivel, aid)
+    # Buscar TODAS as notas de todos os registos do aluno numa só query,
+    # ordenadas por id DESC para que a nota mais recente seja processada primeiro.
+    # Usar setdefault em todo o lado para que o primeiro valor (= mais recente) vença.
+    _all_ids = list(todos_alunos_ids.values())
+    _placeholders = ",".join("?" * len(_all_ids))
+    _all_rows = db.execute(
+        f"SELECT id, aluno_id, disciplina, periodo, nota, nota_texto, nivel_curricular "
+        f"FROM notas WHERE aluno_id IN ({_placeholders}) ORDER BY id DESC",
+        _all_ids
+    ).fetchall()
+    for r in _all_rows:
+        _aid = r["aluno_id"]
+        _nb  = nivel_base_for_aid.get(_aid, _nivel_atual)
+        d    = r["disciplina"]
+        val  = r["nota_texto"] if r["nota_texto"] else r["nota"]
+        nivel = r["nivel_curricular"] if r["nivel_curricular"] else _nb
+        # setdefault: primeiro processado (id mais alto = mais recente) vence
+        notas_por_nivel_raw.setdefault(nivel, {}).setdefault(d, {}).setdefault(r["periodo"], val)
+        # nivel_to_aid aponta para o aluno_id que tem a nota mais recente deste nivel
+        nivel_to_aid.setdefault(nivel, _aid)
 
     # notas_por_ano (alias) — chave é o rótulo do ano curricular para retrocompatibilidade
     notas_por_ano = {nivel_para_rotulo(n): d for n, d in sorted(notas_por_nivel_raw.items())}
