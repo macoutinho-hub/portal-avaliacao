@@ -187,7 +187,20 @@
               {% elif linha.tipo == 'exame' %}exame-row
               {% elif linha.tipo == 'cfd' %}cfd-row
               {% endif %}">
-              <td class="row-label">{{ linha.label }}</td>
+              <td class="row-label">
+                {{ linha.label }}
+                {% if linha.tipo == 'semestre' and pode_editar %}
+                <form method="post" action="{{ url_for('apagar_semestre', aluno_id=aluno.id) }}"
+                      style="display:inline"
+                      onsubmit="return confirm('Apagar todas as notas de {{ linha.label }}?')">
+                  <input type="hidden" name="nota_aluno_id" value="{{ linha.aluno_id }}">
+                  <input type="hidden" name="periodo" value="{{ linha.periodo }}">
+                  <button type="submit" class="btn btn-link p-0 ms-1 text-danger" title="Apagar semestre" style="font-size:.75rem; vertical-align:middle; opacity:.4" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.4">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+                {% endif %}
+              </td>
               {% for disc in todas_disciplinas %}
               {% set n = linha.notas.get(disc) %}
               <td class="{% if loop.index0 == separador_idx %}separador-col{% endif %}">
@@ -203,9 +216,9 @@
                 </span>
               {% elif linha.tipo == 'semestre' %}
                 <span class="nota-cell {% if n is not none and n is number %}{% if n < 10 %}n-neg{% elif n < 14 %}n-med{% elif n < 17 %}n-bom{% else %}n-exc{% endif %}{% elif n is not none %}n-nd{% else %}n-nd{% endif %}"
-                      data-aluno="{{ aluno.id }}"
+                      data-aluno="{{ linha.aluno_id }}"
                       data-disciplina="{{ disc }}"
-                      data-periodo="{{ linha.label.split('—')[1].strip()[0] if '—' in linha.label else '' }}"
+                      data-periodo="{{ linha.periodo }}"
                       onclick="editarNota(this)"
                       title="Clique para editar">
                   {% if n is not none %}

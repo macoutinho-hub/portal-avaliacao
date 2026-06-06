@@ -671,11 +671,13 @@ def aluno(aluno_id):
 
     # notas_por_nivel: {nivel(10/11/12): {disciplina: {periodo: val}}}
     notas_por_nivel_raw = {}
+    nivel_to_aid = {}  # {nivel_int: aluno_id} — para saber qual aluno_id editar/apagar
     for ano, aid in todos_alunos_ids.items():
         # Determinar o nivel base deste registo
         al_info = db.execute("SELECT turma FROM alunos WHERE id=?", (aid,)).fetchone()
         _mn = _re_niv.match(r"(\d+)", str((al_info["turma"] if al_info else "") or ""))
         nivel_base = int(_mn.group(1)) if _mn else _nivel_atual
+        nivel_to_aid[nivel_base] = aid  # último vence (ano mais recente por causa do sort)
 
         rows = db.execute(
             "SELECT disciplina, periodo, nota, nota_texto, nivel_curricular FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
@@ -687,6 +689,8 @@ def aluno(aluno_id):
             # nivel: usar campo guardado se existir, senão usar nivel_base do registo
             nivel = r["nivel_curricular"] if r["nivel_curricular"] else nivel_base
             notas_por_nivel_raw.setdefault(nivel, {}).setdefault(d, {})[r["periodo"]] = val
+            # garantir que o nivel explícito também tem o aluno_id mapeado
+            nivel_to_aid.setdefault(nivel, aid)
 
     # notas_por_ano (alias) — chave é o rótulo do ano curricular para retrocompatibilidade
     notas_por_ano = {nivel_para_rotulo(n): d for n, d in sorted(notas_por_nivel_raw.items())}
@@ -803,16 +807,24 @@ def aluno(aluno_id):
         disc_ano = notas_por_ano[rotulo_ano]
         periodos = sorted({p for d in disc_ano.values() for p in d})
         e_atual  = (rotulo_ano == _ano_atual_key)
+        # aluno_id correcto para este nível (para edição/apagar inline)
+        try:
+            _nivel_int = int(rotulo_ano.split("º")[0])
+        except (ValueError, IndexError):
+            _nivel_int = _nivel_atual
+        aid_linha = nivel_to_aid.get(_nivel_int, aluno_id)
 
         for p in periodos:
             notas_linha = {d: disc_ano.get(d, {}).get(p) for d in todas_disciplinas}
             vals_num = [v for v in notas_linha.values() if isinstance(v, (int, float))]
             linhas.append({
-                "label": f"{rotulo_ano} — {p}º Sem.",
-                "tipo": "semestre",
-                "atual": e_atual,
-                "notas": notas_linha,
-                "media": round(sum(vals_num) / len(vals_num), 1) if vals_num else None,
+                "label":    f"{rotulo_ano} — {p}º Sem.",
+                "tipo":     "semestre",
+                "atual":    e_atual,
+                "notas":    notas_linha,
+                "media":    round(sum(vals_num) / len(vals_num), 1) if vals_num else None,
+                "aluno_id": aid_linha,
+                "periodo":  p,
             })
 
     # ── Carregar auto-avaliação ───────────────────────────────────────────────
@@ -1194,6 +1206,44 @@ def adicionar_semestre(aluno_id):
 
     db.commit()
     flash(f"✓ {guardadas} nota(s) guardada(s) para {ano_letivo} {semestre}º Semestre.", "success")
+    return redirect(url_for("aluno", aluno_id=aluno_id))
+
+
+# ─── Apagar semestre completo ──────────────────────────────────────────────────
+
+@app.route("/aluno/<int:aluno_id>/apagar-semestre", methods=["POST"])
+@login_required
+def apagar_semestre(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        flash("Aluno não encontrado.", "danger")
+        return redirect(url_for("dashboard"))
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for("aluno", aluno_id=aluno_id))
+
+    nota_aluno_id = int(request.form.get("nota_aluno_id", aluno_id))
+    periodo       = int(request.form.get("periodo", 0))
+
+    # Verificar que nota_aluno_id pertence ao mesmo aluno (mesmo número de processo)
+    if a["numero"]:
+        valido = db.execute(
+            "SELECT id FROM alunos WHERE id=? AND numero=?", (nota_aluno_id, a["numero"])
+        ).fetchone()
+    else:
+        valido = {"id": nota_aluno_id} if nota_aluno_id == aluno_id else None
+
+    if not valido:
+        flash("ID de aluno inválido.", "danger")
+        return redirect(url_for("aluno", aluno_id=aluno_id))
+
+    result = db.execute(
+        "DELETE FROM notas WHERE aluno_id=? AND periodo=?", (nota_aluno_id, periodo)
+    )
+    db.commit()
+    flash(f"✓ {result.rowcount} nota(s) apagada(s).", "success")
     return redirect(url_for("aluno", aluno_id=aluno_id))
 
 
