@@ -721,6 +721,7 @@ function editarNota(span) {
         body: JSON.stringify({disciplina, periodo: parseInt(periodo), nota: novaVal})
       });
       const data = await resp.json();
+      console.log('[editar-nota] resposta:', JSON.stringify(data));
       if (data.ok) {
         const nota = data.nota;
         const isTexto = data.is_texto;

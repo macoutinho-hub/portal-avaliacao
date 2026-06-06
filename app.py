@@ -1552,8 +1552,17 @@ def editar_nota(aluno_id):
         )
 
     db.commit()
+
+    # Verificar o que ficou na BD após o commit (debug)
+    rows_after = db.execute(
+        "SELECT id, aluno_id, disciplina, periodo, nota, nota_texto FROM notas "
+        "WHERE disciplina=? AND periodo=? AND aluno_id IN (SELECT id FROM alunos WHERE numero=(SELECT numero FROM alunos WHERE id=?))",
+        (disciplina, periodo, aluno_id)
+    ).fetchall()
+    debug_rows = [{"id": r["id"], "aluno_id": r["aluno_id"], "nota": r["nota"], "nota_texto": r["nota_texto"]} for r in rows_after]
+
     display = nota_texto if nota_texto else nota
-    return jsonify({"ok": True, "nota": display, "is_texto": nota_texto is not None})
+    return jsonify({"ok": True, "nota": display, "is_texto": nota_texto is not None, "_debug": debug_rows})
 
 
 # ─── Fotos ────────────────────────────────────────────────────────────────────
