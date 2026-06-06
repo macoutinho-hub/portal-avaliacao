@@ -899,10 +899,10 @@ def aluno(aluno_id):
     ex2_vals = [v for v in ex2_notas.values() if v is not None]
     if ex1_vals:
         linhas.append({"label": "Exame 1ª Fase", "tipo": "exame", "escala": 200, "atual": False,
-                       "notas": ex1_notas, "media": round(sum(ex1_vals) / len(ex1_vals))})
+                       "notas": ex1_notas, "media": None})
     if ex2_vals:
         linhas.append({"label": "Exame 2ª Fase", "tipo": "exame", "escala": 200, "atual": False,
-                       "notas": ex2_notas, "media": round(sum(ex2_vals) / len(ex2_vals))})
+                       "notas": ex2_notas, "media": None})
 
     # exame_notas em escala 0-20 para cálculo do CFD
     exame_notas = {}
@@ -1925,10 +1925,10 @@ def apresentacao(turma):
         ex2_vals = [v for v in ex2_notas.values() if v is not None]
         if ex1_vals:
             linhas.append({"label":"Exame 1ª Fase","tipo":"exame","escala":200,"atual":False,
-                           "notas":ex1_notas,"media":round(sum(ex1_vals)/len(ex1_vals))})
+                           "notas":ex1_notas,"media":None})
         if ex2_vals:
             linhas.append({"label":"Exame 2ª Fase","tipo":"exame","escala":200,"atual":False,
-                           "notas":ex2_notas,"media":round(sum(ex2_vals)/len(ex2_vals))})
+                           "notas":ex2_notas,"media":None})
 
         # ── Inscrições de exame (11º e 12º) ─────────────────────────────────
         import re as _re_ap
