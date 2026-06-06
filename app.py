@@ -2357,12 +2357,80 @@ def importar_aludisc():
 
     if request.method == "POST":
         f = request.files.get("ficheiro")
-        if not f or not f.filename.endswith((".xlsx", ".xls")):
-            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+        if not f or not f.filename.endswith((".xlsx", ".xls", ".txt")):
+            flash("Por favor carregue um ficheiro .xlsx ou .txt.", "danger")
             return redirect(url_for("importar_aludisc"))
 
         path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
         f.save(path)
+
+        # ── Formato TXT de largura fixa (AluDisc) ──────────────────────────
+        if f.filename.endswith(".txt"):
+            db = get_db()
+            bi_map = {}
+            for a in db.execute("SELECT id, bi, ano_letivo FROM alunos WHERE bi IS NOT NULL AND bi != ''").fetchall():
+                bi_map.setdefault(a["bi"], {})[a["ano_letivo"]] = a["id"]
+
+            import re as _re_txt
+            importados = 0
+            sem_bi_txt = set()
+
+            def _parse_int(s):
+                s = s.strip()
+                if not s: return None
+                try: return int(s)
+                except: return None
+
+            with open(path, encoding="latin-1") as fh:
+                for line in fh:
+                    if len(line) < 38: continue
+                    bi      = line[1:9].strip()
+                    cod     = line[10:14].strip()
+                    ano_n   = _parse_int(line[14:18])
+                    cif_raw = _parse_int(line[24:26])
+                    ex1_raw = _parse_int(line[28:31])
+                    ex2_raw = _parse_int(line[31:34])
+                    cfd_raw = _parse_int(line[36:38])
+
+                    if not bi or not cod or not ano_n: continue
+
+                    ano_letivo = f"{ano_n-1}/{ano_n}"
+                    disc_nome  = MAPA_CODIGOS.get(cod, cod)
+
+                    # Converter exames de 0-200 para 0-20
+                    ex1 = round(ex1_raw / 10, 1) if ex1_raw is not None and ex1_raw > 0 else None
+                    ex2 = round(ex2_raw / 10, 1) if ex2_raw is not None and ex2_raw > 0 else None
+
+                    # Encontrar aluno pelo BI
+                    aluno_id = None
+                    if bi in bi_map:
+                        anos = bi_map[bi]
+                        aluno_id = anos.get(ano_letivo) or anos.get(max(anos.keys()))
+                    if aluno_id is None:
+                        sem_bi_txt.add(bi); continue
+
+                    ex_db = db.execute(
+                        "SELECT id FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+                        (aluno_id, disc_nome, ano_letivo)
+                    ).fetchone()
+                    if ex_db:
+                        db.execute(
+                            "UPDATE notas_finais SET cif=?, exame_f1=?, exame_f2=?, cfd=? WHERE id=?",
+                            (cif_raw, ex1, ex2, cfd_raw, ex_db["id"])
+                        )
+                    else:
+                        db.execute(
+                            "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd) VALUES (?,?,?,?,?,?,?)",
+                            (aluno_id, disc_nome, ano_letivo, cif_raw, ex1, ex2, cfd_raw)
+                        )
+                    importados += 1
+
+            db.commit()
+            msg = f"✓ {importados} registos importados do AluDisc."
+            if sem_bi_txt:
+                msg += f" {len(sem_bi_txt)} BI(s) não encontrado(s)."
+            flash(msg, "success" if not sem_bi_txt else "warning")
+            return redirect(url_for("importar_aludisc"))
 
         db = get_db()
 
