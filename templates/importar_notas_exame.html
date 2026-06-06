@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Importar Classificações de Exame{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:600px">
+  <h4 class="mb-1"><i class="bi bi-mortarboard me-2"></i>Importar Classificações de Exame</h4>
+  <p class="text-muted small mb-4">Carrega as notas de exame (F1/F2) para <code>notas_finais</code>. <strong>Não afecta inscrições.</strong></p>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Ficheiro <strong>AluExame.txt</strong> exportado do sistema escolar.<br>
+        São importados: BI · Código de exame · Fase (1ª ou 2ª) · Classificação (0–200).<br>
+        Alunos que faltaram ("-1") são ignorados.
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro AluExame.txt</label>
+          <input type="file" name="ficheiro" accept=".txt" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-upload me-1"></i>Importar classificações
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-2 text-muted small">
+    <i class="bi bi-info-circle me-1"></i>{{ n_registos }} aluno(s) com nota de exame registada para {{ ano }}.
+  </div>
+
+  {% if sem_bi %}
+  <div class="card mt-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-10 text-warning-emphasis fw-semibold">
+      <i class="bi bi-exclamation-triangle me-1"></i>{{ sem_bi|length }} BI(s) não encontrados
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for bi in sem_bi %}
+          <tr><td class="ps-3 font-monospace">{{ bi }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

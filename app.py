@@ -2547,14 +2547,19 @@ def importar_aludisc():
 
             with open(path, encoding="latin-1") as fh:
                 for line in fh:
-                    if len(line) < 38: continue
+                    if len(line) < 39: continue
+                    # Formato AluDisc (posições 1-based):
+                    # 1-8=BI, 9=dígito controlo, 10-13=cod disciplina,
+                    # 14-17=ano, 18-19=CF10, 20-21=CF11, 22-23=CF12,
+                    # 24-25=CIF, 26-27=estado, 28-30=Ex1(0-200),
+                    # 31-33=Ex2(0-200), 34-35=CFD, 36-37=CFDa, 38=extracurr
                     bi      = line[1:9].strip()
                     cod     = line[10:14].strip()
                     ano_n   = _parse_int(line[14:18])
                     cif_raw = _parse_int(line[24:26])
                     ex1_raw = _parse_int(line[28:31])
                     ex2_raw = _parse_int(line[31:34])
-                    cfd_raw = _parse_int(line[36:38])
+                    cfd_raw = _parse_int(line[34:36]) or _parse_int(line[36:38])  # CFD; fallback CFDa
 
                     if not bi or not cod or not ano_n: continue
 
@@ -2790,6 +2795,122 @@ def importar_aluexame():
 
     n = db.execute("SELECT COUNT(*) FROM inscricoes_exame WHERE ano_letivo=?", (ano,)).fetchone()[0]
     return render_template("importar_aluexame.html", n_registos=n, ano=ano, sem_bi=[])
+
+
+# ─── Importar classificações de exame (AluExame.txt) ─────────────────────────
+
+@app.route("/admin/importar-notas-exame", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_notas_exame():
+    """Importa classificações de exame do ficheiro AluExame.txt.
+    Estrutura (posições 1-based, ficheiro com espaço inicial na posição 0):
+      1-8   BI          9  Tipo BI
+      10-12 Cód. exame  13 Fase (1/2)
+      14 Pauta  15 Aprovação  16 Melhoria  17 Ingresso
+      18-21 Cód. disciplina
+      22-24 Classificação exame (0-200; -1 = faltou)
+      25-27 Comp. escrita  28-30 Comp. oral
+    """
+    db = get_db()
+    ano = ano_letivo_atual(db)
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.endswith(".txt"):
+            flash("Por favor carregue um ficheiro .txt.", "danger")
+            return redirect(url_for("importar_notas_exame"))
+
+        path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+        f.save(path)
+
+        # Construir mapa BI → {ano_letivo → aluno_id}
+        bi_map = {}
+        for a in db.execute("SELECT id, bi, ano_letivo FROM alunos WHERE bi IS NOT NULL AND bi != ''").fetchall():
+            bi_map.setdefault(a["bi"], {})[a["ano_letivo"]] = a["id"]
+
+        importados = 0
+        sem_bi = set()
+        faltaram = 0
+
+        def _pi(s):
+            s = s.strip()
+            if not s or s == "-1": return None
+            try: return int(s)
+            except: return None
+
+        with open(path, encoding="latin-1") as fh:
+            for line in fh:
+                line = line.rstrip("\n")
+                if len(line) < 25: continue
+
+                bi        = line[1:9].strip()
+                cod_exame = line[10:13].strip()
+                fase      = line[13].strip()
+                nota_raw  = _pi(line[22:25])
+
+                if not bi or not cod_exame or fase not in ("1", "2"): continue
+
+                # "-1" = faltou → ignorar
+                raw_field = line[22:25].strip()
+                if raw_field == "-1":
+                    faltaram += 1
+                    continue
+
+                if nota_raw is None: continue
+
+                disc_nome = MAPA_COD_EXAME.get(cod_exame)
+                if not disc_nome: continue
+
+                # Converter 0-200 → 0-20
+                nota = round(nota_raw / 10, 1)
+
+                # Encontrar aluno pelo BI
+                aluno_id = None
+                if bi in bi_map:
+                    anos = bi_map[bi]
+                    aluno_id = anos.get(ano) or anos.get(max(anos.keys()))
+                if aluno_id is None:
+                    sem_bi.add(bi); continue
+
+                campo_exame = "exame_f1" if fase == "1" else "exame_f2"
+
+                ex = db.execute(
+                    "SELECT id FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+                    (aluno_id, disc_nome, ano)
+                ).fetchone()
+                if ex:
+                    db.execute(
+                        f"UPDATE notas_finais SET {campo_exame}=? WHERE id=?",
+                        (nota, ex["id"])
+                    )
+                else:
+                    f1 = nota if fase == "1" else None
+                    f2 = nota if fase == "2" else None
+                    db.execute(
+                        "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, exame_f1, exame_f2) VALUES (?,?,?,?,?)",
+                        (aluno_id, disc_nome, ano, f1, f2)
+                    )
+                importados += 1
+
+        db.commit()
+        msg = f"✓ {importados} classificações importadas."
+        if faltaram:
+            msg += f" {faltaram} registo(s) ignorado(s) (aluno faltou)."
+        if sem_bi:
+            msg += f" {len(sem_bi)} BI(s) não encontrado(s)."
+        flash(msg, "success" if not sem_bi else "warning")
+        n = db.execute(
+            "SELECT COUNT(*) FROM notas_finais WHERE ano_letivo=? AND (exame_f1 IS NOT NULL OR exame_f2 IS NOT NULL)",
+            (ano,)
+        ).fetchone()[0]
+        return render_template("importar_notas_exame.html", n_registos=n, ano=ano, sem_bi=sorted(sem_bi))
+
+    n = db.execute(
+        "SELECT COUNT(*) FROM notas_finais WHERE ano_letivo=? AND (exame_f1 IS NOT NULL OR exame_f2 IS NOT NULL)",
+        (ano,)
+    ).fetchone()[0]
+    return render_template("importar_notas_exame.html", n_registos=n, ano=ano, sem_bi=[])
 
 
 @app.route("/admin/importar-notas", methods=["GET", "POST"])
