@@ -638,7 +638,7 @@ function editarAutoAv(span) {
         span.textContent = v !== null ? v : '—';
         span.className = 'nota-cell ' + (v === null ? 'n-nd' : corClasse(v));
         span.style.border = '2px dashed #9333ea';
-        setTimeout(() => location.reload(), 600);
+        setTimeout(() => window.location.href = window.location.pathname, 600);
       } else {
         span.textContent = valorActual || '—';
         alert('Erro: ' + data.erro);
@@ -736,7 +736,7 @@ function editarNota(span) {
         span.dataset.periodo = periodo;
         span.setAttribute('onclick', 'editarNota(this)');
         span.classList.add('edit-ok');
-        setTimeout(() => { span.classList.remove('edit-ok'); location.reload(); }, 800);
+        setTimeout(() => { span.classList.remove('edit-ok'); window.location.href = window.location.pathname; }, 800);
       } else {
         span.textContent = valorActual || '—';
         span.classList.add('edit-err');

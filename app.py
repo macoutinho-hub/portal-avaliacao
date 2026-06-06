@@ -6,7 +6,7 @@ from functools import wraps
 from datetime import datetime
 
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, flash, g, jsonify)
+                   session, flash, g, jsonify, make_response)
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import openpyxl
@@ -1033,7 +1033,7 @@ def aluno(aluno_id):
     aluno_anterior = ids_turma[idx_atual - 1] if idx_atual > 0 else None
     aluno_seguinte = ids_turma[idx_atual + 1] if idx_atual >= 0 and idx_atual < len(ids_turma) - 1 else None
 
-    return render_template("aluno.html", aluno=a,
+    resp = make_response(render_template("aluno.html", aluno=a,
                            todas_disciplinas=todas_disciplinas,
                            todas_disciplinas_possiveis=todas_disciplinas_possiveis,
                            abreviaturas=ABREVIATURAS,
@@ -1047,7 +1047,9 @@ def aluno(aluno_id):
                            aa_canonical=aa_canonical,
                            colegas=colegas,
                            aluno_anterior=aluno_anterior,
-                           aluno_seguinte=aluno_seguinte)
+                           aluno_seguinte=aluno_seguinte))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 # ─── Auto-avaliação ───────────────────────────────────────────────────────────
 
