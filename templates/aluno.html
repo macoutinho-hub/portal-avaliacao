@@ -745,6 +745,9 @@ function editarNota(span) {
       }
     } catch(e) {
       span.textContent = valorActual || '—';
+      span.classList.add('edit-err');
+      setTimeout(() => span.classList.remove('edit-err'), 1500);
+      alert('Erro ao guardar nota. Tente novamente.');
     }
     span.classList.remove('saving');
   }

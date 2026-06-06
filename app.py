@@ -1517,10 +1517,25 @@ def editar_nota(aluno_id):
         except ValueError:
             return jsonify({"ok": False, "erro": "Valor inválido"}), 400
 
+    # Procurar a nota primeiro pelo aluno_id da URL; se não encontrar,
+    # tentar todos os registos do mesmo aluno (mesmo número de processo).
+    # Isto resolve casos em que a nota está sob um aluno_id histórico diferente.
     existing = db.execute(
         "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
         (aluno_id, disciplina, periodo)
     ).fetchone()
+
+    if not existing and a["numero"]:
+        outros_ids = [r["id"] for r in db.execute(
+            "SELECT id FROM alunos WHERE numero=? AND id!=?", (a["numero"], aluno_id)
+        ).fetchall()]
+        for oid in outros_ids:
+            existing = db.execute(
+                "SELECT id FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+                (oid, disciplina, periodo)
+            ).fetchone()
+            if existing:
+                break
 
     if existing:
         if nota is None and nota_texto is None:
