@@ -721,12 +721,7 @@ function editarNota(span) {
         body: JSON.stringify({disciplina, periodo: parseInt(periodo), nota: novaVal})
       });
       const data = await resp.json();
-      console.log('[editar-nota] resposta:', JSON.stringify(data));
       if (data.ok) {
-        // DEBUG TEMPORÁRIO — remover após diagnóstico
-        const dbInfo = (data._debug || []).map(r => `id=${r.id} aluno=${r.aluno_id} nota=${r.nota} texto=${r.nota_texto}`).join('\n') || '(sem linhas)';
-        alert(`✓ BD após guardar:\n${dbInfo}`);
-        // FIM DEBUG
         const nota = data.nota;
         const isTexto = data.is_texto;
         if (nota !== null && isTexto) {
