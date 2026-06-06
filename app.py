@@ -1001,10 +1001,13 @@ def aluno(aluno_id):
     # Lista completa de disciplinas para o modal "Adicionar Semestre"
     todas_disciplinas_possiveis = [d for d in ORDEM_TODAS if d not in ("Hora de PT", "Tempo de Trabalho Autónomo")]
 
-    # ── Navegação: alunos da mesma turma ordenados por nome ─────────────────
+    # ── Navegação: alunos da mesma turma base (ex: 12A2 SE + 12A2 LH) ──────
+    turma_base = base_turma(a["turma"])
+    turmas_nav = turmas_base_para_sql(turma_base, db, a["ano_letivo"])
+    ph = ",".join("?" * len(turmas_nav))
     colegas = db.execute(
-        "SELECT id, nome FROM alunos WHERE turma=? AND ano_letivo=? ORDER BY nome",
-        (a["turma"], a["ano_letivo"])
+        f"SELECT id, nome FROM alunos WHERE turma IN ({ph}) AND ano_letivo=? ORDER BY nome",
+        (*turmas_nav, a["ano_letivo"])
     ).fetchall()
     ids_turma = [c["id"] for c in colegas]
     idx_atual = ids_turma.index(aluno_id) if aluno_id in ids_turma else -1
