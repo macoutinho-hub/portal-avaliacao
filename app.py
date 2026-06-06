@@ -14,6 +14,11 @@ import openpyxl
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
+import math as _math
+def arred(x):
+    """Arredondamento aritmético: .5 arredonda sempre para cima (evita banker's rounding do Python)."""
+    return int(_math.floor(x + 0.5))
+
 DATABASE = os.environ.get("DATABASE", "portal.db")
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "uploads")
 FOTOS_FOLDER  = os.environ.get("FOTOS_FOLDER", os.path.join(os.path.dirname(DATABASE) if os.path.dirname(DATABASE) else ".", "fotos"))
@@ -863,7 +868,7 @@ def aluno(aluno_id):
     cif_notas = {}
     for d in todas_disciplinas:
         if d in nf_cif:
-            cif_notas[d] = round(nf_cif[d])  # oficial → usar directamente
+            cif_notas[d] = arred(nf_cif[d])  # oficial → usar directamente
         else:
             # CIF = média do 2º semestre de cada ano (com fallback para 1º sem. se não houver 2º)
             # Para alunos de 11º: 2º sem 10º + 2º sem 11º (ou 1º sem 11º se não houver 2º)
@@ -879,10 +884,10 @@ def aluno(aluno_id):
                 nota = disc_ano.get(d, {}).get(periodo_escolhido)
                 if isinstance(nota, (int, float)):
                     notas_2s.append(nota)
-            cif_notas[d] = round(sum(notas_2s) / len(notas_2s)) if notas_2s else None
+            cif_notas[d] = arred(sum(notas_2s) / len(notas_2s)) if notas_2s else None
 
     cif_vals = [v for v in cif_notas.values() if v is not None]
-    cif_media = round(sum(cif_vals) / len(cif_vals)) if cif_vals else None
+    cif_media = arred(sum(cif_vals) / len(cif_vals)) if cif_vals else None
 
     linhas.append({
         "label": "CIF",
@@ -922,14 +927,14 @@ def aluno(aluno_id):
     cfd_notas = {}
     for d in todas_disciplinas:
         if d in nf_cfd:
-            cfd_notas[d] = round(nf_cfd[d])
+            cfd_notas[d] = arred(nf_cfd[d])  # importado com exames → usar directamente
         elif cif_notas.get(d) is not None and exame_notas.get(d) is not None:
-            cfd_notas[d] = round((7.5 * cif_notas[d] + 2.5 * exame_notas[d]) / 10)
+            cfd_notas[d] = arred((7.5 * cif_notas[d] + 2.5 * exame_notas[d]) / 10)
         else:
             cfd_notas[d] = cif_notas.get(d)  # sem exame → CFD = CIF
 
     cfd_vals = [v for v in cfd_notas.values() if v is not None]
-    cfd_media = round(sum(cfd_vals) / len(cfd_vals)) if cfd_vals else None
+    cfd_media = arred(sum(cfd_vals) / len(cfd_vals)) if cfd_vals else None
 
     # ── Inscrições de exame (só para 11º e 12º) ──────────────────────────────
     if _nivel_atual in (11, 12):
@@ -1902,22 +1907,25 @@ def apresentacao(turma):
                                 "atual": ano == a["ano_letivo"], "notas": nl,
                                 "media": round(sum(vals)/len(vals),1) if vals else None})
 
-        # CIF: média das notas do 2º semestre de cada ano — arredondada à unidade
+        # CIF: oficial (importado) ou média dos 2ºs semestres — arredondamento aritmético
         cif = {}
         for d in todas:
-            ns = []
-            for ano_k, da_k in notas_por_ano.items():
-                pds = sorted(da_k.get(d, {}).keys())
-                if not pds: continue
-                pf = 2 if 2 in pds else pds[-1]
-                n = da_k.get(d, {}).get(pf)
-                if n is not None: ns.append(n)
-            cif[d] = round(sum(ns)/len(ns)) if ns else None  # arredondado à unidade
+            if d in ap_cif_of:
+                cif[d] = arred(ap_cif_of[d])  # oficial → usar directamente
+            else:
+                ns = []
+                for ano_k, da_k in notas_por_ano.items():
+                    pds = sorted(da_k.get(d, {}).keys())
+                    if not pds: continue
+                    pf = 2 if 2 in pds else pds[-1]
+                    n = da_k.get(d, {}).get(pf)
+                    if n is not None: ns.append(n)
+                cif[d] = arred(sum(ns)/len(ns)) if ns else None
         cv = [v for v in cif.values() if v is not None]
-        cm = round(sum(cv)/len(cv)) if cv else None
+        cm = arred(sum(cv)/len(cv)) if cv else None
         linhas.append({"label":"CIF","tipo":"cif","atual":True,"notas":cif,"media":cm})
 
-        # ── Notas de exame da tabela notas_finais ────────────────────────────
+        # ── Notas de exame/CIF/CFD da tabela notas_finais ────────────────────
         if a["numero"]:
             ap_ids = [r["id"] for r in db.execute(
                 "SELECT id FROM alunos WHERE numero=?", (a["numero"],)
@@ -1926,13 +1934,15 @@ def apresentacao(turma):
             ap_ids = [a["id"]]
         ap_ph = ",".join("?" * len(ap_ids))
         nf_ap = db.execute(
-            f"SELECT disciplina, exame_f1, exame_f2 FROM notas_finais WHERE aluno_id IN ({ap_ph})",
+            f"SELECT disciplina, cif, exame_f1, exame_f2, cfd FROM notas_finais WHERE aluno_id IN ({ap_ph})",
             ap_ids
         ).fetchall()
-        ap_ex1, ap_ex2 = {}, {}
-        for r in nf_ap:
-            if r["exame_f1"] is not None: ap_ex1[r["disciplina"]] = r["exame_f1"]
-            if r["exame_f2"] is not None: ap_ex2[r["disciplina"]] = r["exame_f2"]
+        ap_cif_of, ap_ex1, ap_ex2, ap_cfd_of = {}, {}, {}, {}
+        for r in sorted(nf_ap, key=lambda x: x["disciplina"]):
+            if r["cif"]      is not None: ap_cif_of[r["disciplina"]] = r["cif"]
+            if r["exame_f1"] is not None: ap_ex1[r["disciplina"]]    = r["exame_f1"]
+            if r["exame_f2"] is not None: ap_ex2[r["disciplina"]]    = r["exame_f2"]
+            if r["cfd"]      is not None: ap_cfd_of[r["disciplina"]] = r["cfd"]
 
         # Converter 0-20 → 0-200 pontos (inteiro)
         ex1_notas = {d: (round(ap_ex1[d] * 10) if ap_ex1.get(d) is not None else None) for d in todas}
@@ -1974,7 +1984,30 @@ def apresentacao(turma):
                     "atual": False, "notas": insc_notas_ap, "media": None,
                 })
 
-        linhas.append({"label":"CFD","tipo":"cfd","atual":False,"notas":dict(cif),"media":cm})
+        # CFD: oficial (importado com exame) ou calculado (7.5×CIF + 2.5×Exame)/10; sem exame → CFD = CIF
+        ap_exame = {}
+        for d in todas:
+            f1 = ap_ex1.get(d)
+            f2 = ap_ex2.get(d)
+            if f1 is not None and f2 is not None:
+                ap_exame[d] = max(f1, f2)
+            elif f1 is not None:
+                ap_exame[d] = f1
+            elif f2 is not None:
+                ap_exame[d] = f2
+            else:
+                ap_exame[d] = None
+        cfd_ap = {}
+        for d in todas:
+            if d in ap_cfd_of:
+                cfd_ap[d] = arred(ap_cfd_of[d])
+            elif cif.get(d) is not None and ap_exame.get(d) is not None:
+                cfd_ap[d] = arred((7.5 * cif[d] + 2.5 * ap_exame[d]) / 10)
+            else:
+                cfd_ap[d] = cif.get(d)  # sem exame → CFD = CIF
+        cfd_ap_vals = [v for v in cfd_ap.values() if v is not None]
+        cfd_ap_media = arred(sum(cfd_ap_vals)/len(cfd_ap_vals)) if cfd_ap_vals else None
+        linhas.append({"label":"CFD","tipo":"cfd","atual":False,"notas":cfd_ap,"media":cfd_ap_media})
 
         # Notas de reunião
         nr_rows = db.execute(
