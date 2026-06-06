@@ -18,9 +18,24 @@
     </div>
   </div>
 
-  {% if n_registos %}
   <div class="mt-3 text-muted small">
     <i class="bi bi-info-circle me-1"></i>{{ n_registos }} inscrições registadas para {{ ano }}.
+  </div>
+
+  {% if sem_bi %}
+  <div class="card mt-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-10 text-warning-emphasis fw-semibold">
+      <i class="bi bi-exclamation-triangle me-1"></i>{{ sem_bi|length }} BI(s) não encontrados
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for bi in sem_bi %}
+          <tr><td class="ps-3 font-monospace">{{ bi }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
   {% endif %}
 </div>

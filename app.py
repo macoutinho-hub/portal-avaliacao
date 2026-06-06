@@ -2784,10 +2784,12 @@ def importar_aluexame():
         if sem_bi:
             msg += f" {len(sem_bi)} BI(s) não encontrados."
         flash(msg, "success" if not sem_bi else "warning")
-        return redirect(url_for("importar_aluexame"))
+        n = db.execute("SELECT COUNT(*) FROM inscricoes_exame WHERE ano_letivo=?", (ano,)).fetchone()[0]
+        return render_template("importar_aluexame.html", n_registos=n, ano=ano,
+                               sem_bi=sorted(sem_bi))
 
     n = db.execute("SELECT COUNT(*) FROM inscricoes_exame WHERE ano_letivo=?", (ano,)).fetchone()[0]
-    return render_template("importar_aluexame.html", n_registos=n, ano=ano)
+    return render_template("importar_aluexame.html", n_registos=n, ano=ano, sem_bi=[])
 
 
 @app.route("/admin/importar-notas", methods=["GET", "POST"])
