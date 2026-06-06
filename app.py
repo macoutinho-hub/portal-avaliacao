@@ -1001,6 +1001,16 @@ def aluno(aluno_id):
     # Lista completa de disciplinas para o modal "Adicionar Semestre"
     todas_disciplinas_possiveis = [d for d in ORDEM_TODAS if d not in ("Hora de PT", "Tempo de Trabalho Autónomo")]
 
+    # ── Navegação: alunos da mesma turma ordenados por nome ─────────────────
+    colegas = db.execute(
+        "SELECT id, nome FROM alunos WHERE turma=? AND ano_letivo=? ORDER BY nome",
+        (a["turma"], a["ano_letivo"])
+    ).fetchall()
+    ids_turma = [c["id"] for c in colegas]
+    idx_atual = ids_turma.index(aluno_id) if aluno_id in ids_turma else -1
+    aluno_anterior = ids_turma[idx_atual - 1] if idx_atual > 0 else None
+    aluno_seguinte = ids_turma[idx_atual + 1] if idx_atual >= 0 and idx_atual < len(ids_turma) - 1 else None
+
     return render_template("aluno.html", aluno=a,
                            todas_disciplinas=todas_disciplinas,
                            todas_disciplinas_possiveis=todas_disciplinas_possiveis,
@@ -1012,7 +1022,10 @@ def aluno(aluno_id):
                            notas_reuniao=notas_reuniao,
                            categorias_reuniao=CATEGORIAS_REUNIAO,
                            pode_editar=pode_editar,
-                           aa_canonical=aa_canonical)
+                           aa_canonical=aa_canonical,
+                           colegas=colegas,
+                           aluno_anterior=aluno_anterior,
+                           aluno_seguinte=aluno_seguinte)
 
 # ─── Auto-avaliação ───────────────────────────────────────────────────────────
 

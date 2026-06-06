@@ -55,9 +55,35 @@
 {% block content %}
 <div class="px-3">
 
-  <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary mb-3">
-    <i class="bi bi-arrow-left me-1"></i>Voltar à turma
-  </a>
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Turma
+    </a>
+
+    {% if aluno_anterior %}
+    <a href="{{ url_for('aluno', aluno_id=aluno_anterior) }}" class="btn btn-sm btn-outline-primary" title="Aluno anterior">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    {% else %}
+    <button class="btn btn-sm btn-outline-primary" disabled><i class="bi bi-chevron-left"></i></button>
+    {% endif %}
+
+    <select class="form-select form-select-sm" style="max-width:260px"
+            onchange="window.location=this.value">
+      {% for c in colegas %}
+      <option value="{{ url_for('aluno', aluno_id=c.id) }}"
+              {% if c.id == aluno.id %}selected{% endif %}>{{ c.nome }}</option>
+      {% endfor %}
+    </select>
+
+    {% if aluno_seguinte %}
+    <a href="{{ url_for('aluno', aluno_id=aluno_seguinte) }}" class="btn btn-sm btn-outline-primary" title="Aluno seguinte">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+    {% else %}
+    <button class="btn btn-sm btn-outline-primary" disabled><i class="bi bi-chevron-right"></i></button>
+    {% endif %}
+  </div>
 
   <div class="card border-0 shadow mb-4">
 
