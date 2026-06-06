@@ -562,7 +562,19 @@ function mostrar(i) {
       <th class="media-col">Média</th>
     </tr></thead><tbody>`;
 
+    const inscColors = {M:'#fef3c7;color:#92400e', I:'#dbeafe;color:#1e40af', E:'#dcfce7;color:#166534', PI:'#f3f4f6;color:#6b7280'};
     linhas.forEach(l => {
+      if (l.tipo === 'inscricao') {
+        html += `<tr class="inscricao-row" style="font-size:.68rem">
+          <td class="label-col" style="font-size:.68rem;color:#4338ca;font-weight:600">Insc. Exame</td>
+          ${discs.map((d,i) => {
+            const v = l.notas[d];
+            const style = v && inscColors[v] ? `background:${inscColors[v].split(';')[0].replace('background:','')};${inscColors[v].split(';')[1]||''}` : '';
+            return `<td${i===a.separador_idx?' class="sep-col"':''}>${v ? `<span style="border-radius:3px;padding:1px 4px;font-weight:700;font-size:.68rem;background:${inscColors[v]?.split(';')[0]?.replace(/[^#\w]/g,'') || '#f3f4f6'};color:${inscColors[v]?.split(';')[1]?.replace('color:','') || '#6b7280'};border:1px solid rgba(0,0,0,.1)">${v}</span>` : '<span style="opacity:.2">—</span>'}</td>`;
+          }).join('')}
+          <td class="media-col"></td>`;
+        return;
+      }
       const cls = l.tipo==='cif' ? 'cif-row' : l.tipo==='cfd' ? 'cfd-row' : l.tipo==='exame' ? 'exame-row' : l.tipo==='auto_av' ? 'auto-av-row' : (l.atual ? 'atual-row' : '');
       html += `<tr class="${cls}">
         <td class="label-col">${l.label}</td>

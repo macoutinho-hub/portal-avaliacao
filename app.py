@@ -121,6 +121,18 @@ def init_db():
             valor      INTEGER,
             UNIQUE(aluno_id, disciplina, ano_letivo)
         );
+
+        CREATE TABLE IF NOT EXISTS inscricoes_exame (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id     INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            disciplina   TEXT NOT NULL,
+            cod_exame    TEXT NOT NULL,
+            interno      TEXT NOT NULL DEFAULT 'N',
+            aprovacao    TEXT NOT NULL DEFAULT 'N',
+            melhoria     TEXT NOT NULL DEFAULT 'N',
+            ano_letivo   TEXT NOT NULL,
+            UNIQUE(aluno_id, cod_exame, ano_letivo)
+        );
     """)
     db.commit()
 
@@ -185,6 +197,26 @@ def admin_required(f):
 # ─── Utilitários de turma ─────────────────────────────────────────────────────
 
 import re as _re_global
+
+# Mapeamento código de exame → nome de disciplina na BD
+MAPA_COD_EXAME = {
+    "639": "Português",
+    "635": "Matemática A",
+    "735": "Matemática B",
+    "835": "Matemática Aplicada Ciências Sociais",
+    "702": "Biologia e Geologia",
+    "715": "Física e Química A",
+    "719": "Geografia A",
+    "712": "Economia A",
+    "714": "Filosofia",
+    "623": "História A",
+    "723": "História B",
+    "724": "História da Cultura e das Artes",
+    "706": "Desenho A",
+    "708": "Geometria Descritiva A",
+    "734": "Literatura Portuguesa",
+    "550": "Líng. Estrang. I - Inglês",
+}
 
 # Nomes de colunas usados nas pautas do 11º → nome canónico da BD
 # Chaves em minúsculas para comparação case-insensitive
@@ -898,6 +930,34 @@ def aluno(aluno_id):
 
     cfd_vals = [v for v in cfd_notas.values() if v is not None]
     cfd_media = round(sum(cfd_vals) / len(cfd_vals)) if cfd_vals else None
+
+    # ── Inscrições de exame (só para 11º e 12º) ──────────────────────────────
+    if _nivel_atual in (11, 12):
+        insc_rows = db.execute(
+            "SELECT disciplina, interno, aprovacao, melhoria FROM inscricoes_exame "
+            "WHERE aluno_id=? AND ano_letivo=?",
+            (aluno_id, a["ano_letivo"])
+        ).fetchall()
+        if insc_rows:
+            def _tipo_inscricao(interno, aprovacao, melhoria):
+                if melhoria == "S": return "M"
+                if interno  == "S": return "I"
+                if interno  == "N" and (aprovacao == "S" or melhoria != "S"): return "E"
+                return "PI"
+            insc_map = {}
+            for r in insc_rows:
+                # mapear para nome canónico se necessário
+                d_can = disc_canonical.get(r["disciplina"], r["disciplina"])
+                insc_map[d_can] = _tipo_inscricao(r["interno"], r["aprovacao"], r["melhoria"])
+            insc_notas = {d: insc_map.get(d) for d in todas_disciplinas}
+            linhas.append({
+                "label": "Inscrição Exame",
+                "tipo": "inscricao",
+                "atual": False,
+                "notas": insc_notas,
+                "media": None,
+            })
+
     linhas.append({
         "label": "CFD",
         "tipo": "cfd",
@@ -1870,6 +1930,34 @@ def apresentacao(turma):
             linhas.append({"label":"Exame 2ª Fase","tipo":"exame","escala":200,"atual":False,
                            "notas":ex2_notas,"media":round(sum(ex2_vals)/len(ex2_vals))})
 
+        # ── Inscrições de exame (11º e 12º) ─────────────────────────────────
+        import re as _re_ap
+        _m_ap = _re_ap.match(r"(\d+)", str(a["turma"] or ""))
+        _nivel_ap = int(_m_ap.group(1)) if _m_ap else 0
+        if _nivel_ap in (11, 12):
+            insc_ap = db.execute(
+                "SELECT disciplina, interno, aprovacao, melhoria FROM inscricoes_exame "
+                "WHERE aluno_id=? AND ano_letivo=?",
+                (a["id"], a["ano_letivo"])
+            ).fetchall()
+            if insc_ap:
+                def _ti(i, ap, m):
+                    if m == "S": return "M"
+                    if i == "S": return "I"
+                    if i == "N": return "E"
+                    return "PI"
+                insc_map_ap = {}
+                for r in insc_ap:
+                    d_c = canon_ap.get(r["disciplina"], r["disciplina"])
+                    insc_map_ap[d_c] = _ti(r["interno"], r["aprovacao"], r["melhoria"])
+                insc_notas_ap = {d: insc_map_ap.get(d) for d in todas}
+                # Inserir antes do CFD
+                cfd_idx = next((i for i, l in enumerate(linhas) if l["tipo"] == "cfd"), len(linhas))
+                linhas.insert(cfd_idx, {
+                    "label": "Insc. Exame", "tipo": "inscricao",
+                    "atual": False, "notas": insc_notas_ap, "media": None,
+                })
+
         linhas.append({"label":"CFD","tipo":"cfd","atual":False,"notas":dict(cif),"media":cm})
 
         # Notas de reunião
@@ -2548,6 +2636,82 @@ def importar_aludisc():
     except Exception:
         n = 0
     return render_template("importar_aludisc.html", n_registos=n)
+
+
+# ─── Importar inscrições de exame (AluExame.txt) ──────────────────────────────
+
+@app.route("/admin/importar-aluexame", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_aluexame():
+    db = get_db()
+    ano = ano_letivo_atual(db)
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.endswith(".txt"):
+            flash("Por favor carregue um ficheiro .txt.", "danger")
+            return redirect(url_for("importar_aluexame"))
+
+        path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+        f.save(path)
+
+        # Construir mapa BI → {ano_letivo → aluno_id}
+        bi_map = {}
+        for a in db.execute("SELECT id, bi, ano_letivo FROM alunos WHERE bi IS NOT NULL AND bi != ''").fetchall():
+            bi_map.setdefault(a["bi"], {})[a["ano_letivo"]] = a["id"]
+
+        importados = 0
+        sem_bi = set()
+
+        with open(path, encoding="latin-1") as fh:
+            for line in fh:
+                line = line.rstrip("\n")
+                if len(line) < 19: continue
+                bi        = line[1:9].strip()
+                cod_exame = line[10:13].strip()
+                interno   = line[15:16].strip() or "N"
+                aprovacao = line[16:17].strip() or "N"
+                melhoria  = line[17:18].strip() or "N"
+
+                if not bi or not cod_exame: continue
+
+                disc_nome = MAPA_COD_EXAME.get(cod_exame)
+                if not disc_nome: continue  # código desconhecido
+
+                # Encontrar aluno pelo BI
+                aluno_id = None
+                if bi in bi_map:
+                    anos = bi_map[bi]
+                    aluno_id = anos.get(ano) or anos.get(max(anos.keys()))
+                if aluno_id is None:
+                    sem_bi.add(bi); continue
+
+                ex = db.execute(
+                    "SELECT id FROM inscricoes_exame WHERE aluno_id=? AND cod_exame=? AND ano_letivo=?",
+                    (aluno_id, cod_exame, ano)
+                ).fetchone()
+                if ex:
+                    db.execute(
+                        "UPDATE inscricoes_exame SET disciplina=?, interno=?, aprovacao=?, melhoria=? WHERE id=?",
+                        (disc_nome, interno, aprovacao, melhoria, ex["id"])
+                    )
+                else:
+                    db.execute(
+                        "INSERT INTO inscricoes_exame (aluno_id, disciplina, cod_exame, interno, aprovacao, melhoria, ano_letivo) VALUES (?,?,?,?,?,?,?)",
+                        (aluno_id, disc_nome, cod_exame, interno, aprovacao, melhoria, ano)
+                    )
+                importados += 1
+
+        db.commit()
+        msg = f"✓ {importados} inscrições importadas."
+        if sem_bi:
+            msg += f" {len(sem_bi)} BI(s) não encontrados."
+        flash(msg, "success" if not sem_bi else "warning")
+        return redirect(url_for("importar_aluexame"))
+
+    n = db.execute("SELECT COUNT(*) FROM inscricoes_exame WHERE ano_letivo=?", (ano,)).fetchone()[0]
+    return render_template("importar_aluexame.html", n_registos=n, ano=ano)
 
 
 @app.route("/admin/importar-notas", methods=["GET", "POST"])
