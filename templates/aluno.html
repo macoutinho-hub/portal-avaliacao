@@ -287,11 +287,20 @@
               </span>
             </div>
             {% if pode_editar %}
+            {% if cat_id == 'apoio_caa' %}
+            <div class="d-flex justify-content-end mb-1">
+              <label class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.75rem; cursor:pointer" title="Importar medidas de uma Ficha de Sinalização (.docx)">
+                <i class="bi bi-upload me-1"></i>Importar Ficha
+                <input type="file" accept=".docx" class="d-none" id="inputFichaCAA-{{ aluno.id }}" onchange="importarFichaCAA(this, {{ aluno.id }})">
+              </label>
+            </div>
+            {% endif %}
             <textarea
               class="form-control nota-reuniao-textarea border-0 bg-transparent"
               style="resize:vertical; min-height:90px; font-size:.88rem"
               data-aluno="{{ aluno.id }}"
               data-categoria="{{ cat_id }}"
+              id="textarea-{{ cat_id }}-{{ aluno.id }}"
               placeholder="Clique para adicionar notas..."
             >{{ nr.texto if nr.texto else '' }}</textarea>
             {% else %}
@@ -749,5 +758,89 @@ function editarNota(span) {
     }
   });
 }
+
+// ── Importar Ficha de Sinalização → Medidas de Apoio / CAA ──────────────────
+
+async function importarFichaCAA(input, alunoId) {
+  const ficheiro = input.files[0];
+  if (!ficheiro) return;
+
+  // Limpar input para permitir re-upload do mesmo ficheiro
+  input.value = '';
+
+  const formData = new FormData();
+  formData.append('ficheiro', ficheiro);
+
+  let data;
+  try {
+    const resp = await fetch(`/aluno/${alunoId}/importar-ficha-caa`, {
+      method: 'POST',
+      body: formData,
+    });
+    data = await resp.json();
+  } catch (e) {
+    alert('Erro de rede ao processar o ficheiro.');
+    return;
+  }
+
+  if (!data.ok) {
+    alert('Erro: ' + data.erro);
+    return;
+  }
+
+  // Preencher modal
+  document.getElementById('fichaModalPreview').textContent = data.texto_preview;
+  document.getElementById('fichaModalAviso').style.display = data.tinha_conteudo ? 'block' : 'none';
+  document.getElementById('fichaModalTextoFinal').value = data.texto_final;
+  document.getElementById('fichaModalAlunoId').value = alunoId;
+
+  const modal = new bootstrap.Modal(document.getElementById('modalImportarFicha'));
+  modal.show();
+}
+
+async function confirmarImportarFicha() {
+  const alunoId  = document.getElementById('fichaModalAlunoId').value;
+  const textoFinal = document.getElementById('fichaModalTextoFinal').value;
+
+  // Fechar modal
+  bootstrap.Modal.getInstance(document.getElementById('modalImportarFicha')).hide();
+
+  // Actualizar textarea visivelmente
+  const ta = document.getElementById(`textarea-apoio_caa-${alunoId}`);
+  if (ta) {
+    ta.value = textoFinal;
+    ta.dispatchEvent(new Event('blur')); // dispara o auto-save
+  }
+}
 </script>
+
+<!-- Modal: pré-visualização da importação da Ficha de Sinalização -->
+<div class="modal fade" id="modalImportarFicha" tabindex="-1" aria-labelledby="modalImportarFichaLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#f3e8ff; border-bottom:1px solid #d8b4fe">
+        <h5 class="modal-title fw-semibold" id="modalImportarFichaLabel" style="color:#7e22ce">
+          <i class="bi bi-life-preserver me-2"></i>Importar Medidas de Apoio / CAA
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-2" style="font-size:.85rem">Medidas extraídas da Ficha de Sinalização:</p>
+        <pre id="fichaModalPreview" class="p-3 rounded" style="font-size:.85rem; background:#f9f5ff; border:1px solid #e9d5ff; white-space:pre-wrap; word-break:break-word"></pre>
+        <div id="fichaModalAviso" class="alert alert-warning py-2 mt-2 mb-0" style="font-size:.82rem; display:none">
+          <i class="bi bi-info-circle me-1"></i>Já existe conteúdo no campo — as medidas serão <strong>acrescentadas</strong> no final.
+        </div>
+        <input type="hidden" id="fichaModalTextoFinal">
+        <input type="hidden" id="fichaModalAlunoId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sm text-white" style="background:#9333ea" onclick="confirmarImportarFicha()">
+          <i class="bi bi-check-lg me-1"></i>Confirmar e Inserir
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

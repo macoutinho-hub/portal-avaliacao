@@ -1359,6 +1359,124 @@ def guardar_nota_reuniao(aluno_id):
     return jsonify({"ok": True, "updated_at": agora})
 
 
+# ─── Importar Ficha de Sinalização → apoio_caa ───────────────────────────────
+
+def _extrair_medidas_docx(filepath):
+    """Extrai as medidas de actuação de uma Ficha de Sinalização (.docx).
+
+    Devolve uma lista de strings (cada medida sem bullet).
+    Lança ValueError se não encontrar a estrutura esperada.
+    """
+    from docx import Document as _DocxDocument
+    doc = _DocxDocument(filepath)
+
+    # A tabela relevante é a segunda (índice 1): Características | Atuação
+    if len(doc.tables) < 2:
+        raise ValueError("Documento não tem a estrutura esperada (tabela Características/Atuação não encontrada).")
+
+    table = doc.tables[1]
+    atuacao_text = None
+
+    for row in table.rows:
+        cells = row.cells
+        if len(cells) < 2:
+            continue
+        txt1 = cells[1].text.strip()
+        txt1_lower = txt1.lower()
+        # Saltar cabeçalho e observações
+        if not txt1 or 'observa' in txt1_lower:
+            continue
+        if 'atuação' in txt1_lower or 'medidas a implementar' in txt1_lower:
+            continue
+        # Célula com as medidas contém referência ao DL 54 ou "pode/irá beneficiar"
+        if ('dl 54' in txt1_lower or 'medidas universais' in txt1_lower
+                or 'pode beneficiar' in txt1_lower or 'irá beneficiar' in txt1_lower):
+            atuacao_text = txt1
+            break
+
+    if not atuacao_text:
+        raise ValueError("Não foi possível identificar o campo de medidas de atuação no documento.")
+
+    _ignorar = ('dl 54', 'art.', 'medidas universais', 'pode beneficiar',
+                'irá beneficiar', 'compensar', 'alineas', 'alíneas')
+
+    bullets = []
+    for line in atuacao_text.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        # Formato com traço explícito (ex: "- Permitir tempo suplementar...")
+        if line.startswith('-'):
+            texto = line[1:].strip().rstrip(';').rstrip('.')
+            if texto:
+                bullets.append(texto)
+        # Linhas curtas terminadas em ; (sem marcador explícito, ex: Diana)
+        elif (line.endswith(';') and len(line) < 180
+              and not any(x in line.lower() for x in _ignorar)):
+            bullets.append(line.rstrip(';').strip())
+        # Linhas curtas terminadas em . (última medida sem ;)
+        elif (line.endswith('.') and len(line) < 180
+              and not any(x in line.lower() for x in _ignorar)):
+            bullets.append(line.rstrip('.').strip())
+
+    return bullets
+
+
+@app.route("/aluno/<int:aluno_id>/importar-ficha-caa", methods=["POST"])
+@login_required
+def importar_ficha_caa(aluno_id):
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        return jsonify({"ok": False, "erro": "Aluno não encontrado"}), 404
+
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
+        return jsonify({"ok": False, "erro": "Sem permissão"}), 403
+
+    f = request.files.get("ficheiro")
+    if not f or not f.filename.lower().endswith(".docx"):
+        return jsonify({"ok": False, "erro": "Por favor carregue um ficheiro .docx"}), 400
+
+    import tempfile, os as _os
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+        tmp_path = tmp.name
+        f.save(tmp_path)
+
+    try:
+        medidas = _extrair_medidas_docx(tmp_path)
+    except ValueError as e:
+        return jsonify({"ok": False, "erro": str(e)}), 422
+    finally:
+        _os.unlink(tmp_path)
+
+    if not medidas:
+        return jsonify({"ok": False, "erro": "Não foram encontradas medidas no documento."}), 422
+
+    # Texto formatado com bullets
+    novo_texto = "\n".join(f"• {m}" for m in medidas)
+
+    # Verificar conteúdo existente para acrescentar ou substituir
+    existente = db.execute(
+        "SELECT texto FROM notas_reuniao WHERE aluno_id=? AND categoria='apoio_caa'",
+        (aluno_id,)
+    ).fetchone()
+    texto_actual = (existente["texto"] or "").strip() if existente else ""
+
+    if texto_actual:
+        texto_final = texto_actual + "\n\n" + novo_texto
+    else:
+        texto_final = novo_texto
+
+    return jsonify({
+        "ok": True,
+        "medidas": medidas,
+        "texto_preview": novo_texto,
+        "texto_final": texto_final,
+        "tinha_conteudo": bool(texto_actual),
+    })
+
+
 # ─── Edição de nota ───────────────────────────────────────────────────────────
 
 @app.route("/aluno/<int:aluno_id>/editar-nota", methods=["POST"])
