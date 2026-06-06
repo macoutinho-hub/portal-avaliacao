@@ -562,15 +562,16 @@ function mostrar(i) {
       <th class="media-col">Média</th>
     </tr></thead><tbody>`;
 
-    const inscColors = {M:'#fef3c7;color:#92400e', I:'#dbeafe;color:#1e40af', E:'#dcfce7;color:#166534', PI:'#f3f4f6;color:#6b7280'};
+    const inscColors = {M:'#f97316', I:'#16a34a', E:'#dc2626', PI:'#9ca3af'};
+    const inscTitles = {M:'Melhoria', I:'Interno', E:'Externo', PI:'Prova de Ingresso'};
     linhas.forEach(l => {
       if (l.tipo === 'inscricao') {
-        html += `<tr class="inscricao-row" style="font-size:.68rem">
-          <td class="label-col" style="font-size:.68rem;color:#4338ca;font-weight:600">Insc. Exame</td>
+        html += `<tr class="inscricao-row" style="font-size:.68rem;border-top:2px solid #818cf8">
+          <td class="label-col" style="font-size:.68rem;color:#a5b4fc;font-weight:800;text-transform:uppercase;letter-spacing:.5px">Insc. Exame</td>
           ${discs.map((d,i) => {
             const v = l.notas[d];
-            const style = v && inscColors[v] ? `background:${inscColors[v].split(';')[0].replace('background:','')};${inscColors[v].split(';')[1]||''}` : '';
-            return `<td${i===a.separador_idx?' class="sep-col"':''}>${v ? `<span style="border-radius:3px;padding:1px 4px;font-weight:700;font-size:.68rem;background:${inscColors[v]?.split(';')[0]?.replace(/[^#\w]/g,'') || '#f3f4f6'};color:${inscColors[v]?.split(';')[1]?.replace('color:','') || '#6b7280'};border:1px solid rgba(0,0,0,.1)">${v}</span>` : '<span style="opacity:.2">—</span>'}</td>`;
+            const bg = v ? inscColors[v] : null;
+            return `<td${i===a.separador_idx?' class="sep-col"':''}>${v ? `<span style="border-radius:4px;padding:2px 6px;font-weight:800;font-size:.72rem;background:${bg};color:white;display:inline-block" title="${inscTitles[v]||v}">${v}</span>` : '<span style="opacity:.2">—</span>'}</td>`;
           }).join('')}
           <td class="media-col"></td>`;
         return;

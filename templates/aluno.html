@@ -27,14 +27,14 @@
   .tabela-perfil tr.exame-row td { background: #fafafa; font-style: italic; color: #6b7280; }
   .tabela-perfil tr.cfd-row td { background: #1a3c6e; color: white; font-weight: 700; }
   .tabela-perfil tr.cfd-row td.row-label { background: #1a3c6e; color: white; }
-  .tabela-perfil tr.inscricao-row td { background: #f0f4ff; border-top: 2px solid #c7d2fe; }
-  .tabela-perfil tr.inscricao-row td.row-label { color: #4338ca; font-size:.72rem; font-weight:600; letter-spacing:.3px; }
+  .tabela-perfil tr.inscricao-row td { background: #eef2ff; border-top: 2px solid #818cf8; }
+  .tabela-perfil tr.inscricao-row td.row-label { color: #3730a3; font-size:.72rem; font-weight:700; letter-spacing:.3px; text-transform:uppercase; }
   .tabela-perfil tr.inscricao-row td { padding: 2px 4px; }
-  .insc-badge { border-radius:3px; padding:1px 5px; font-weight:700; font-size:.72rem; display:inline-block; }
-  .insc-M { background:#fef3c7; color:#92400e; border:1px solid #fbbf24; }
-  .insc-I { background:#dbeafe; color:#1e40af; border:1px solid #60a5fa; }
-  .insc-E { background:#dcfce7; color:#166534; border:1px solid #4ade80; }
-  .insc-PI { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; }
+  .insc-badge { border-radius:4px; padding:2px 6px; font-weight:800; font-size:.72rem; display:inline-block; cursor:default; }
+  .insc-M { background:#f97316; color:white; }
+  .insc-I { background:#16a34a; color:white; }
+  .insc-E { background:#dc2626; color:white; }
+  .insc-PI { background:#9ca3af; color:white; }
   .nota-cell { border-radius: 4px; padding: 2px 6px; font-weight: 600; display: inline-block; min-width: 28px; cursor: pointer; }
   .nota-cell:hover { opacity: .8; outline: 2px solid #2563eb; }
   .nota-edit-input { width: 44px; border: 2px solid #2563eb; border-radius: 4px; text-align: center; font-weight: 600; font-size: .82rem; padding: 1px 3px; outline: none; }
@@ -145,7 +145,10 @@
               {% for disc in todas_disciplinas %}
               {% set v = linha.notas.get(disc) %}
               <td class="{% if loop.index0 == separador_idx %}separador-col{% endif %}">
-                {% if v %}<span class="insc-badge insc-{{ v }}">{{ v }}</span>{% else %}<span style="color:#d1d5db">—</span>{% endif %}
+                {% if v %}
+                {% set _titles = {'M':'Melhoria','I':'Interno','E':'Externo','PI':'Prova de Ingresso'} %}
+                <span class="insc-badge insc-{{ v }}" title="{{ _titles.get(v, v) }}">{{ v }}</span>
+                {% else %}<span style="color:#d1d5db">—</span>{% endif %}
               </td>
               {% endfor %}
               <td class="media-cell"></td>
