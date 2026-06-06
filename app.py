@@ -2358,6 +2358,82 @@ MAPA_DISC_GLOBAL = {
 }
 
 
+# ─── Importar BI dos alunos (Dados Alunos) ───────────────────────────────────
+
+@app.route("/admin/importar-bi", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_bi():
+    db = get_db()
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.endswith((".xlsx", ".xls")):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_bi"))
+
+        path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+        f.save(path)
+
+        wb = openpyxl.load_workbook(path, data_only=True)
+        ws = wb.active
+
+        # Detectar linha de cabeçalho (tem "Nº BI" e "N.º Processo")
+        header_idx = None
+        headers = []
+        for i, row in enumerate(ws.iter_rows(min_row=1, max_row=5, values_only=True)):
+            vals = [str(v or "").strip() for v in row]
+            if any("BI" in v for v in vals) and any("Processo" in v for v in vals):
+                header_idx = i + 1
+                headers = vals
+                break
+        if header_idx is None:
+            flash("Cabeçalho não encontrado (esperado: 'Nº BI' e 'N.º Processo').", "danger")
+            return redirect(url_for("importar_bi"))
+
+        def ci(names):
+            for n in names:
+                for i, h in enumerate(headers):
+                    if n.lower() in h.lower(): return i
+            return None
+
+        idx_bi      = ci(["nº bi", "bi"])
+        idx_numero  = ci(["n.º processo", "processo", "numero interno", "n.º aluno"])
+
+        if idx_bi is None or idx_numero is None:
+            flash("Colunas 'Nº BI' e 'N.º Processo' não encontradas.", "danger")
+            return redirect(url_for("importar_bi"))
+
+        atualizados = 0
+        nao_enc = 0
+        for row in ws.iter_rows(min_row=header_idx + 1, values_only=True):
+            bi_raw  = str(row[idx_bi] or "").strip() if idx_bi < len(row) else ""
+            num_raw = str(row[idx_numero] or "").strip() if idx_numero < len(row) else ""
+            if not bi_raw or not num_raw or bi_raw == "None": continue
+            # Normalizar BI: só dígitos, primeiros 8
+            import re as _re_bi
+            bi = _re_bi.sub(r"[^0-9]", "", bi_raw)[:8]
+            if not bi: continue
+            r = db.execute(
+                "UPDATE alunos SET bi=? WHERE numero=? AND (bi IS NULL OR bi='')",
+                (bi, num_raw)
+            )
+            if r.rowcount > 0:
+                atualizados += 1
+            else:
+                # Verificar se o aluno existe
+                existe = db.execute("SELECT id FROM alunos WHERE numero=?", (num_raw,)).fetchone()
+                if not existe: nao_enc += 1
+
+        db.commit()
+        msg = f"✓ {atualizados} BI(s) actualizados."
+        if nao_enc: msg += f" {nao_enc} número(s) não encontrados."
+        flash(msg, "success" if not nao_enc else "warning")
+        return redirect(url_for("importar_bi"))
+
+    n = db.execute("SELECT COUNT(*) FROM alunos WHERE bi IS NOT NULL AND bi != ''").fetchone()[0]
+    return render_template("importar_bi.html", n_com_bi=n)
+
+
 # ─── Ferramenta de auditoria de notas em falta (admin) ────────────────────────
 
 @app.route("/admin/auditoria-notas")
