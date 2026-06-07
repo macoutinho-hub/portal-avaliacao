@@ -132,6 +132,39 @@ def ols_predict(coefs, features):
 
 # ─── Recolha de dados ──────────────────────────────────────────────────────────
 
+# Mesma ordem de apresentação das disciplinas usada na ficha individual do
+# aluno (ver ORDEM_TODAS em app.py) — mantida aqui para que a área pedagógica
+# apresente as disciplinas pela mesma ordem familiar ao utilizador, em vez de
+# ordem alfabética.
+ORDEM_DISCIPLINAS = [
+    "Português", "Líng. Estrang. I - Inglês", "Inglês",
+    "Filosofia", "Educação Física", "Religião", "Projeto",
+    "Matemática A", "Desenho A", "Desenho Geral", "História A",
+    "Biologia e Geologia", "Biologia",
+    "Física e Química A", "Física", "Química",
+    "Geometria Descritiva A",
+    "Economia A", "Economia C",
+    "Geografia A",
+    "História Geral",
+    "Matemática B", "Matemática Geral", "Matemática Aplicada Ciências Sociais",
+    "Filosofia A", "Ciência Política",
+    "Psicologia B", "Aplicações Informáticas B", "Oficinas",
+    "Literatura Portuguesa", "Alemão", "Espanhol", "Francês",
+    "Hora de PT", "Tempo de Trabalho Autónomo",
+]
+
+
+def _pos_disciplina(disciplina):
+    """Posição de uma disciplina na ordem de apresentação da ficha do aluno
+    (correspondência exata ou pelos primeiros caracteres, para apanhar
+    variantes como "Inglês 7" / "Inglês 11"). Disciplinas desconhecidas vão
+    para o fim, por ordem alfabética entre si."""
+    for i, nome in enumerate(ORDEM_DISCIPLINAS):
+        if disciplina == nome or (len(nome) >= 6 and disciplina.startswith(nome[:6])):
+            return i
+    return len(ORDEM_DISCIPLINAS)
+
+
 def nivel_de_turma(turma):
     """Extrai o nível curricular (10/11/12) do nome da turma. Default: 11."""
     import re
@@ -302,7 +335,7 @@ def posicionamento_por_disciplina(observacoes, aluno_id, ano_letivo, periodo=Non
             "percentil_ano":  percentil_ano,
         })
 
-    resultado.sort(key=lambda r: r["disciplina"])
+    resultado.sort(key=lambda r: (_pos_disciplina(r["disciplina"]), r["disciplina"]))
     return resultado
 
 
@@ -345,7 +378,7 @@ def perfil_academico(observacoes, aluno_id, limiar_z=1.0):
     desvio_pessoal = statistics.pstdev(valores) if len(valores) > 1 else 0.0
 
     disciplinas = []
-    for disciplina, media in sorted(medias_disc.items()):
+    for disciplina, media in sorted(medias_disc.items(), key=lambda kv: (_pos_disciplina(kv[0]), kv[0])):
         diferenca = media - media_global
         z = (diferenca / desvio_pessoal) if desvio_pessoal > 1e-9 else 0.0
         if z >= limiar_z:
@@ -500,15 +533,40 @@ def nota_esperada_e_desvio(modelo, aluno_id, disciplina, periodo, ano_letivo):
 
 # ─── Evolução temporal ─────────────────────────────────────────────────────────
 
+def _grupo_aluno(observacoes, aluno_id):
+    """Devolve o conjunto de `aluno_id` que correspondem ao MESMO aluno ao
+    longo de vários anos letivos (a BD cria um registo de aluno por ano
+    letivo, ligados pelo nº de aluno). Isto permite construir uma evolução
+    temporal contínua "desde o 1º semestre do 10º ano", e não apenas dentro
+    do ano letivo actual.
+
+    Se o aluno não tiver número (ou for um caso isolado), devolve apenas o
+    seu próprio id.
+    """
+    numero = None
+    for o in observacoes:
+        if o["aluno_id"] == aluno_id:
+            numero = o["numero"]
+            break
+    if not numero:
+        return {aluno_id}
+    return {o["aluno_id"] for o in observacoes if o["numero"] == numero} | {aluno_id}
+
+
 def evolucao_temporal(observacoes, aluno_id):
     """Série temporal da média global do aluno e, quando possível, da sua
     posição relativa (ranking/percentil no ano), ao longo dos
     (ano_letivo, período) disponíveis, ordenada cronologicamente.
 
+    Considera TODOS os anos letivos do aluno (ligados pelo nº de aluno),
+    cobrindo assim toda a sua passagem pelo secundário (tipicamente desde o
+    1º período do 10º ano), e não só o ano letivo actual.
+
     Devolve lista de dicts:
       {ano_letivo, periodo, media_aluno, media_ano, percentil_ano, n_disciplinas}
     """
-    aluno_obs = [o for o in observacoes if o["aluno_id"] == aluno_id]
+    ids_aluno = _grupo_aluno(observacoes, aluno_id)
+    aluno_obs = [o for o in observacoes if o["aluno_id"] in ids_aluno]
     if not aluno_obs:
         return []
 
@@ -542,6 +600,53 @@ def evolucao_temporal(observacoes, aluno_id):
         })
 
     return serie
+
+
+def evolucao_por_disciplina(observacoes, aluno_id):
+    """Para cada disciplina com histórico, devolve a série cronológica de
+    classificações do aluno ao longo de TODOS os anos letivos disponíveis
+    (ligados pelo nº de aluno — desde o 1º período do 10º ano, tipicamente),
+    pronta para desenhar pequenos gráficos de evolução por disciplina.
+
+    Disciplinas com menos de 2 classificações são omitidas (nada para traçar).
+
+    Devolve lista ordenada pela mesma ordem de apresentação da ficha do aluno:
+      [{disciplina, media, ultima_nota,
+        pontos: [{ano_letivo, periodo, nivel, nota, rotulo}, ...]}, ...]
+    """
+    ids_aluno = _grupo_aluno(observacoes, aluno_id)
+    aluno_obs = [o for o in observacoes if o["aluno_id"] in ids_aluno]
+    if not aluno_obs:
+        return []
+
+    por_disciplina = defaultdict(list)
+    for o in aluno_obs:
+        por_disciplina[o["disciplina"]].append(o)
+
+    resultado = []
+    for disciplina, lst in por_disciplina.items():
+        pontos = sorted(lst, key=lambda o: (o["ano_letivo"], o["periodo"]))
+        if len(pontos) < 2:
+            continue
+        notas = [o["nota"] for o in pontos]
+        resultado.append({
+            "disciplina":  disciplina,
+            "media":       round(statistics.mean(notas), 1),
+            "ultima_nota": notas[-1],
+            "pontos": [
+                {
+                    "ano_letivo": o["ano_letivo"],
+                    "periodo":    o["periodo"],
+                    "nivel":      o["nivel"],
+                    "nota":       o["nota"],
+                    "rotulo":     f"{o['nivel']}º·{o['periodo']}S",
+                }
+                for o in pontos
+            ],
+        })
+
+    resultado.sort(key=lambda d: (_pos_disciplina(d["disciplina"]), d["disciplina"]))
+    return resultado
 
 
 def deteccao_mudancas_bruscas(serie_evolucao, limiar=2.0):
@@ -585,6 +690,7 @@ def analisar_aluno(db, aluno_id):
     posicionamento = posicionamento_por_disciplina(observacoes, aluno_id, ano_letivo_aluno)
     perfil = perfil_academico(observacoes, aluno_id)
     evolucao = evolucao_temporal(observacoes, aluno_id)
+    evolucao_disciplinas = evolucao_por_disciplina(observacoes, aluno_id)
     mudancas = deteccao_mudancas_bruscas(evolucao)
 
     # Nota esperada vs real para a disciplina/período mais recente de cada disciplina
@@ -599,6 +705,7 @@ def analisar_aluno(db, aluno_id):
             "periodo":      p["periodo"],
             "nota_real":    p["nota"],
             "nota_esperada": esperada,
+            "alerta":       None,   # preenchido abaixo se |z| ≥ 1.5 — usado para destacar a linha toda
         }
         if esperada is not None:
             desvio = round(p["nota"] - esperada, 1)
@@ -607,9 +714,11 @@ def analisar_aluno(db, aluno_id):
             linha["z"] = z
             if z <= -1.5:
                 tipo = "abaixo_forte" if z <= -2.0 else "abaixo"
+                linha["alerta"] = tipo
                 outliers.append({**linha, "tipo": tipo})
             elif z >= 1.5:
                 tipo = "acima_forte" if z >= 2.0 else "acima"
+                linha["alerta"] = tipo
                 outliers.append({**linha, "tipo": tipo})
         nota_esperada_tabela.append(linha)
 
@@ -622,6 +731,7 @@ def analisar_aluno(db, aluno_id):
         "posicionamento":        posicionamento,
         "perfil":                perfil,
         "evolucao":              evolucao,
+        "evolucao_disciplinas":  evolucao_disciplinas,
         "mudancas_bruscas":      mudancas,
         "nota_esperada_tabela":  nota_esperada_tabela,
         "outliers":              outliers,

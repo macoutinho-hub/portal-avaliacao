@@ -61,6 +61,21 @@
   table.an-table tbody tr:hover td { background: var(--an-row-hover); }
   table.an-table td.lbl { text-align:left; font-weight:700; }
 
+  tr.an-row-alerta-baixo td   { background: rgba(239,68,68,.10); }
+  tr.an-row-alerta-baixo:hover td { background: rgba(239,68,68,.18); }
+  tr.an-row-alerta-baixo td.lbl { border-left: 4px solid #ef4444; }
+  tr.an-row-alerta-alto td    { background: rgba(34,197,94,.10); }
+  tr.an-row-alerta-alto:hover td  { background: rgba(34,197,94,.18); }
+  tr.an-row-alerta-alto td.lbl  { border-left: 4px solid #16a34a; }
+  [data-an-theme="dark"] tr.an-row-alerta-baixo td { background: rgba(239,68,68,.20); }
+  [data-an-theme="dark"] tr.an-row-alerta-baixo:hover td { background: rgba(239,68,68,.28); }
+  [data-an-theme="dark"] tr.an-row-alerta-alto td  { background: rgba(34,197,94,.20); }
+  [data-an-theme="dark"] tr.an-row-alerta-alto:hover td  { background: rgba(34,197,94,.28); }
+
+  .mini-disc { border: 1px solid var(--an-border); border-radius: 10px; padding: .55rem .6rem .35rem; height: 100%; }
+  .mini-disc .mini-titulo { font-size: .76rem; font-weight: 700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mini-disc .mini-canvas-wrap { height: 78px; margin-top: .25rem; }
+
   .alerta-card { border-left: 5px solid #ef4444; background: color-mix(in srgb, #ef4444 8%, var(--an-card-bg)); }
   .excelencia-card { border-left: 5px solid #16a34a; background: color-mix(in srgb, #16a34a 8%, var(--an-card-bg)); }
   .item-destaque { display:flex; justify-content:space-between; align-items:center; padding: .5rem .25rem; border-bottom: 1px dashed var(--an-border); }
@@ -336,7 +351,7 @@
           </thead>
           <tbody>
             {% for l in an.nota_esperada_tabela %}
-            <tr>
+            <tr class="{% if l.alerta and l.alerta.startswith('abaixo') %}an-row-alerta-baixo{% elif l.alerta and l.alerta.startswith('acima') %}an-row-alerta-alto{% endif %}">
               <td class="lbl">{{ l.disciplina }}</td>
               <td>{{ l.periodo }}º Sem.</td>
               <td><strong>{{ "%.0f"|format(l.nota_real) }}</strong></td>
@@ -373,10 +388,39 @@
   {% if an.evolucao|length > 1 %}
   <div class="card an-card mb-4">
     <div class="card-body">
-      <div class="secao-titulo mb-3"><i class="bi bi-clock-history"></i>Evolução Temporal</div>
-      <canvas id="graficoEvolucao" height="100"></canvas>
+      <div class="secao-titulo mb-1"><i class="bi bi-clock-history"></i>Evolução Temporal</div>
+      <p class="secao-sub mb-2">Média global do aluno ao longo de todos os anos letivos disponíveis (desde o 1º período do 10º ano), comparada com a média e o percentil do ano/nível.</p>
+      <div style="height: 230px">
+        <canvas id="graficoEvolucao"></canvas>
+      </div>
     </div>
   </div>
+  {% endif %}
+
+  <!-- ── EVOLUÇÃO POR DISCIPLINA ───────────────────────────────────── -->
+  {% if an.evolucao_disciplinas %}
+  <div class="card an-card mb-4">
+    <div class="card-body">
+      <div class="secao-titulo mb-1"><i class="bi bi-graph-up"></i>Evolução por Disciplina</div>
+      <p class="secao-sub mb-3">Todas as classificações de cada disciplina desde o 1º período do 10º ano (rótulos = nível·semestre, ex. "10º·1S"). A pílula mostra a classificação mais recente.</p>
+      <div class="row g-2">
+        {% for d in an.evolucao_disciplinas %}
+        <div class="col-6 col-md-4 col-lg-3 col-xxl-2">
+          <div class="mini-disc">
+            <div class="d-flex justify-content-between align-items-center gap-1">
+              <span class="mini-titulo" title="{{ d.disciplina }}">{{ d.disciplina }}</span>
+              <span class="nota-pill {% if d.ultima_nota < 10 %}n-neg{% elif d.ultima_nota < 14 %}n-med{% elif d.ultima_nota < 17 %}n-bom{% else %}n-exc{% endif %}" style="font-size:.7rem; padding:1px 7px; min-width:26px">{{ d.ultima_nota|int }}</span>
+            </div>
+            <div class="mini-canvas-wrap"><canvas id="graf-disc-{{ loop.index0 }}"></canvas></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if an.evolucao|length > 1 %}
 
   <div class="card an-card mb-4">
     <div class="card-body">
@@ -479,12 +523,60 @@
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         y:  { type: 'linear', position: 'left', min: 0, max: 20, title: { display: true, text: 'Média (0-20)' } },
         y1: { type: 'linear', position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, title: { display: true, text: 'Percentil (%)' } }
       }
     }
+  });
+})();
+</script>
+{% endif %}
+
+{% if an.evolucao_disciplinas %}
+<script>
+(function() {
+  const dados = {{ an.evolucao_disciplinas | tojson }};
+  const corLinha = (document.getElementById('an-wrap').getAttribute('data-an-theme') === 'dark') ? '#38bdf8' : '#0E4D7D';
+
+  dados.forEach(function(d, i) {
+    const ctx = document.getElementById('graf-disc-' + i);
+    if (!ctx) return;
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: d.pontos.map(function(p) { return p.rotulo; }),
+        datasets: [{
+          data: d.pontos.map(function(p) { return p.nota; }),
+          borderColor: corLinha,
+          backgroundColor: 'rgba(68,178,228,.18)',
+          borderWidth: 2,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          fill: true,
+          tension: .3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: function(items) { return d.disciplina + ' — ' + items[0].label; },
+              label: function(item) { return 'Nota: ' + item.formattedValue; }
+            }
+          }
+        },
+        scales: {
+          y: { min: 0, max: 20, ticks: { stepSize: 5, font: { size: 9 } }, grid: { display: false } },
+          x: { ticks: { font: { size: 8 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 5 }, grid: { display: false } }
+        }
+      }
+    });
   });
 })();
 </script>
