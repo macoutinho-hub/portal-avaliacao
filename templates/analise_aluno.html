@@ -15,6 +15,11 @@
     --an-accent:    #44B2E4;
     --an-row-hover: #f8fafc;
     --an-table-head:#f1f5f9;
+    --an-cor-acima:     #639922;
+    --an-cor-acima-txt: #27500A;
+    --an-cor-abaixo:    #E24B4A;
+    --an-cor-abaixo-txt:#791F1F;
+    --an-cor-neutro:    #888780;
   }
   [data-an-theme="dark"] {
     --an-bg:        #0f172a;
@@ -27,6 +32,11 @@
     --an-accent:    #38bdf8;
     --an-row-hover: #273449;
     --an-table-head:#27374d;
+    --an-cor-acima:     #5DCAA5;
+    --an-cor-acima-txt: #9FE1CB;
+    --an-cor-abaixo:    #F09595;
+    --an-cor-abaixo-txt:#F7C1C1;
+    --an-cor-neutro:    #888780;
   }
   #an-wrap { background: var(--an-bg); border-radius: 14px; padding: 1rem 1rem 1.5rem; transition: background .2s; }
   #an-wrap, #an-wrap .text-muted, #an-wrap p, #an-wrap span, #an-wrap td, #an-wrap th, #an-wrap div { color: var(--an-text); }
@@ -75,6 +85,23 @@
   .mini-disc { border: 1px solid var(--an-border); border-radius: 10px; padding: .55rem .6rem .35rem; height: 100%; }
   .mini-disc .mini-titulo { font-size: .76rem; font-weight: 700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .mini-disc .mini-canvas-wrap { height: 78px; margin-top: .25rem; }
+
+  .perfil-grupo-titulo { font-size: .82rem; font-weight: 700; margin-bottom: .35rem; display:flex; align-items:center; }
+  .perfil-linha { display:grid; grid-template-columns: minmax(0,180px) 1fr 56px; align-items:center; gap: 10px; padding: 5px 0; border-bottom: 1px dashed var(--an-border); }
+  .perfil-linha:last-child { border-bottom: none; }
+  .perfil-nome { font-size: .85rem; font-weight: 600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .perfil-barra-area { position: relative; display:flex; align-items:center; height: 14px; }
+  .perfil-eixo { position:absolute; left:50%; top:-4px; bottom:-4px; width:1px; background: var(--an-border); }
+  .perfil-barra-esq, .perfil-barra-dir { flex: 1; display:flex; height: 9px; }
+  .perfil-barra-esq { justify-content: flex-end; }
+  .perfil-barra-dir { justify-content: flex-start; }
+  .perfil-barra { height: 100%; border-radius: 0; transition: width .25s; }
+  .perfil-valor { font-size: .82rem; font-weight: 700; text-align: right; white-space: nowrap; }
+
+  @media (max-width: 575px) {
+    .perfil-linha { grid-template-columns: minmax(0,120px) 1fr 50px; gap: 6px; }
+    .perfil-nome { font-size: .78rem; }
+  }
 
   .alerta-card { border-left: 5px solid #ef4444; background: color-mix(in srgb, #ef4444 8%, var(--an-card-bg)); }
   .excelencia-card { border-left: 5px solid #16a34a; background: color-mix(in srgb, #16a34a 8%, var(--an-card-bg)); }
@@ -286,43 +313,59 @@
 
   <!-- ── PERFIL ACADÉMICO ──────────────────────────────────────────── -->
   {% if an.perfil %}
+  {% set pontos_fortes = an.perfil.disciplinas | selectattr('classificacao', 'equalto', 'acima') | list %}
+  {% set pontos_fracos = an.perfil.disciplinas | selectattr('classificacao', 'equalto', 'abaixo') | list %}
+  {% set habituais = an.perfil.disciplinas | selectattr('classificacao', 'equalto', 'habitual') | list %}
+  {% set maior_desvio = an.perfil.disciplinas | map(attribute='diferenca') | map('abs') | max %}
   <div class="card an-card mb-4">
     <div class="card-body">
       <div class="secao-titulo mb-1"><i class="bi bi-person-badge"></i>Perfil Académico Individual</div>
       <p class="secao-sub mb-3">
-        Compara a média do aluno em cada disciplina com o seu próprio padrão habitual
+        Cada barra mostra o desvio da média do aluno na disciplina face ao seu próprio padrão habitual
         (média global = <strong>{{ "%.1f"|format(an.perfil.media_global) }}</strong>;
         variabilidade pessoal entre disciplinas = <strong>{{ an.perfil.desvio_padrao_pessoal }}</strong>).
-        Disciplinas marcadas como "acima"/"abaixo" desviam-se ≥ 1 desvio-padrão pessoal do seu padrão habitual.
+        Disciplinas a verde/laranja desviam-se ≥ 1 desvio-padrão pessoal do seu padrão — as restantes seguem o padrão habitual.
       </p>
-      <div class="table-responsive">
-        <table class="an-table">
-          <thead>
-            <tr>
-              <th style="text-align:left">Disciplina</th>
-              <th>Média do aluno</th>
-              <th>Nº de registos</th>
-              <th>Diferença ao seu padrão</th>
-              <th>Classificação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for d in an.perfil.disciplinas %}
-            <tr>
-              <td class="lbl">{{ d.disciplina }}</td>
-              <td><strong>{{ "%.1f"|format(d.media_aluno) }}</strong></td>
-              <td class="secao-sub">{{ d.n_obs }}</td>
-              <td>{{ "%+.1f"|format(d.diferenca) }} <span class="secao-sub">(z={{ d.z }})</span></td>
-              <td>
-                {% if d.classificacao == 'acima' %}<span class="badge badge-z-alto">Acima do habitual</span>
-                {% elif d.classificacao == 'abaixo' %}<span class="badge badge-z-baixo">Abaixo do habitual</span>
-                {% else %}<span class="badge badge-z-habitual">Habitual</span>{% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+
+      {% macro linha_perfil(d, maior_desvio) %}
+        {% set largura = ((d.diferenca|abs) / maior_desvio * 50) if maior_desvio > 0 else 0 %}
+        {% if d.classificacao == 'acima' %}
+          {% set cor = 'var(--an-cor-acima)' %}{% set cor_txt = 'var(--an-cor-acima-txt)' %}
+        {% elif d.classificacao == 'abaixo' %}
+          {% set cor = 'var(--an-cor-abaixo)' %}{% set cor_txt = 'var(--an-cor-abaixo-txt)' %}
+        {% else %}
+          {% set cor = 'var(--an-cor-neutro)' %}{% set cor_txt = 'var(--an-text-mut)' %}
+        {% endif %}
+        <div class="perfil-linha" title="{{ d.disciplina }} — média {{ '%.1f'|format(d.media_aluno) }}, {{ d.n_obs }} registo{{ 's' if d.n_obs != 1 }}, z={{ d.z }}">
+          <span class="perfil-nome">{{ d.disciplina }}</span>
+          <div class="perfil-barra-area">
+            <div class="perfil-eixo"></div>
+            {% if d.diferenca < 0 %}
+            <div class="perfil-barra-esq"><div class="perfil-barra" style="width:{{ largura }}%; background:{{ cor }};"></div></div>
+            <div class="perfil-barra-dir"></div>
+            {% else %}
+            <div class="perfil-barra-esq"></div>
+            <div class="perfil-barra-dir"><div class="perfil-barra" style="width:{{ largura }}%; background:{{ cor }};"></div></div>
+            {% endif %}
+          </div>
+          <span class="perfil-valor" style="color:{{ cor_txt }}">{{ "%+.1f"|format(d.diferenca) }}</span>
+        </div>
+      {% endmacro %}
+
+      {% if pontos_fortes %}
+      <p class="perfil-grupo-titulo" style="color:#16a34a"><i class="bi bi-graph-up-arrow me-1"></i>Pontos fortes — claramente acima do seu padrão</p>
+      {% for d in pontos_fortes %}{{ linha_perfil(d, maior_desvio) }}{% endfor %}
+      {% endif %}
+
+      {% if pontos_fracos %}
+      <p class="perfil-grupo-titulo {% if pontos_fortes %}mt-3{% endif %}" style="color:#dc2626"><i class="bi bi-graph-down-arrow me-1"></i>A reforçar — claramente abaixo do seu padrão</p>
+      {% for d in pontos_fracos %}{{ linha_perfil(d, maior_desvio) }}{% endfor %}
+      {% endif %}
+
+      {% if habituais %}
+      <p class="perfil-grupo-titulo {% if pontos_fortes or pontos_fracos %}mt-3{% endif %}"><i class="bi bi-dash-lg me-1"></i>Dentro do padrão habitual</p>
+      {% for d in habituais %}{{ linha_perfil(d, maior_desvio) }}{% endfor %}
+      {% endif %}
     </div>
   </div>
   {% endif %}
