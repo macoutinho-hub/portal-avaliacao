@@ -2164,24 +2164,6 @@ def apresentacao(turma):
                                 "atual": ano == a["ano_letivo"], "notas": nl,
                                 "media": round(sum(vals)/len(vals),1) if vals else None})
 
-        # CIF: oficial (importado) ou média dos 2ºs semestres — arredondamento aritmético
-        cif = {}
-        for d in todas:
-            if d in ap_cif_of:
-                cif[d] = arred(ap_cif_of[d])  # oficial → usar directamente
-            else:
-                ns = []
-                for ano_k, da_k in notas_por_ano.items():
-                    pds = sorted(da_k.get(d, {}).keys())
-                    if not pds: continue
-                    pf = 2 if 2 in pds else pds[-1]
-                    n = da_k.get(d, {}).get(pf)
-                    if n is not None: ns.append(n)
-                cif[d] = arred(sum(ns)/len(ns)) if ns else None
-        cv = [v for v in cif.values() if v is not None]
-        cm = arred(sum(cv)/len(cv)) if cv else None
-        linhas.append({"label":"CIF","tipo":"cif","atual":True,"notas":cif,"media":cm})
-
         # ── Notas de exame/CIF/CFD da tabela notas_finais ────────────────────
         if a["numero"]:
             ap_ids = [r["id"] for r in db.execute(
@@ -2200,6 +2182,24 @@ def apresentacao(turma):
             if r["exame_f1"] is not None: ap_ex1[r["disciplina"]]    = r["exame_f1"]
             if r["exame_f2"] is not None: ap_ex2[r["disciplina"]]    = r["exame_f2"]
             if r["cfd"]      is not None: ap_cfd_of[r["disciplina"]] = r["cfd"]
+
+        # CIF: oficial (importado) ou média dos 2ºs semestres — arredondamento aritmético
+        cif = {}
+        for d in todas:
+            if d in ap_cif_of:
+                cif[d] = arred(ap_cif_of[d])  # oficial → usar directamente
+            else:
+                ns = []
+                for ano_k, da_k in notas_por_ano.items():
+                    pds = sorted(da_k.get(d, {}).keys())
+                    if not pds: continue
+                    pf = 2 if 2 in pds else pds[-1]
+                    n = da_k.get(d, {}).get(pf)
+                    if n is not None: ns.append(n)
+                cif[d] = arred(sum(ns)/len(ns)) if ns else None
+        cv = [v for v in cif.values() if v is not None]
+        cm = arred(sum(cv)/len(cv)) if cv else None
+        linhas.append({"label":"CIF","tipo":"cif","atual":True,"notas":cif,"media":cm})
 
         # Converter 0-20 → 0-200 pontos (inteiro)
         ex1_notas = {d: (round(ap_ex1[d] * 10) if ap_ex1.get(d) is not None else None) for d in todas}
