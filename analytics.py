@@ -528,6 +528,7 @@ def nota_esperada_e_desvio(modelo, aluno_id, disciplina, periodo, ano_letivo):
         return None, None, None
 
     esperada = ols_predict(modelo["coefs"], feats)
+    esperada = max(0.0, min(20.0, esperada))  # nota nunca pode sair da escala 0-20
     return round(esperada, 1), feats, modelo["desvio_residuos"]
 
 

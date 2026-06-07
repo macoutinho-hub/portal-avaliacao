@@ -83,6 +83,12 @@
     {% else %}
     <button class="btn btn-sm btn-outline-primary" disabled><i class="bi bi-chevron-right"></i></button>
     {% endif %}
+
+    {% if session.role == 'admin' %}
+    <a href="{{ url_for('analise_aluno', aluno_id=aluno.id) }}" class="btn btn-sm btn-outline-primary ms-auto">
+      <i class="bi bi-graph-up-arrow me-1"></i>Análise pedagógica
+    </a>
+    {% endif %}
   </div>
 
   <div class="card border-0 shadow mb-4">

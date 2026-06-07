@@ -98,6 +98,23 @@
   .perfil-barra { height: 100%; border-radius: 0; transition: width .25s; }
   .perfil-valor { font-size: .82rem; font-weight: 700; text-align: right; white-space: nowrap; }
 
+  /* Tabela "Nota Esperada vs Real" — comparação visual compacta */
+  .ne-comp { display:flex; align-items:center; gap:.5rem; min-width: 190px; }
+  .ne-real { font-weight: 800; font-size: .95rem; min-width: 20px; text-align:right; }
+  .ne-track { position:relative; flex:1; height: 8px; border-radius: 5px; background: var(--an-table-head); overflow: visible; }
+  .ne-track-fill { position:absolute; left:0; top:0; bottom:0; border-radius: 5px; background: var(--an-accent); opacity:.55; }
+  .ne-track-marker { position:absolute; top:-3px; width:2px; height: 14px; background: var(--an-text); opacity:.55; border-radius:1px; }
+  .ne-track-marker::after { content:""; position:absolute; left:50%; top:-3px; transform: translateX(-50%); width:5px; height:5px; border-radius:50%; background: var(--an-text); opacity:.7; }
+  .ne-esperada { font-size: .74rem; color: var(--an-text-mut); white-space: nowrap; min-width: 56px; }
+
+  .ne-pill { display:inline-flex; align-items:baseline; gap:.3rem; border-radius: 8px; padding: 3px 9px; font-weight: 700; font-size: .82rem; line-height:1.2; }
+  .ne-pill small { font-weight: 600; font-size: .7rem; opacity: .8; }
+  .ne-pill.ne-acima       { background: rgba(34,197,94,.16); color: var(--an-cor-acima-txt) !important; }
+  .ne-pill.ne-acima-forte { background: rgba(34,197,94,.28); color: var(--an-cor-acima-txt) !important; }
+  .ne-pill.ne-abaixo      { background: rgba(239,68,68,.14); color: var(--an-cor-abaixo-txt) !important; }
+  .ne-pill.ne-abaixo-forte{ background: rgba(239,68,68,.26); color: var(--an-cor-abaixo-txt) !important; }
+  .ne-pill.ne-neutro      { background: var(--an-table-head); color: var(--an-text-mut) !important; }
+
   @media (max-width: 575px) {
     .perfil-linha { grid-template-columns: minmax(0,120px) 1fr 50px; gap: 6px; }
     .perfil-nome { font-size: .78rem; }
@@ -386,10 +403,8 @@
             <tr>
               <th style="text-align:left">Disciplina</th>
               <th>Período</th>
-              <th>Nota real</th>
-              <th>Nota esperada</th>
-              <th>Desvio</th>
-              <th>z</th>
+              <th>Nota real vs. esperada</th>
+              <th>Avaliação do desvio</th>
             </tr>
           </thead>
           <tbody>
@@ -397,26 +412,35 @@
             <tr class="{% if l.alerta and l.alerta.startswith('abaixo') %}an-row-alerta-baixo{% elif l.alerta and l.alerta.startswith('acima') %}an-row-alerta-alto{% endif %}">
               <td class="lbl">{{ l.disciplina }}</td>
               <td>{{ l.periodo }}º Sem.</td>
-              <td><strong>{{ "%.0f"|format(l.nota_real) }}</strong></td>
               <td>
-                {% if l.nota_esperada is not none %}{{ "%.1f"|format(l.nota_esperada) }}
-                {% else %}<span class="secao-sub">—</span>{% endif %}
+                <div class="ne-comp" title="Nota real: {{ '%.0f'|format(l.nota_real) }}{% if l.nota_esperada is not none %} · Nota esperada: {{ '%.1f'|format(l.nota_esperada) }}{% endif %} (escala 0-20)">
+                  <span class="ne-real">{{ "%.0f"|format(l.nota_real) }}</span>
+                  <div class="ne-track">
+                    <div class="ne-track-fill" style="width: {{ (l.nota_real / 20 * 100) | round(1) }}%"></div>
+                    {% if l.nota_esperada is not none %}
+                    <div class="ne-track-marker" style="left: {{ (l.nota_esperada / 20 * 100) | round(1) }}%"></div>
+                    {% endif %}
+                  </div>
+                  <span class="ne-esperada">
+                    {% if l.nota_esperada is not none %}esp. {{ "%.1f"|format(l.nota_esperada) }}
+                    {% else %}sem estimativa{% endif %}
+                  </span>
+                </div>
               </td>
-              <td>
+              <td style="text-align:left">
                 {% if l.desvio is defined %}
-                  {% if l.desvio > 0 %}<span class="text-success fw-bold">+{{ l.desvio }}</span>
-                  {% elif l.desvio < 0 %}<span class="text-danger fw-bold">{{ l.desvio }}</span>
-                  {% else %}{{ l.desvio }}{% endif %}
-                {% else %}<span class="secao-sub">—</span>{% endif %}
-              </td>
-              <td>
-                {% if l.z is defined %}
-                  {% if l.z <= -2.0 %}<span class="badge badge-z-forte-baixo">{{ l.z }}</span>
-                  {% elif l.z <= -1.5 %}<span class="badge badge-z-baixo">{{ l.z }}</span>
-                  {% elif l.z >= 2.0 %}<span class="badge badge-z-forte-alto">{{ l.z }}</span>
-                  {% elif l.z >= 1.5 %}<span class="badge badge-z-alto">{{ l.z }}</span>
-                  {% else %}<span class="secao-sub">{{ l.z }}</span>{% endif %}
-                {% else %}<span class="secao-sub">—</span>{% endif %}
+                  <span class="ne-pill ne-{{ l.alerta.replace('_','-') if l.alerta else 'neutro' }}">
+                    {{ "%+.1f"|format(l.desvio) }} <small>z = {{ "%+.2f"|format(l.z) }}</small>
+                  </span>
+                  {% if l.alerta %}
+                    <div class="secao-sub mt-1" style="font-size:.72rem">
+                      {% if l.alerta == 'abaixo_forte' %}Muito abaixo do esperado
+                      {% elif l.alerta == 'abaixo' %}Abaixo do esperado
+                      {% elif l.alerta == 'acima' %}Acima do esperado
+                      {% elif l.alerta == 'acima_forte' %}Muito acima do esperado{% endif %}
+                    </div>
+                  {% endif %}
+                {% else %}<span class="secao-sub">Sem estimativa disponível</span>{% endif %}
               </td>
             </tr>
             {% endfor %}
