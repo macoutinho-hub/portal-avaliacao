@@ -773,6 +773,7 @@ def aluno(aluno_id):
         "Educação Física":                  "Ed. Fís",
         "Religião":                         "Rel",
         "Projeto":                          "Proj",
+        "Literacias":                       "Lit.",
         "Matemática A":                     "Mat A",
         "Desenho A":                        "Des A",
         "Desenho Geral":                    "Des G",
@@ -808,7 +809,7 @@ def aluno(aluno_id):
     ORDEM_TODAS = [
         # Gerais (antes do separador verde)
         "Português", "Líng. Estrang. I - Inglês", "Inglês",
-        "Filosofia", "Educação Física", "Religião", "Projeto",
+        "Filosofia", "Educação Física", "Religião", "Projeto", "Literacias",
         # Específicas principais (logo após separador)
         "Matemática A", "Desenho A", "Desenho Geral", "História A",
         # Outras específicas
@@ -825,7 +826,7 @@ def aluno(aluno_id):
         # Por último: disciplinas de gestão/apoio
         "Hora de PT", "Tempo de Trabalho Autónomo",
     ]
-    N_GERAIS = 7  # índice onde começa o separador (após Projeto)
+    N_GERAIS = 8  # índice onde começa o separador (após Projeto / Literacias)
 
     todas_set = {d for ano_d in notas_por_ano.values() for d in ano_d}
 
@@ -2088,6 +2089,7 @@ def apresentacao(turma):
         ABREVS = {
             "Português":"Port","Líng. Estrang. I - Inglês":"Ing","Inglês":"Ing",
             "Filosofia":"Filo","Educação Física":"Ed. Fís","Religião":"Rel","Projeto":"Proj",
+            "Literacias":"Lit.",
             "Matemática A":"Mat A","Desenho A":"Des A","Desenho Geral":"Des G","História A":"Hist A",
             "Biologia e Geologia":"Bio Geo","Biologia":"Bio",
             "Física e Química A":"FQ A","Física":"Fís","Química":"Quím",
@@ -2100,7 +2102,7 @@ def apresentacao(turma):
             "Hora de PT":"PT","Tempo de Trabalho Autónomo":"TTA",
         }
         _ORDEM = ["Português","Líng. Estrang. I - Inglês","Inglês","Filosofia",
-                  "Educação Física","Religião","Projeto",
+                  "Educação Física","Religião","Projeto","Literacias",
                   "Matemática A","Desenho A","Desenho Geral","História A",
                   "Biologia e Geologia","Biologia","Física e Química A","Física","Química",
                   "Geometria Descritiva A","Economia A","Economia C","Geografia A",
@@ -2108,7 +2110,7 @@ def apresentacao(turma):
                   "Filosofia A","Ciência Política","Psicologia B","Aplicações Informáticas B","Oficinas",
                   "Literatura Portuguesa","Alemão","Espanhol","Francês",
                   "Hora de PT","Tempo de Trabalho Autónomo"]
-        _N_G = 7
+        _N_G = 8
         def _p(d): return next((i for i,n in enumerate(_ORDEM) if d==n or (len(n)>=6 and d.startswith(n[:6]))), len(_ORDEM))
 
         # ── Canonical renaming por aluno (igual à rota /aluno) ──────────────

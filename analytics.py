@@ -138,7 +138,7 @@ def ols_predict(coefs, features):
 # ordem alfabética.
 ORDEM_DISCIPLINAS = [
     "Português", "Líng. Estrang. I - Inglês", "Inglês",
-    "Filosofia", "Educação Física", "Religião", "Projeto",
+    "Filosofia", "Educação Física", "Religião", "Projeto", "Literacias",
     "Matemática A", "Desenho A", "Desenho Geral", "História A",
     "Biologia e Geologia", "Biologia",
     "Física e Química A", "Física", "Química",
