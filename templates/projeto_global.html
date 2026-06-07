@@ -113,7 +113,7 @@
             <thead class="table-light"><tr><th>Orientador</th><th class="text-end">Média</th><th class="text-end">N grupos/alunos</th></tr></thead>
             <tbody>
               {% for o in r.ranking_orientadores %}
-              <tr><td>{{ o.chave }}</td><td class="text-end fw-semibold">{{ o.media }}</td><td class="text-end text-muted">{{ o.n }}</td></tr>
+              <tr><td><a href="{{ url_for('projeto_orientador', nome=o.chave) }}" class="text-decoration-none">{{ o.chave }}</a></td><td class="text-end fw-semibold">{{ o.media }}</td><td class="text-end text-muted">{{ o.n }}</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -134,7 +134,7 @@
             <thead class="table-light"><tr><th>Tema</th><th class="text-end">Média</th><th class="text-end">N</th></tr></thead>
             <tbody>
               {% for t in r.ranking_temas %}
-              <tr><td><span title="{{ t.chave }}">{{ t.chave }}</span></td><td class="text-end fw-semibold">{{ t.media }}</td><td class="text-end text-muted">{{ t.n }}</td></tr>
+              <tr><td><a href="{{ url_for('projeto_grupo', grupo_id=t.grupo_id) }}" class="text-decoration-none" title="{{ t.chave }}">{{ t.chave }}</a></td><td class="text-end fw-semibold">{{ t.media }}</td><td class="text-end text-muted">{{ t.n }}</td></tr>
               {% endfor %}
             </tbody>
           </table>

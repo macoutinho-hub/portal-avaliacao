@@ -70,6 +70,7 @@ def carregar_grupos(db, ano_letivo=ANO_LETIVO):
         for m in membros:
             colegas = [c for c in membros if c["id"] != m["id"]]
             info_por_aluno[m["id"]] = {
+                "grupo_id":             g["id"],
                 "grupo_numero":         g["numero"],
                 "sala":                 g["sala"],
                 "tema":                 g["tema"],
@@ -191,17 +192,37 @@ def resumo_global(db, ano_letivo=ANO_LETIVO):
     por_turma = _agrupar_por(avaliacoes, "turma")
     ranking_turmas = _ranking_grupos(por_turma)
 
-    # Agrupar por professor orientador / tema (via info de grupo de cada aluno)
-    por_orientador, por_tema = defaultdict(list), defaultdict(list)
+    # Agrupar por professor orientador (texto) / por grupo de projeto (id) — cada
+    # grupo tem um tema próprio, por isso a "tabela de temas" lista grupos.
+    por_orientador, por_grupo, tema_por_grupo = defaultdict(list), defaultdict(list), {}
     for av in avaliacoes:
         info = grupos_info.get(av["aluno_id"])
         if info:
             if info["professor_orientador"]:
                 por_orientador[info["professor_orientador"]].append(av)
-            if info["tema"]:
-                # encurtar tema para etiqueta
-                tema_curto = (info["tema"][:70] + "…") if len(info["tema"]) > 70 else info["tema"]
-                por_tema[tema_curto].append(av)
+            if info["tema"] and info.get("grupo_id") is not None:
+                gid = info["grupo_id"]
+                por_grupo[gid].append(av)
+                if gid not in tema_por_grupo:
+                    tema_curto = (info["tema"][:70] + "…") if len(info["tema"]) > 70 else info["tema"]
+                    tema_por_grupo[gid] = tema_curto
+
+    ranking_temas = []
+    for gid, avs in por_grupo.items():
+        valores = [av[COMPONENTE_PRINCIPAL] for av in avs if av[COMPONENTE_PRINCIPAL] is not None]
+        if len(valores) < 2:
+            continue
+        ranking_temas.append({
+            "grupo_id": gid,
+            "chave":    tema_por_grupo[gid],
+            "n":        len(valores),
+            "media":    _round1(statistics.mean(valores)),
+            "mediana":  _round1(statistics.median(valores)),
+            "desvio":   _round1(statistics.pstdev(valores)) if len(valores) > 1 else 0.0,
+        })
+    ranking_temas.sort(key=lambda x: -(x["media"] or 0))
+    for i, l in enumerate(ranking_temas, start=1):
+        l["posicao"] = i
 
     excelencias, alertas = _outliers(avaliacoes)
 
@@ -212,7 +233,7 @@ def resumo_global(db, ano_letivo=ANO_LETIVO):
         "componentes":         _comparacao_componentes(avaliacoes),
         "ranking_turmas":      ranking_turmas,
         "ranking_orientadores":_ranking_grupos(por_orientador, n_min=2),
-        "ranking_temas":       _ranking_grupos(por_tema, n_min=2),
+        "ranking_temas":       ranking_temas,
         "distribuicao_niveis": _distribuicao_niveis(avaliacoes),
         "excelencias":         excelencias[:15],
         "alertas":             alertas[:15],
@@ -309,4 +330,107 @@ def analise_aluno_projeto(db, aluno_id, ano_letivo=ANO_LETIVO):
         "componentes": componentes,
         "observacao": av.get("observacao"),
         "grupo":      grupo,
+    }
+
+
+# ─── Detalhe: por professor orientador ───────────────────────────────────────
+
+# Componentes mostrados nas vistas de detalhe (orientador / grupo) — os pedidos
+# pelo utilizador: média dos componentes, apresentação final e produto final,
+# mais a avaliação final como referência.
+COMPONENTES_DETALHE = [
+    ("media_componentes",       "Média Componentes"),
+    ("apresentacao_final",      "Apresentação Final"),
+    ("avaliacao_produto_final", "Produto Final"),
+    ("avaliacao_final",         "Avaliação Final"),
+]
+
+
+def _membros_com_notas(db, grupo_id, av_por_aluno):
+    membros = db.execute("""
+        SELECT a.id, a.nome, a.turma FROM projeto_grupo_membros m
+        JOIN alunos a ON a.id = m.aluno_id
+        WHERE m.grupo_id = ?
+        ORDER BY a.nome
+    """, (grupo_id,)).fetchall()
+
+    saida = []
+    for m in membros:
+        av = av_por_aluno.get(m["id"])
+        linha = {"aluno_id": m["id"], "nome": m["nome"], "turma": m["turma"], "observacao": None}
+        for chave, _rotulo in COMPONENTES_DETALHE:
+            linha[chave] = _round1(av[chave]) if av else None
+        if av:
+            linha["observacao"] = av.get("observacao")
+        saida.append(linha)
+    return saida
+
+
+def detalhe_orientador(db, nome, ano_letivo=ANO_LETIVO):
+    """Detalhe de um professor orientador: grupos que orienta, respetivos temas
+    e as notas (componentes principais) de cada membro."""
+    grupos = db.execute("""
+        SELECT * FROM projeto_grupos WHERE ano_letivo=? AND professor_orientador=?
+        ORDER BY sala, numero
+    """, (ano_letivo, nome)).fetchall()
+    if not grupos:
+        return None
+
+    todas = carregar_avaliacoes(db, ano_letivo)
+    av_por_aluno = {a["aluno_id"]: a for a in todas}
+
+    grupos_out = []
+    valores_finais = []
+    for g in grupos:
+        membros = _membros_com_notas(db, g["id"], av_por_aluno)
+        for mb in membros:
+            if mb[COMPONENTE_PRINCIPAL] is not None:
+                valores_finais.append(mb[COMPONENTE_PRINCIPAL])
+        grupos_out.append({
+            "grupo_id":            g["id"],
+            "sala":                g["sala"],
+            "numero":              g["numero"],
+            "tema":                g["tema"],
+            "questao_orientadora": g["questao_orientadora"],
+            "estado_aprovacao":    g["estado_aprovacao"],
+            "membros":             membros,
+        })
+
+    return {
+        "nome":      nome,
+        "n_grupos":  len(grupos_out),
+        "n_alunos":  sum(len(g["membros"]) for g in grupos_out),
+        "geral":     _stats(valores_finais),
+        "grupos":    grupos_out,
+        "componentes_detalhe": COMPONENTES_DETALHE,
+    }
+
+
+# ─── Detalhe: ficha de um grupo de projeto (tema) ────────────────────────────
+
+def detalhe_grupo(db, grupo_id, ano_letivo=ANO_LETIVO):
+    """Resumo de um grupo de projeto: tema, questão orientadora, professor
+    orientador, e a ficha de avaliação de cada membro do grupo."""
+    g = db.execute("SELECT * FROM projeto_grupos WHERE id=? AND ano_letivo=?",
+                   (grupo_id, ano_letivo)).fetchone()
+    if not g:
+        return None
+
+    todas = carregar_avaliacoes(db, ano_letivo)
+    av_por_aluno = {a["aluno_id"]: a for a in todas}
+
+    membros = _membros_com_notas(db, g["id"], av_por_aluno)
+    valores_finais = [m[COMPONENTE_PRINCIPAL] for m in membros if m[COMPONENTE_PRINCIPAL] is not None]
+
+    return {
+        "grupo_id":            g["id"],
+        "sala":                g["sala"],
+        "numero":              g["numero"],
+        "tema":                g["tema"],
+        "questao_orientadora": g["questao_orientadora"],
+        "estado_aprovacao":    g["estado_aprovacao"],
+        "professor_orientador":g["professor_orientador"],
+        "geral":               _stats(valores_finais),
+        "membros":             membros,
+        "componentes_detalhe": COMPONENTES_DETALHE,
     }

@@ -2480,6 +2480,30 @@ def projeto_turma(turma):
     return render_template("projeto_turma.html", r=resumo)
 
 
+@app.route("/admin/projeto/orientador/<path:nome>")
+@login_required
+@admin_required
+def projeto_orientador(nome):
+    db = get_db()
+    detalhe = analytics_projeto.detalhe_orientador(db, nome)
+    if detalhe is None:
+        flash(f"Sem dados de Avaliação de Projeto para o professor orientador '{nome}'.", "warning")
+        return redirect(url_for("projeto_global"))
+    return render_template("projeto_orientador.html", d=detalhe)
+
+
+@app.route("/admin/projeto/grupo/<int:grupo_id>")
+@login_required
+@admin_required
+def projeto_grupo(grupo_id):
+    db = get_db()
+    detalhe = analytics_projeto.detalhe_grupo(db, grupo_id)
+    if detalhe is None:
+        flash("Grupo de projeto não encontrado.", "warning")
+        return redirect(url_for("projeto_global"))
+    return render_template("projeto_grupo.html", d=detalhe)
+
+
 @app.route("/admin/projeto/aluno/<int:aluno_id>")
 @login_required
 @admin_required

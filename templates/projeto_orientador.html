@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Projeto — Prof. {{ d.nome }}{% endblock %}
+
+{% block extra_head %}
+{% include "_pj_tema_head.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="px-3" id="pj-wrap" data-bs-theme="light">
+
+  <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h2 class="fw-bold mb-1"><i class="bi bi-person-workspace me-2 text-primary"></i>{{ d.nome }}</h2>
+      <p class="text-muted mb-0">{{ d.n_grupos }} grupo(s) orientado(s) · {{ d.n_alunos }} alunos · Avaliação de Projeto (11º ano)</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      {% include "_pj_tema_toggle.html" %}
+      <a href="{{ url_for('projeto_global') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Visão global do 11º ano
+      </a>
+    </div>
+  </div>
+
+  <!-- Resumo geral -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+        <div class="text-muted small">Avaliação Final — média</div>
+        <div class="fs-3 fw-bold text-primary">{{ d.geral.media if d.geral.media is not none else '—' }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+        <div class="text-muted small">Mediana</div>
+        <div class="fs-3 fw-bold">{{ d.geral.mediana if d.geral.mediana is not none else '—' }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+        <div class="text-muted small">Mínimo / Máximo</div>
+        <div class="fs-5 fw-bold">{{ d.geral.minimo if d.geral.minimo is not none else '—' }} <span class="text-muted">/</span> {{ d.geral.maximo if d.geral.maximo is not none else '—' }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+        <div class="text-muted small">Desvio-padrão</div>
+        <div class="fs-3 fw-bold">{{ d.geral.desvio if d.geral.desvio is not none else '—' }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Grupos orientados -->
+  {% for g in d.grupos %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-1 fw-semibold"><i class="bi bi-kanban me-2 text-primary"></i>{{ g.tema or ('Grupo ' ~ g.numero) }}</h5>
+      <div class="text-muted small">
+        Sala {{ g.sala }} · Grupo {{ g.numero }}
+        {% if g.estado_aprovacao %} · <span class="badge bg-secondary">{{ g.estado_aprovacao }}</span>{% endif %}
+      </div>
+      {% if g.questao_orientadora %}
+      <div class="text-muted small mt-1"><strong>Questão orientadora:</strong> {{ g.questao_orientadora }}</div>
+      {% endif %}
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Aluno</th><th>Turma</th>
+            {% for chave, rotulo in d.componentes_detalhe %}
+            <th class="text-end">{{ rotulo }}</th>
+            {% endfor %}
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in g.membros %}
+          <tr>
+            <td class="fw-semibold">{{ m.nome }}</td>
+            <td>{{ m.turma }}</td>
+            {% for chave, rotulo in d.componentes_detalhe %}
+            <td class="text-end {{ 'fw-bold' if chave == 'avaliacao_final' else '' }}">{{ m[chave] if m[chave] is not none else '—' }}</td>
+            {% endfor %}
+            <td class="text-end">
+              <a href="{{ url_for('projeto_aluno', aluno_id=m.aluno_id) }}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-graph-up-arrow me-1"></i>Ficha
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+{% include "_pj_tema_js.html" %}
+{% endblock %}
