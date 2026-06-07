@@ -4,53 +4,160 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-  .an-header { background: #0E4D7D; color: white; border-radius: 12px; padding: 1.2rem 1.5rem; }
-  .an-card { border: 0; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .badge-z-forte-baixo  { background: #dc2626; color: #fff; }
-  .badge-z-baixo        { background: #f97316; color: #fff; }
-  .badge-z-habitual     { background: #e5e7eb; color: #374151; }
-  .badge-z-alto         { background: #22c55e; color: #fff; }
-  .badge-z-forte-alto   { background: #16a34a; color: #fff; }
-  .nota-pill { border-radius: 6px; padding: 2px 8px; font-weight: 700; display: inline-block; min-width: 36px; text-align:center; }
-  .n-neg  { background: #ef4444; color: white; }
-  .n-med  { background: #f59e0b; color: white; }
-  .n-bom  { background: #22c55e; color: white; }
-  .n-exc  { background: #3b82f6; color: white; }
-  .n-nd   { color: #9ca3af; background:#f3f4f6; }
-  table.an-table { width: 100%; font-size: .85rem; }
-  table.an-table th { background:#f8f9fb; font-weight:600; color:#374151; padding:6px 8px; border-bottom:2px solid #e5e7eb; text-align:center; white-space:nowrap; }
-  table.an-table td { padding:6px 8px; border-bottom:1px solid #f1f5f9; text-align:center; }
-  table.an-table td.lbl { text-align:left; font-weight:600; color:#1f2937; }
-  .secao-titulo { font-weight:700; color:#0E4D7D; display:flex; align-items:center; gap:.5rem; }
-  .alerta-card { border-left: 4px solid #ef4444; background:#fef2f2; }
-  .excelencia-card { border-left: 4px solid #16a34a; background:#f0fdf4; }
+  :root {
+    --an-bg:        #f4f6f9;
+    --an-card-bg:   #ffffff;
+    --an-text:      #1f2937;
+    --an-text-mut:  #6b7280;
+    --an-border:    #e5e7eb;
+    --an-header-bg: #0E4D7D;
+    --an-header-fg: #ffffff;
+    --an-accent:    #44B2E4;
+    --an-row-hover: #f8fafc;
+    --an-table-head:#f1f5f9;
+  }
+  [data-an-theme="dark"] {
+    --an-bg:        #0f172a;
+    --an-card-bg:   #1e293b;
+    --an-text:      #e5e7eb;
+    --an-text-mut:  #94a3b8;
+    --an-border:    #334155;
+    --an-header-bg: #0b3a5e;
+    --an-header-fg: #f1f5f9;
+    --an-accent:    #38bdf8;
+    --an-row-hover: #273449;
+    --an-table-head:#27374d;
+  }
+  #an-wrap { background: var(--an-bg); border-radius: 14px; padding: 1rem 1rem 1.5rem; transition: background .2s; }
+  #an-wrap, #an-wrap .text-muted, #an-wrap p, #an-wrap span, #an-wrap td, #an-wrap th, #an-wrap div { color: var(--an-text); }
+  #an-wrap .text-muted, #an-wrap small.text-muted { color: var(--an-text-mut) !important; }
+
+  .an-header { background: linear-gradient(135deg, var(--an-header-bg), var(--an-accent) 180%); color: var(--an-header-fg) !important; border-radius: 12px; padding: 1.3rem 1.6rem; }
+  .an-header * { color: var(--an-header-fg) !important; }
+  .an-header .an-sub { opacity: .85; font-size: .92rem; }
+
+  .an-card { border: 0; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07); background: var(--an-card-bg); }
+  .secao-titulo { font-weight: 800; color: var(--an-header-bg); display:flex; align-items:center; gap:.55rem; font-size: 1.05rem; letter-spacing: .2px; }
+  [data-an-theme="dark"] .secao-titulo { color: var(--an-accent); }
+  .secao-sub { color: var(--an-text-mut); font-size: .85rem; }
+
+  .badge-z-forte-baixo  { background: #dc2626; color: #fff !important; }
+  .badge-z-baixo        { background: #f97316; color: #fff !important; }
+  .badge-z-habitual     { background: #e5e7eb; color: #374151 !important; }
+  [data-an-theme="dark"] .badge-z-habitual { background: #475569; color: #e2e8f0 !important; }
+  .badge-z-alto         { background: #22c55e; color: #fff !important; }
+  .badge-z-forte-alto   { background: #16a34a; color: #fff !important; }
+
+  .nota-pill { border-radius: 7px; padding: 3px 10px; font-weight: 800; display: inline-block; min-width: 38px; text-align:center; font-size: .92rem; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .n-neg  { background: #ef4444; color: white !important; }
+  .n-med  { background: #f59e0b; color: white !important; }
+  .n-bom  { background: #22c55e; color: white !important; }
+  .n-exc  { background: #3b82f6; color: white !important; }
+  .n-nd   { color: var(--an-text-mut) !important; background: var(--an-table-head); }
+
+  table.an-table { width: 100%; font-size: .87rem; border-collapse: separate; border-spacing: 0; }
+  table.an-table th { background: var(--an-table-head); font-weight:700; padding:9px 10px; border-bottom: 2px solid var(--an-border); text-align:center; white-space:nowrap; position: sticky; top: 0; }
+  table.an-table td { padding: 8px 10px; border-bottom: 1px solid var(--an-border); text-align:center; }
+  table.an-table tbody tr:hover td { background: var(--an-row-hover); }
+  table.an-table td.lbl { text-align:left; font-weight:700; }
+
+  .alerta-card { border-left: 5px solid #ef4444; background: color-mix(in srgb, #ef4444 8%, var(--an-card-bg)); }
+  .excelencia-card { border-left: 5px solid #16a34a; background: color-mix(in srgb, #16a34a 8%, var(--an-card-bg)); }
+  .item-destaque { display:flex; justify-content:space-between; align-items:center; padding: .5rem .25rem; border-bottom: 1px dashed var(--an-border); }
+  .item-destaque:last-child { border-bottom: none; }
+
+  .stat-mini { background: var(--an-table-head); border-radius: 10px; padding: .65rem .9rem; text-align:center; }
+  .stat-mini .v { font-size: 1.35rem; font-weight: 800; }
+  .stat-mini .l { font-size: .72rem; color: var(--an-text-mut); text-transform: uppercase; letter-spacing: .4px; }
+
+  .an-toolbar { display:flex; align-items:center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+  .an-nav-btn { display:flex; align-items:center; gap:.4rem; }
+  .theme-toggle { border-radius: 999px; }
+  .progress { background: var(--an-table-head); }
+
+  @media (max-width: 575px) {
+    .an-header { padding: 1rem 1.1rem; }
+    table.an-table { font-size: .78rem; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="px-3">
+<div class="px-3" id="an-wrap" data-an-theme="light">
 
-  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-    <a href="{{ url_for('aluno', aluno_id=aluno.id) }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-arrow-left me-1"></i>Ficha do aluno
-    </a>
-    <a href="{{ url_for('ver_turma', turma=aluno.turma) }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-people me-1"></i>{{ aluno.turma }}
-    </a>
+  <!-- ── BARRA SUPERIOR: navegação e modo escuro ───────────────────── -->
+  <div class="an-toolbar mb-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="{{ url_for('aluno', aluno_id=aluno.id) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Ficha do aluno
+      </a>
+      <a href="{{ url_for('ver_turma', turma=aluno.turma) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-people me-1"></i>{{ aluno.turma }}
+      </a>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <div class="btn-group" role="group" aria-label="Navegar entre alunos da turma">
+        <a href="{% if aluno_anterior %}{{ url_for('analise_aluno', aluno_id=aluno_anterior.id) }}{% else %}#{% endif %}"
+           class="btn btn-sm btn-outline-primary an-nav-btn {% if not aluno_anterior %}disabled{% endif %}" title="Aluno anterior da turma">
+          <i class="bi bi-chevron-left"></i>
+          <span class="d-none d-md-inline">{{ aluno_anterior.nome.split()[0] if aluno_anterior else 'Anterior' }}</span>
+        </a>
+        <span class="btn btn-sm btn-light disabled" style="font-size:.78rem">
+          {% if posicao_turma %}{{ posicao_turma }} / {{ total_turma }}{% endif %}
+        </span>
+        <a href="{% if aluno_seguinte %}{{ url_for('analise_aluno', aluno_id=aluno_seguinte.id) }}{% else %}#{% endif %}"
+           class="btn btn-sm btn-outline-primary an-nav-btn {% if not aluno_seguinte %}disabled{% endif %}" title="Aluno seguinte da turma">
+          <span class="d-none d-md-inline">{{ aluno_seguinte.nome.split()[0] if aluno_seguinte else 'Seguinte' }}</span>
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary theme-toggle" id="btnTemaEscuro" title="Alternar modo escuro">
+        <i class="bi bi-moon-stars-fill" id="iconeTema"></i>
+        <span class="d-none d-sm-inline" id="labelTema">Modo escuro</span>
+      </button>
+    </div>
   </div>
 
   <!-- ── CABEÇALHO ─────────────────────────────────────────────────── -->
   <div class="an-header mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
       <h3 class="fw-bold mb-1"><i class="bi bi-graph-up-arrow me-2"></i>Análise pedagógica — {{ aluno.nome }}</h3>
-      <div style="opacity:.85; font-size:.9rem">Nº {{ aluno.numero or '—' }} · {{ aluno.turma }} · {{ an.ano_letivo }}</div>
+      <div class="an-sub">Nº {{ aluno.numero or '—' }} · {{ aluno.turma }} · {{ an.ano_letivo }}{% if posicao_turma %} · {{ posicao_turma }}.º de {{ total_turma }} na turma (ordem alfabética){% endif %}</div>
     </div>
     {% if an.perfil %}
     <div class="text-end">
-      <div style="font-size:.78rem; opacity:.8">Média global do aluno</div>
-      <div class="fw-bold" style="font-size:1.8rem">{{ "%.1f"|format(an.perfil.media_global) }}</div>
+      <div class="an-sub">Média global do aluno</div>
+      <div class="fw-bold" style="font-size:2.2rem; line-height:1">{{ "%.1f"|format(an.perfil.media_global) }}</div>
     </div>
     {% endif %}
+  </div>
+
+  <!-- ── RESUMO RÁPIDO ─────────────────────────────────────────────── -->
+  <div class="row g-2 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="stat-mini">
+        <div class="v text-danger">{{ an.disciplinas_alerta|length }}</div>
+        <div class="l">Disciplinas de alerta</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-mini">
+        <div class="v text-success">{{ an.disciplinas_excelencia|length }}</div>
+        <div class="l">Disciplinas de excelência</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-mini">
+        <div class="v">{{ an.posicionamento|length }}</div>
+        <div class="l">Disciplinas analisadas</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-mini">
+        <div class="v">{{ an.mudancas_bruscas|length }}</div>
+        <div class="l">Mudanças bruscas</div>
+      </div>
+    </div>
   </div>
 
   {% if not an.modelo_disponivel %}
@@ -69,15 +176,15 @@
           <div class="secao-titulo mb-2"><i class="bi bi-exclamation-triangle-fill text-danger"></i>Disciplinas de Alerta</div>
           {% if an.disciplinas_alerta %}
             {% for d in an.disciplinas_alerta %}
-            <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <div class="item-destaque">
               <span class="fw-semibold">{{ d.disciplina }}</span>
-              <span class="text-muted small">real {{ d.nota_real }} · esperada {{ d.nota_esperada }} ·
-                <span class="badge {{ 'badge-z-forte-baixo' if d.tipo == 'abaixo_forte' else 'badge-z-baixo' }}">desvio {{ d.desvio }}</span>
+              <span class="secao-sub">real <strong>{{ d.nota_real|int }}</strong> · esperada <strong>{{ d.nota_esperada }}</strong>
+                <span class="badge {{ 'badge-z-forte-baixo' if d.tipo == 'abaixo_forte' else 'badge-z-baixo' }} ms-1">desvio {{ d.desvio }}</span>
               </span>
             </div>
             {% endfor %}
           {% else %}
-            <p class="text-muted mb-0 small">Sem desvios negativos significativos identificados.</p>
+            <p class="secao-sub mb-0">Sem desvios negativos significativos identificados.</p>
           {% endif %}
         </div>
       </div>
@@ -88,15 +195,15 @@
           <div class="secao-titulo mb-2"><i class="bi bi-star-fill text-success"></i>Disciplinas de Excelência</div>
           {% if an.disciplinas_excelencia %}
             {% for d in an.disciplinas_excelencia %}
-            <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <div class="item-destaque">
               <span class="fw-semibold">{{ d.disciplina }}</span>
-              <span class="text-muted small">real {{ d.nota_real }} · esperada {{ d.nota_esperada }} ·
-                <span class="badge {{ 'badge-z-forte-alto' if d.tipo == 'acima_forte' else 'badge-z-alto' }}">desvio +{{ d.desvio }}</span>
+              <span class="secao-sub">real <strong>{{ d.nota_real|int }}</strong> · esperada <strong>{{ d.nota_esperada }}</strong>
+                <span class="badge {{ 'badge-z-forte-alto' if d.tipo == 'acima_forte' else 'badge-z-alto' }} ms-1">desvio +{{ d.desvio }}</span>
               </span>
             </div>
             {% endfor %}
           {% else %}
-            <p class="text-muted mb-0 small">Sem desvios positivos significativos identificados.</p>
+            <p class="secao-sub mb-0">Sem desvios positivos significativos identificados.</p>
           {% endif %}
         </div>
       </div>
@@ -108,9 +215,9 @@
     <div class="card-body">
       <div class="secao-titulo mb-2"><i class="bi bi-lightning-fill text-warning"></i>Mudanças bruscas detetadas</div>
       {% for m in an.mudancas_bruscas %}
-      <div class="d-flex align-items-center gap-2 py-1">
-        <i class="bi {{ 'bi-arrow-up-circle-fill text-success' if m.tipo == 'melhoria' else 'bi-arrow-down-circle-fill text-danger' }}"></i>
-        <span>{{ m.de }} → {{ m.para }}: variação de <strong>{{ "%+.1f"|format(m.variacao) }}</strong> valores na média global ({{ 'melhoria' if m.tipo == 'melhoria' else 'deterioração' }})</span>
+      <div class="item-destaque">
+        <span><i class="bi {{ 'bi-arrow-up-circle-fill text-success' if m.tipo == 'melhoria' else 'bi-arrow-down-circle-fill text-danger' }} me-2"></i>{{ m.de }} → {{ m.para }}</span>
+        <span class="fw-bold {{ 'text-success' if m.tipo == 'melhoria' else 'text-danger' }}">{{ "%+.1f"|format(m.variacao) }} valores</span>
       </div>
       {% endfor %}
     </div>
@@ -120,7 +227,8 @@
   <!-- ── POSICIONAMENTO RELATIVO ───────────────────────────────────── -->
   <div class="card an-card mb-4">
     <div class="card-body">
-      <div class="secao-titulo mb-3"><i class="bi bi-bar-chart-steps"></i>Posicionamento Relativo por Disciplina</div>
+      <div class="secao-titulo mb-1"><i class="bi bi-bar-chart-steps"></i>Posicionamento Relativo por Disciplina</div>
+      <p class="secao-sub mb-3">Nota mais recente de cada disciplina, comparada com a turma e com todo o ano (mesmo nível curricular).</p>
       <div class="table-responsive">
         <table class="an-table">
           <thead>
@@ -143,11 +251,14 @@
               <td><span class="nota-pill {% if p.nota < 10 %}n-neg{% elif p.nota < 14 %}n-med{% elif p.nota < 17 %}n-bom{% else %}n-exc{% endif %}">{{ "%.0f"|format(p.nota) }}</span></td>
               <td>{{ p.media_turma if p.media_turma is not none else '—' }}</td>
               <td>{{ p.media_ano if p.media_ano is not none else '—' }}</td>
-              <td>{{ p.pos_turma }}.º <span class="text-muted">/ {{ p.n_turma }}</span></td>
-              <td>{{ p.pos_ano }}.º <span class="text-muted">/ {{ p.n_ano }}</span></td>
+              <td>{{ p.pos_turma }}.º <span class="secao-sub">/ {{ p.n_turma }}</span></td>
+              <td>{{ p.pos_ano }}.º <span class="secao-sub">/ {{ p.n_ano }}</span></td>
               <td>
-                <div class="progress" style="height:16px; min-width:90px">
-                  <div class="progress-bar bg-primary" style="width:{{ p.percentil_ano }}%">{{ p.percentil_ano }}%</div>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="progress flex-grow-1" style="height:14px; min-width:70px">
+                    <div class="progress-bar bg-primary" style="width:{{ p.percentil_ano }}%"></div>
+                  </div>
+                  <span style="min-width: 36px; font-weight:700; font-size:.8rem">{{ p.percentil_ano }}%</span>
                 </div>
               </td>
             </tr>
@@ -163,10 +274,10 @@
   <div class="card an-card mb-4">
     <div class="card-body">
       <div class="secao-titulo mb-1"><i class="bi bi-person-badge"></i>Perfil Académico Individual</div>
-      <p class="text-muted small mb-3">
+      <p class="secao-sub mb-3">
         Compara a média do aluno em cada disciplina com o seu próprio padrão habitual
-        (média global = {{ "%.1f"|format(an.perfil.media_global) }};
-        variabilidade pessoal entre disciplinas = {{ an.perfil.desvio_padrao_pessoal }}).
+        (média global = <strong>{{ "%.1f"|format(an.perfil.media_global) }}</strong>;
+        variabilidade pessoal entre disciplinas = <strong>{{ an.perfil.desvio_padrao_pessoal }}</strong>).
         Disciplinas marcadas como "acima"/"abaixo" desviam-se ≥ 1 desvio-padrão pessoal do seu padrão habitual.
       </p>
       <div class="table-responsive">
@@ -184,9 +295,9 @@
             {% for d in an.perfil.disciplinas %}
             <tr>
               <td class="lbl">{{ d.disciplina }}</td>
-              <td>{{ "%.1f"|format(d.media_aluno) }}</td>
-              <td class="text-muted">{{ d.n_obs }}</td>
-              <td>{{ "%+.1f"|format(d.diferenca) }} <span class="text-muted small">(z={{ d.z }})</span></td>
+              <td><strong>{{ "%.1f"|format(d.media_aluno) }}</strong></td>
+              <td class="secao-sub">{{ d.n_obs }}</td>
+              <td>{{ "%+.1f"|format(d.diferenca) }} <span class="secao-sub">(z={{ d.z }})</span></td>
               <td>
                 {% if d.classificacao == 'acima' %}<span class="badge badge-z-alto">Acima do habitual</span>
                 {% elif d.classificacao == 'abaixo' %}<span class="badge badge-z-baixo">Abaixo do habitual</span>
@@ -206,7 +317,7 @@
   <div class="card an-card mb-4">
     <div class="card-body">
       <div class="secao-titulo mb-1"><i class="bi bi-bullseye"></i>Nota Esperada vs. Nota Real</div>
-      <p class="text-muted small mb-3">
+      <p class="secao-sub mb-3">
         Modelo de regressão treinado com {{ an.modelo_n_obs }} observações de toda a escola, considerando o histórico
         do aluno na disciplina, o seu desempenho global, o contexto da turma/ano e a sua tendência recente.
         Desvios com |z| ≥ 1.5 são destacados como possíveis outliers.
@@ -228,17 +339,17 @@
             <tr>
               <td class="lbl">{{ l.disciplina }}</td>
               <td>{{ l.periodo }}º Sem.</td>
-              <td>{{ "%.0f"|format(l.nota_real) }}</td>
+              <td><strong>{{ "%.0f"|format(l.nota_real) }}</strong></td>
               <td>
                 {% if l.nota_esperada is not none %}{{ "%.1f"|format(l.nota_esperada) }}
-                {% else %}<span class="text-muted">—</span>{% endif %}
+                {% else %}<span class="secao-sub">—</span>{% endif %}
               </td>
               <td>
                 {% if l.desvio is defined %}
-                  {% if l.desvio > 0 %}<span class="text-success fw-semibold">+{{ l.desvio }}</span>
-                  {% elif l.desvio < 0 %}<span class="text-danger fw-semibold">{{ l.desvio }}</span>
+                  {% if l.desvio > 0 %}<span class="text-success fw-bold">+{{ l.desvio }}</span>
+                  {% elif l.desvio < 0 %}<span class="text-danger fw-bold">{{ l.desvio }}</span>
                   {% else %}{{ l.desvio }}{% endif %}
-                {% else %}<span class="text-muted">—</span>{% endif %}
+                {% else %}<span class="secao-sub">—</span>{% endif %}
               </td>
               <td>
                 {% if l.z is defined %}
@@ -246,8 +357,8 @@
                   {% elif l.z <= -1.5 %}<span class="badge badge-z-baixo">{{ l.z }}</span>
                   {% elif l.z >= 2.0 %}<span class="badge badge-z-forte-alto">{{ l.z }}</span>
                   {% elif l.z >= 1.5 %}<span class="badge badge-z-alto">{{ l.z }}</span>
-                  {% else %}<span class="text-muted">{{ l.z }}</span>{% endif %}
-                {% else %}<span class="text-muted">—</span>{% endif %}
+                  {% else %}<span class="secao-sub">{{ l.z }}</span>{% endif %}
+                {% else %}<span class="secao-sub">—</span>{% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -266,34 +377,6 @@
       <canvas id="graficoEvolucao" height="100"></canvas>
     </div>
   </div>
-  <script>
-    (function() {
-      const labels = {{ an.evolucao | map(attribute='ano_letivo') | list | tojson }}.map((a, i) => a + ' — ' + {{ an.evolucao | map(attribute='periodo') | list | tojson }}[i] + 'º Sem.');
-      const mediaAluno = {{ an.evolucao | map(attribute='media_aluno') | list | tojson }};
-      const mediaAno   = {{ an.evolucao | map(attribute='media_ano') | list | tojson }};
-      const percentil  = {{ an.evolucao | map(attribute='percentil_ano') | list | tojson }};
-
-      new Chart(document.getElementById('graficoEvolucao'), {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [
-            { label: 'Média do aluno', data: mediaAluno, borderColor: '#0E4D7D', backgroundColor: '#0E4D7D', tension: .25, yAxisID: 'y' },
-            { label: 'Média do ano (nível)', data: mediaAno, borderColor: '#9ca3af', borderDash: [5,4], backgroundColor: '#9ca3af', tension: .25, yAxisID: 'y' },
-            { label: 'Percentil no ano (%)', data: percentil, borderColor: '#16a34a', backgroundColor: '#16a34a', borderDash: [2,2], tension: .25, yAxisID: 'y1' }
-          ]
-        },
-        options: {
-          responsive: true,
-          interaction: { mode: 'index', intersect: false },
-          scales: {
-            y:  { type: 'linear', position: 'left', min: 0, max: 20, title: { display: true, text: 'Média (0-20)' } },
-            y1: { type: 'linear', position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, title: { display: true, text: 'Percentil (%)' } }
-          }
-        }
-      });
-    })();
-  </script>
 
   <div class="card an-card mb-4">
     <div class="card-body">
@@ -315,9 +398,9 @@
               <td class="lbl">{{ e.ano_letivo }} — {{ e.periodo }}º Sem.</td>
               <td><span class="nota-pill {% if e.media_aluno < 10 %}n-neg{% elif e.media_aluno < 14 %}n-med{% elif e.media_aluno < 17 %}n-bom{% else %}n-exc{% endif %}">{{ "%.1f"|format(e.media_aluno) }}</span></td>
               <td>{{ e.media_ano if e.media_ano is not none else '—' }}</td>
-              <td>{{ e.pos_ano }}.º <span class="text-muted">/ {{ e.n_ano }}</span></td>
+              <td>{{ e.pos_ano }}.º <span class="secao-sub">/ {{ e.n_ano }}</span></td>
               <td>{{ e.percentil_ano }}%</td>
-              <td class="text-muted">{{ e.n_disciplinas }}</td>
+              <td class="secao-sub">{{ e.n_disciplinas }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -327,5 +410,83 @@
   </div>
   {% endif %}
 
+  <!-- ── NAVEGAÇÃO INFERIOR ────────────────────────────────────────── -->
+  <div class="d-flex justify-content-between align-items-center mt-2 mb-4 flex-wrap gap-2">
+    <a href="{% if aluno_anterior %}{{ url_for('analise_aluno', aluno_id=aluno_anterior.id) }}{% else %}#{% endif %}"
+       class="btn btn-outline-primary {% if not aluno_anterior %}disabled{% endif %}">
+      <i class="bi bi-chevron-left me-1"></i>{{ aluno_anterior.nome if aluno_anterior else 'Início da turma' }}
+    </a>
+    <a href="{{ url_for('ver_turma', turma=aluno.turma) }}" class="btn btn-link text-decoration-none">
+      <i class="bi bi-grid-3x3-gap me-1"></i>Ver toda a turma
+    </a>
+    <a href="{% if aluno_seguinte %}{{ url_for('analise_aluno', aluno_id=aluno_seguinte.id) }}{% else %}#{% endif %}"
+       class="btn btn-outline-primary {% if not aluno_seguinte %}disabled{% endif %}">
+      {{ aluno_seguinte.nome if aluno_seguinte else 'Fim da turma' }}<i class="bi bi-chevron-right ms-1"></i>
+    </a>
+  </div>
+
 </div>
+
+<script>
+(function() {
+  const wrap = document.getElementById('an-wrap');
+  const btn = document.getElementById('btnTemaEscuro');
+  const icone = document.getElementById('iconeTema');
+  const label = document.getElementById('labelTema');
+  const CHAVE = 'analisePedagogica.tema';
+
+  function aplicar(tema) {
+    wrap.setAttribute('data-an-theme', tema);
+    if (tema === 'dark') {
+      icone.className = 'bi bi-sun-fill';
+      label.textContent = 'Modo claro';
+    } else {
+      icone.className = 'bi bi-moon-stars-fill';
+      label.textContent = 'Modo escuro';
+    }
+  }
+
+  let preferido = 'light';
+  try { preferido = localStorage.getItem(CHAVE) || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}
+  aplicar(preferido);
+
+  btn.addEventListener('click', function() {
+    const atual = wrap.getAttribute('data-an-theme');
+    const novo = atual === 'dark' ? 'light' : 'dark';
+    aplicar(novo);
+    try { localStorage.setItem(CHAVE, novo); } catch (e) {}
+  });
+})();
+</script>
+
+{% if an.evolucao|length > 1 %}
+<script>
+(function() {
+  const labels = {{ an.evolucao | map(attribute='ano_letivo') | list | tojson }}.map((a, i) => a + ' — ' + {{ an.evolucao | map(attribute='periodo') | list | tojson }}[i] + 'º Sem.');
+  const mediaAluno = {{ an.evolucao | map(attribute='media_aluno') | list | tojson }};
+  const mediaAno   = {{ an.evolucao | map(attribute='media_ano') | list | tojson }};
+  const percentil  = {{ an.evolucao | map(attribute='percentil_ano') | list | tojson }};
+
+  new Chart(document.getElementById('graficoEvolucao'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Média do aluno', data: mediaAluno, borderColor: '#0E4D7D', backgroundColor: '#0E4D7D', borderWidth: 3, tension: .25, yAxisID: 'y' },
+        { label: 'Média do ano (nível)', data: mediaAno, borderColor: '#9ca3af', borderDash: [5,4], backgroundColor: '#9ca3af', tension: .25, yAxisID: 'y' },
+        { label: 'Percentil no ano (%)', data: percentil, borderColor: '#16a34a', backgroundColor: '#16a34a', borderDash: [2,2], tension: .25, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y:  { type: 'linear', position: 'left', min: 0, max: 20, title: { display: true, text: 'Média (0-20)' } },
+        y1: { type: 'linear', position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, title: { display: true, text: 'Percentil (%)' } }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

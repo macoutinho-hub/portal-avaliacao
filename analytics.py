@@ -174,6 +174,53 @@ def carregar_observacoes(db):
     return obs
 
 
+# ─── Cache (recalcular só quando há novos dados) ───────────────────────────────
+#
+# Treinar o modelo pooled e analisar todos os alunos de uma turma é um trabalho
+# relativamente pesado (percorre todas as notas da escola). Para não repetir
+# este cálculo a cada carregamento de página, mantemos uma cache em memória do
+# processo, invalidada automaticamente sempre que os dados de `notas` mudam
+# (deteção via "fingerprint" leve: nº de registos, último id e soma das notas —
+# cobre inserções, remoções E edições de notas existentes sem recalcular tudo
+# a cada pedido).
+
+_cache = {
+    "fingerprint":      None,
+    "observacoes":      None,
+    "modelo":           None,
+    "indicadores_turma": {},   # {turma: resumo_dict} — limpo quando o fingerprint muda
+}
+
+
+def _fingerprint_dados(db):
+    """Assinatura leve do estado actual da tabela `notas` (uma única query),
+    usada para saber se é preciso recalcular o modelo/indicadores."""
+    row = db.execute(
+        "SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(nota), 0) FROM notas"
+    ).fetchone()
+    return (row[0], row[1], round(row[2] or 0.0, 2))
+
+
+def _obter_dados_cache(db):
+    """Devolve (observacoes, modelo) — recalculados apenas se os dados de
+    `notas` tiverem mudado desde o último cálculo."""
+    fp = _fingerprint_dados(db)
+    if _cache["fingerprint"] != fp:
+        _cache["fingerprint"] = fp
+        _cache["observacoes"] = carregar_observacoes(db)
+        _cache["modelo"] = construir_modelo_nota_esperada(_cache["observacoes"])
+        _cache["indicadores_turma"] = {}
+    return _cache["observacoes"], _cache["modelo"]
+
+
+def limpar_cache():
+    """Força a invalidação da cache (ex.: chamar depois de uma importação em massa)."""
+    _cache["fingerprint"] = None
+    _cache["observacoes"] = None
+    _cache["modelo"] = None
+    _cache["indicadores_turma"] = {}
+
+
 # ─── Posicionamento relativo (ranking / percentil) ─────────────────────────────
 
 def _ranking_e_percentil(valores, valor_alvo):
@@ -521,20 +568,19 @@ def deteccao_mudancas_bruscas(serie_evolucao, limiar=2.0):
 # ─── Análise completa de um aluno (ponto de entrada) ───────────────────────────
 
 def analisar_aluno(db, aluno_id):
-    """Ponto de entrada principal: recolhe observações, treina o modelo
-    pooled (cacheável a montante pelo chamador) e devolve toda a análise
-    pronta a renderizar para um aluno específico.
+    """Ponto de entrada principal: obtém observações e modelo pooled da
+    cache (recalculados apenas quando os dados de `notas` mudam — ver
+    `_obter_dados_cache`) e devolve toda a análise pronta a renderizar
+    para um aluno específico.
 
     Devolve None se o aluno não tiver notas registadas.
     """
-    observacoes = carregar_observacoes(db)
+    observacoes, modelo = _obter_dados_cache(db)
     aluno_obs = [o for o in observacoes if o["aluno_id"] == aluno_id]
     if not aluno_obs:
         return None
 
     ano_letivo_aluno = max(o["ano_letivo"] for o in aluno_obs)
-
-    modelo = construir_modelo_nota_esperada(observacoes)
 
     posicionamento = posicionamento_por_disciplina(observacoes, aluno_id, ano_letivo_aluno)
     perfil = perfil_academico(observacoes, aluno_id)
@@ -597,14 +643,17 @@ def resumo_indicadores_turma(db, turma):
     Devolve dict {aluno_id: {"n_alerta", "n_excelencia", "media_global",
                               "tendencia": "melhoria"|"estavel"|"deterioracao"|None}}
 
-    Treina o modelo pooled UMA SÓ VEZ (sobre toda a escola) e reutiliza-o
-    para todos os alunos da turma — evita o custo de o recalcular por aluno.
+    Os resultados (e o modelo pooled subjacente) ficam em cache, partilhada
+    entre turmas e invalidada automaticamente quando os dados de `notas`
+    mudam — ver `_obter_dados_cache`. Isto evita treinar o modelo e analisar
+    todos os alunos a cada carregamento da página da turma.
     """
-    observacoes = carregar_observacoes(db)
+    observacoes, modelo = _obter_dados_cache(db)
     if not observacoes:
         return {}
 
-    modelo = construir_modelo_nota_esperada(observacoes)
+    if turma in _cache["indicadores_turma"]:
+        return _cache["indicadores_turma"][turma]
 
     alunos_turma = {o["aluno_id"] for o in observacoes if o["turma"] == turma}
     resumo = {}
@@ -649,4 +698,5 @@ def resumo_indicadores_turma(db, turma):
             "tendencia":     tendencia,
         }
 
+    _cache["indicadores_turma"][turma] = resumo
     return resumo

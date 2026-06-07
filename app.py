@@ -2325,7 +2325,27 @@ def analise_aluno(aluno_id):
         flash("Este aluno ainda não tem notas registadas para analisar.", "warning")
         return redirect(url_for("aluno", aluno_id=aluno_id))
 
-    return render_template("analise_aluno.html", aluno=al, an=analise)
+    # Navegação entre colegas de turma (mesma ordem da lista da turma: por nome)
+    ano = ano_letivo_atual(db)
+    turmas_reais = turmas_base_para_sql(base_turma(al["turma"]), db, ano) or [al["turma"]]
+    placeholders = ",".join("?" * len(turmas_reais))
+    colegas = db.execute(
+        f"SELECT id, nome FROM alunos WHERE turma IN ({placeholders}) AND ano_letivo=? ORDER BY nome",
+        turmas_reais + [ano]
+    ).fetchall()
+    ids_colegas = [c["id"] for c in colegas]
+    aluno_anterior = aluno_seguinte = None
+    if aluno_id in ids_colegas:
+        idx = ids_colegas.index(aluno_id)
+        if idx > 0:
+            aluno_anterior = colegas[idx - 1]
+        if idx < len(colegas) - 1:
+            aluno_seguinte = colegas[idx + 1]
+
+    return render_template("analise_aluno.html", aluno=al, an=analise,
+                           aluno_anterior=aluno_anterior, aluno_seguinte=aluno_seguinte,
+                           posicao_turma=(ids_colegas.index(aluno_id) + 1) if aluno_id in ids_colegas else None,
+                           total_turma=len(ids_colegas))
 
 
 # ─── Importar notas via web (admin) ───────────────────────────────────────────

@@ -150,9 +150,9 @@
   <div class="row g-3" id="lista-alunos">
     {% for a in alunos %}
     <div class="col-12 col-sm-6 col-lg-4 col-xl-3 aluno-item" data-negas="{{ a.num_negas }}">
-      <a href="{{ url_for('aluno', aluno_id=a.id) }}" class="text-decoration-none">
-        <div class="card card-aluno h-100 border-0 shadow-sm {% if a.num_negas > 0 %}border-danger{% endif %}" style="{% if a.num_negas > 0 %}border-left:3px solid #dc3545 !important{% endif %}">
-          <div class="card-body p-3">
+      <div class="card card-aluno h-100 border-0 shadow-sm d-flex flex-column {% if a.num_negas > 0 %}border-danger{% endif %}" style="{% if a.num_negas > 0 %}border-left:3px solid #dc3545 !important{% endif %}">
+        <a href="{{ url_for('aluno', aluno_id=a.id) }}" class="text-decoration-none d-block flex-grow-1">
+          <div class="card-body p-3 pb-2">
             <div class="d-flex justify-content-between align-items-start mb-2">
               <div>
                 <div class="fw-semibold text-dark" style="font-size:.95rem">{{ a.nome }}</div>
@@ -195,13 +195,15 @@
             {% endif %}
             {% endif %}
           </div>
+        </a>
+        {% if session.role == 'admin' %}
+        <div class="px-3 pb-3 pt-1">
+          <a href="{{ url_for('analise_aluno', aluno_id=a.id) }}" class="btn btn-sm btn-outline-primary w-100" style="font-size:.75rem">
+            <i class="bi bi-graph-up-arrow me-1"></i>Análise pedagógica
+          </a>
         </div>
-      </a>
-      {% if session.role == 'admin' %}
-      <a href="{{ url_for('analise_aluno', aluno_id=a.id) }}" class="btn btn-sm btn-outline-primary w-100 mt-1" style="font-size:.75rem" onclick="event.stopPropagation()">
-        <i class="bi bi-graph-up-arrow me-1"></i>Análise pedagógica
-      </a>
-      {% endif %}
+        {% endif %}
+      </div>
     </div>
     {% endfor %}
   </div>
