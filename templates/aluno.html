@@ -164,7 +164,15 @@
               <th style="text-align:left; min-width:110px">Ano / Semestre</th>
               {% for disc in todas_disciplinas %}
               <th class="disc-header {% if loop.index0 == separador_idx %}separador-col{% endif %}"
-                  title="{{ disc }}">{{ abreviaturas.get(disc, disc[:6]) }}</th>
+                  title="{{ disc }}">
+                {% if disc == 'Projeto' and session.role == 'admin' %}
+                <a href="{{ url_for('projeto_aluno', aluno_id=aluno.id) }}" class="text-decoration-none" title="Ver Avaliação de Projeto de {{ aluno.nome }}">
+                  {{ abreviaturas.get(disc, disc[:6]) }} <i class="bi bi-kanban small"></i>
+                </a>
+                {% else %}
+                {{ abreviaturas.get(disc, disc[:6]) }}
+                {% endif %}
+              </th>
               {% endfor %}
               <th class="media-cell" style="min-width:55px">Média</th>
             </tr>
