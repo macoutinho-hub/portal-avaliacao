@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Importar Avaliação de Projeto{% endblock %}
+
+{% block content %}
+<div class="px-3" style="max-width: 760px;">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <h2 class="fw-bold mb-0"><i class="bi bi-upload me-2 text-primary"></i>Importar Avaliação de Projeto</h2>
+    <a href="{{ url_for('projeto_global') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Avaliação de Projeto
+    </a>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+      <p class="mb-2">Carregue o ficheiro Excel <strong>consolidado</strong> de Avaliação de Projeto
+        (ano letivo <strong>{{ ano_letivo }}</strong>, 11º ano), com as folhas
+        <code>Avaliacoes</code>, <code>Grupos</code> e <code>Membros</code>.</p>
+      <p class="text-muted small mb-3">A importação substitui os dados existentes para este ano letivo
+        (avaliações são atualizadas por aluno; grupos e membros são recriados a partir do ficheiro).</p>
+
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <input class="form-control" type="file" name="ficheiro" accept=".xlsx" required>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-upload me-1"></i>Importar ficheiro
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3"><h6 class="mb-0 fw-semibold"><i class="bi bi-database-check me-2 text-primary"></i>Estado atual na base de dados</h6></div>
+    <div class="card-body">
+      <div class="row g-3 text-center">
+        <div class="col-6">
+          <div class="display-6 fw-bold text-primary">{{ n_aval }}</div>
+          <div class="text-muted small">avaliações registadas</div>
+        </div>
+        <div class="col-6">
+          <div class="display-6 fw-bold text-primary">{{ n_grupos }}</div>
+          <div class="text-muted small">grupos registados</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

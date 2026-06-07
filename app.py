@@ -13,6 +13,7 @@ import openpyxl
 
 import analytics
 import analytics_projeto
+import importar_projeto_consolidado as projeto_import
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
@@ -2404,6 +2405,54 @@ def analise_aluno(aluno_id):
 
 
 # ─── Avaliação de Projeto (área admin) ───────────────────────────────────────
+
+@app.route("/admin/importar-projeto", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_projeto_web():
+    """Importa o ficheiro consolidado de Avaliação de Projeto (.xlsx) via upload web."""
+    db = get_db()
+    n_aval = db.execute(
+        "SELECT COUNT(*) FROM projeto_avaliacao WHERE ano_letivo=?", (projeto_import.ANO_LETIVO,)
+    ).fetchone()[0]
+    n_grupos = db.execute(
+        "SELECT COUNT(*) FROM projeto_grupos WHERE ano_letivo=?", (projeto_import.ANO_LETIVO,)
+    ).fetchone()[0]
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.lower().endswith(".xlsx"):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_projeto_web"))
+
+        path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+        f.save(path)
+
+        try:
+            wb = openpyxl.load_workbook(path, data_only=True)
+            if "Avaliacoes" not in wb.sheetnames:
+                flash("Ficheiro inválido: falta a folha 'Avaliacoes'.", "danger")
+                return redirect(url_for("importar_projeto_web"))
+
+            import io as _io, contextlib as _ctx
+            buf = _io.StringIO()
+            with _ctx.redirect_stdout(buf):
+                projeto_import.importar_avaliacoes(db, wb["Avaliacoes"])
+                if "Grupos" in wb.sheetnames and "Membros" in wb.sheetnames:
+                    projeto_import.importar_grupos(db, wb["Grupos"], wb["Membros"])
+            for linha in buf.getvalue().splitlines():
+                if linha.strip():
+                    flash(linha.strip(), "warning" if linha.strip().startswith("!") else "success")
+        except Exception as e:
+            flash(f"Erro ao importar: {e}", "danger")
+            return redirect(url_for("importar_projeto_web"))
+
+        analytics_projeto.carregar_avaliacoes  # (sem cache local a limpar — leitura direta da BD)
+        return redirect(url_for("importar_projeto_web"))
+
+    return render_template("importar_projeto.html", n_aval=n_aval, n_grupos=n_grupos,
+                           ano_letivo=projeto_import.ANO_LETIVO)
+
 
 @app.route("/admin/projeto")
 @login_required
