@@ -11,6 +11,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import openpyxl
 
+import analytics
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
@@ -2288,11 +2290,43 @@ def ver_turma(turma):
         except: periodo_sel = None
     alunos_info = calcular_alunos_info(db, tb, ano)
     medias_disc, periodos_disp, periodo_sel, comparacao = calcular_stats_turma(db, tb, periodo_sel)
+
+    # Indicadores agregados de análise pedagógica (apenas para o admin,
+    # para identificação precoce diretamente na lista de alunos da turma)
+    indicadores_analise = {}
+    try:
+        indicadores_analise = analytics.resumo_indicadores_turma(db, tb)
+    except Exception:
+        indicadores_analise = {}
+
     return render_template("dashboard.html", alunos=alunos_info, turma=tb,
                            medias_disciplinas=medias_disc,
                            periodos_disponiveis=periodos_disp,
                            periodo_sel=periodo_sel,
-                           comparacao_periodos=comparacao)
+                           comparacao_periodos=comparacao,
+                           indicadores_analise=indicadores_analise)
+
+
+@app.route("/admin/aluno/<int:aluno_id>/analise")
+@login_required
+@admin_required
+def analise_aluno(aluno_id):
+    """Dashboard de análise pedagógica individual (apenas administrador):
+    posicionamento relativo, perfil académico, nota esperada vs real,
+    outliers, evolução temporal e indicadores de risco/potencial."""
+    db = get_db()
+    al = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not al:
+        flash("Aluno não encontrado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    analise = analytics.analisar_aluno(db, aluno_id)
+    if analise is None:
+        flash("Este aluno ainda não tem notas registadas para analisar.", "warning")
+        return redirect(url_for("aluno", aluno_id=aluno_id))
+
+    return render_template("analise_aluno.html", aluno=al, an=analise)
+
 
 # ─── Importar notas via web (admin) ───────────────────────────────────────────
 

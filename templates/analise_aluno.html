@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% block title %}Análise — {{ aluno.nome }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .an-header { background: #0E4D7D; color: white; border-radius: 12px; padding: 1.2rem 1.5rem; }
+  .an-card { border: 0; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .badge-z-forte-baixo  { background: #dc2626; color: #fff; }
+  .badge-z-baixo        { background: #f97316; color: #fff; }
+  .badge-z-habitual     { background: #e5e7eb; color: #374151; }
+  .badge-z-alto         { background: #22c55e; color: #fff; }
+  .badge-z-forte-alto   { background: #16a34a; color: #fff; }
+  .nota-pill { border-radius: 6px; padding: 2px 8px; font-weight: 700; display: inline-block; min-width: 36px; text-align:center; }
+  .n-neg  { background: #ef4444; color: white; }
+  .n-med  { background: #f59e0b; color: white; }
+  .n-bom  { background: #22c55e; color: white; }
+  .n-exc  { background: #3b82f6; color: white; }
+  .n-nd   { color: #9ca3af; background:#f3f4f6; }
+  table.an-table { width: 100%; font-size: .85rem; }
+  table.an-table th { background:#f8f9fb; font-weight:600; color:#374151; padding:6px 8px; border-bottom:2px solid #e5e7eb; text-align:center; white-space:nowrap; }
+  table.an-table td { padding:6px 8px; border-bottom:1px solid #f1f5f9; text-align:center; }
+  table.an-table td.lbl { text-align:left; font-weight:600; color:#1f2937; }
+  .secao-titulo { font-weight:700; color:#0E4D7D; display:flex; align-items:center; gap:.5rem; }
+  .alerta-card { border-left: 4px solid #ef4444; background:#fef2f2; }
+  .excelencia-card { border-left: 4px solid #16a34a; background:#f0fdf4; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="px-3">
+
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <a href="{{ url_for('aluno', aluno_id=aluno.id) }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Ficha do aluno
+    </a>
+    <a href="{{ url_for('ver_turma', turma=aluno.turma) }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-people me-1"></i>{{ aluno.turma }}
+    </a>
+  </div>
+
+  <!-- ── CABEÇALHO ─────────────────────────────────────────────────── -->
+  <div class="an-header mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h3 class="fw-bold mb-1"><i class="bi bi-graph-up-arrow me-2"></i>Análise pedagógica — {{ aluno.nome }}</h3>
+      <div style="opacity:.85; font-size:.9rem">Nº {{ aluno.numero or '—' }} · {{ aluno.turma }} · {{ an.ano_letivo }}</div>
+    </div>
+    {% if an.perfil %}
+    <div class="text-end">
+      <div style="font-size:.78rem; opacity:.8">Média global do aluno</div>
+      <div class="fw-bold" style="font-size:1.8rem">{{ "%.1f"|format(an.perfil.media_global) }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not an.modelo_disponivel %}
+  <div class="alert alert-secondary">
+    <i class="bi bi-info-circle me-1"></i>
+    Ainda não há dados suficientes em toda a escola para treinar o modelo de "nota esperada" — esta secção
+    ficará disponível automaticamente assim que houver histórico suficiente (mín. ~30 observações comparáveis).
+  </div>
+  {% endif %}
+
+  <!-- ── INDICADORES DE RISCO / POTENCIAL ──────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card an-card alerta-card h-100">
+        <div class="card-body">
+          <div class="secao-titulo mb-2"><i class="bi bi-exclamation-triangle-fill text-danger"></i>Disciplinas de Alerta</div>
+          {% if an.disciplinas_alerta %}
+            {% for d in an.disciplinas_alerta %}
+            <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+              <span class="fw-semibold">{{ d.disciplina }}</span>
+              <span class="text-muted small">real {{ d.nota_real }} · esperada {{ d.nota_esperada }} ·
+                <span class="badge {{ 'badge-z-forte-baixo' if d.tipo == 'abaixo_forte' else 'badge-z-baixo' }}">desvio {{ d.desvio }}</span>
+              </span>
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted mb-0 small">Sem desvios negativos significativos identificados.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card an-card excelencia-card h-100">
+        <div class="card-body">
+          <div class="secao-titulo mb-2"><i class="bi bi-star-fill text-success"></i>Disciplinas de Excelência</div>
+          {% if an.disciplinas_excelencia %}
+            {% for d in an.disciplinas_excelencia %}
+            <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+              <span class="fw-semibold">{{ d.disciplina }}</span>
+              <span class="text-muted small">real {{ d.nota_real }} · esperada {{ d.nota_esperada }} ·
+                <span class="badge {{ 'badge-z-forte-alto' if d.tipo == 'acima_forte' else 'badge-z-alto' }}">desvio +{{ d.desvio }}</span>
+              </span>
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted mb-0 small">Sem desvios positivos significativos identificados.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if an.mudancas_bruscas %}
+  <div class="card an-card mb-4">
+    <div class="card-body">
+      <div class="secao-titulo mb-2"><i class="bi bi-lightning-fill text-warning"></i>Mudanças bruscas detetadas</div>
+      {% for m in an.mudancas_bruscas %}
+      <div class="d-flex align-items-center gap-2 py-1">
+        <i class="bi {{ 'bi-arrow-up-circle-fill text-success' if m.tipo == 'melhoria' else 'bi-arrow-down-circle-fill text-danger' }}"></i>
+        <span>{{ m.de }} → {{ m.para }}: variação de <strong>{{ "%+.1f"|format(m.variacao) }}</strong> valores na média global ({{ 'melhoria' if m.tipo == 'melhoria' else 'deterioração' }})</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── POSICIONAMENTO RELATIVO ───────────────────────────────────── -->
+  <div class="card an-card mb-4">
+    <div class="card-body">
+      <div class="secao-titulo mb-3"><i class="bi bi-bar-chart-steps"></i>Posicionamento Relativo por Disciplina</div>
+      <div class="table-responsive">
+        <table class="an-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">Disciplina</th>
+              <th>Período</th>
+              <th>Nota</th>
+              <th>Média turma</th>
+              <th>Média ano</th>
+              <th>Posição turma</th>
+              <th>Posição ano</th>
+              <th>Percentil ano</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in an.posicionamento %}
+            <tr>
+              <td class="lbl">{{ p.disciplina }}</td>
+              <td>{{ p.periodo }}º Sem.</td>
+              <td><span class="nota-pill {% if p.nota < 10 %}n-neg{% elif p.nota < 14 %}n-med{% elif p.nota < 17 %}n-bom{% else %}n-exc{% endif %}">{{ "%.0f"|format(p.nota) }}</span></td>
+              <td>{{ p.media_turma if p.media_turma is not none else '—' }}</td>
+              <td>{{ p.media_ano if p.media_ano is not none else '—' }}</td>
+              <td>{{ p.pos_turma }}.º <span class="text-muted">/ {{ p.n_turma }}</span></td>
+              <td>{{ p.pos_ano }}.º <span class="text-muted">/ {{ p.n_ano }}</span></td>
+              <td>
+                <div class="progress" style="height:16px; min-width:90px">
+                  <div class="progress-bar bg-primary" style="width:{{ p.percentil_ano }}%">{{ p.percentil_ano }}%</div>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PERFIL ACADÉMICO ──────────────────────────────────────────── -->
+  {% if an.perfil %}
+  <div class="card an-card mb-4">
+    <div class="card-body">
+      <div class="secao-titulo mb-1"><i class="bi bi-person-badge"></i>Perfil Académico Individual</div>
+      <p class="text-muted small mb-3">
+        Compara a média do aluno em cada disciplina com o seu próprio padrão habitual
+        (média global = {{ "%.1f"|format(an.perfil.media_global) }};
+        variabilidade pessoal entre disciplinas = {{ an.perfil.desvio_padrao_pessoal }}).
+        Disciplinas marcadas como "acima"/"abaixo" desviam-se ≥ 1 desvio-padrão pessoal do seu padrão habitual.
+      </p>
+      <div class="table-responsive">
+        <table class="an-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">Disciplina</th>
+              <th>Média do aluno</th>
+              <th>Nº de registos</th>
+              <th>Diferença ao seu padrão</th>
+              <th>Classificação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in an.perfil.disciplinas %}
+            <tr>
+              <td class="lbl">{{ d.disciplina }}</td>
+              <td>{{ "%.1f"|format(d.media_aluno) }}</td>
+              <td class="text-muted">{{ d.n_obs }}</td>
+              <td>{{ "%+.1f"|format(d.diferenca) }} <span class="text-muted small">(z={{ d.z }})</span></td>
+              <td>
+                {% if d.classificacao == 'acima' %}<span class="badge badge-z-alto">Acima do habitual</span>
+                {% elif d.classificacao == 'abaixo' %}<span class="badge badge-z-baixo">Abaixo do habitual</span>
+                {% else %}<span class="badge badge-z-habitual">Habitual</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── NOTA ESPERADA VS REAL ─────────────────────────────────────── -->
+  {% if an.modelo_disponivel %}
+  <div class="card an-card mb-4">
+    <div class="card-body">
+      <div class="secao-titulo mb-1"><i class="bi bi-bullseye"></i>Nota Esperada vs. Nota Real</div>
+      <p class="text-muted small mb-3">
+        Modelo de regressão treinado com {{ an.modelo_n_obs }} observações de toda a escola, considerando o histórico
+        do aluno na disciplina, o seu desempenho global, o contexto da turma/ano e a sua tendência recente.
+        Desvios com |z| ≥ 1.5 são destacados como possíveis outliers.
+      </p>
+      <div class="table-responsive">
+        <table class="an-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">Disciplina</th>
+              <th>Período</th>
+              <th>Nota real</th>
+              <th>Nota esperada</th>
+              <th>Desvio</th>
+              <th>z</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in an.nota_esperada_tabela %}
+            <tr>
+              <td class="lbl">{{ l.disciplina }}</td>
+              <td>{{ l.periodo }}º Sem.</td>
+              <td>{{ "%.0f"|format(l.nota_real) }}</td>
+              <td>
+                {% if l.nota_esperada is not none %}{{ "%.1f"|format(l.nota_esperada) }}
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td>
+                {% if l.desvio is defined %}
+                  {% if l.desvio > 0 %}<span class="text-success fw-semibold">+{{ l.desvio }}</span>
+                  {% elif l.desvio < 0 %}<span class="text-danger fw-semibold">{{ l.desvio }}</span>
+                  {% else %}{{ l.desvio }}{% endif %}
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td>
+                {% if l.z is defined %}
+                  {% if l.z <= -2.0 %}<span class="badge badge-z-forte-baixo">{{ l.z }}</span>
+                  {% elif l.z <= -1.5 %}<span class="badge badge-z-baixo">{{ l.z }}</span>
+                  {% elif l.z >= 2.0 %}<span class="badge badge-z-forte-alto">{{ l.z }}</span>
+                  {% elif l.z >= 1.5 %}<span class="badge badge-z-alto">{{ l.z }}</span>
+                  {% else %}<span class="text-muted">{{ l.z }}</span>{% endif %}
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── EVOLUÇÃO TEMPORAL ─────────────────────────────────────────── -->
+  {% if an.evolucao|length > 1 %}
+  <div class="card an-card mb-4">
+    <div class="card-body">
+      <div class="secao-titulo mb-3"><i class="bi bi-clock-history"></i>Evolução Temporal</div>
+      <canvas id="graficoEvolucao" height="100"></canvas>
+    </div>
+  </div>
+  <script>
+    (function() {
+      const labels = {{ an.evolucao | map(attribute='ano_letivo') | list | tojson }}.map((a, i) => a + ' — ' + {{ an.evolucao | map(attribute='periodo') | list | tojson }}[i] + 'º Sem.');
+      const mediaAluno = {{ an.evolucao | map(attribute='media_aluno') | list | tojson }};
+      const mediaAno   = {{ an.evolucao | map(attribute='media_ano') | list | tojson }};
+      const percentil  = {{ an.evolucao | map(attribute='percentil_ano') | list | tojson }};
+
+      new Chart(document.getElementById('graficoEvolucao'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Média do aluno', data: mediaAluno, borderColor: '#0E4D7D', backgroundColor: '#0E4D7D', tension: .25, yAxisID: 'y' },
+            { label: 'Média do ano (nível)', data: mediaAno, borderColor: '#9ca3af', borderDash: [5,4], backgroundColor: '#9ca3af', tension: .25, yAxisID: 'y' },
+            { label: 'Percentil no ano (%)', data: percentil, borderColor: '#16a34a', backgroundColor: '#16a34a', borderDash: [2,2], tension: .25, yAxisID: 'y1' }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            y:  { type: 'linear', position: 'left', min: 0, max: 20, title: { display: true, text: 'Média (0-20)' } },
+            y1: { type: 'linear', position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, title: { display: true, text: 'Percentil (%)' } }
+          }
+        }
+      });
+    })();
+  </script>
+
+  <div class="card an-card mb-4">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="an-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">Período</th>
+              <th>Média do aluno</th>
+              <th>Média do ano</th>
+              <th>Posição no ano</th>
+              <th>Percentil no ano</th>
+              <th>Nº disciplinas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in an.evolucao %}
+            <tr>
+              <td class="lbl">{{ e.ano_letivo }} — {{ e.periodo }}º Sem.</td>
+              <td><span class="nota-pill {% if e.media_aluno < 10 %}n-neg{% elif e.media_aluno < 14 %}n-med{% elif e.media_aluno < 17 %}n-bom{% else %}n-exc{% endif %}">{{ "%.1f"|format(e.media_aluno) }}</span></td>
+              <td>{{ e.media_ano if e.media_ano is not none else '—' }}</td>
+              <td>{{ e.pos_ano }}.º <span class="text-muted">/ {{ e.n_ano }}</span></td>
+              <td>{{ e.percentil_ano }}%</td>
+              <td class="text-muted">{{ e.n_disciplinas }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

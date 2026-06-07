@@ -172,9 +172,36 @@
               <span class="badge bg-danger" style="font-size:.7rem">{{ a.num_negas }} neg.</span>
             </div>
             {% endif %}
+            {% if indicadores_analise and indicadores_analise.get(a.id) %}
+            {% set ind = indicadores_analise.get(a.id) %}
+            {% if ind.n_alerta or ind.n_excelencia or ind.tendencia in ['melhoria','deterioracao'] %}
+            <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
+              {% if ind.n_alerta %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle" style="font-size:.68rem">
+                <i class="bi bi-exclamation-triangle-fill"></i> {{ ind.n_alerta }} alerta{{ 's' if ind.n_alerta != 1 }}
+              </span>
+              {% endif %}
+              {% if ind.n_excelencia %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:.68rem">
+                <i class="bi bi-star-fill"></i> {{ ind.n_excelencia }} excelência{{ 's' if ind.n_excelencia != 1 }}
+              </span>
+              {% endif %}
+              {% if ind.tendencia == 'melhoria' %}
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size:.68rem"><i class="bi bi-arrow-up-circle-fill"></i> a melhorar</span>
+              {% elif ind.tendencia == 'deterioracao' %}
+              <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle" style="font-size:.68rem"><i class="bi bi-arrow-down-circle-fill"></i> a descer</span>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% endif %}
           </div>
         </div>
       </a>
+      {% if session.role == 'admin' %}
+      <a href="{{ url_for('analise_aluno', aluno_id=a.id) }}" class="btn btn-sm btn-outline-primary w-100 mt-1" style="font-size:.75rem" onclick="event.stopPropagation()">
+        <i class="bi bi-graph-up-arrow me-1"></i>Análise pedagógica
+      </a>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
