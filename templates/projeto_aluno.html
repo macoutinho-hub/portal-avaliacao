@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Projeto — {{ aluno.nome }}{% endblock %}
+
+{% block content %}
+<div class="px-3">
+
+  <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h2 class="fw-bold mb-1"><i class="bi bi-kanban me-2 text-primary"></i>{{ aluno.nome }}</h2>
+      <p class="text-muted mb-0">Turma {{ aluno.turma }} · nº {{ aluno.numero }} · Avaliação de Projeto (11º ano)</p>
+    </div>
+    <a href="{{ url_for('projeto_turma', turma=aluno.turma) }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Turma {{ aluno.turma }}
+    </a>
+  </div>
+
+  <!-- Avaliação Final em destaque -->
+  {% set af = an.componentes | selectattr('chave', 'equalto', 'avaliacao_final') | first %}
+  {% if af %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body d-flex flex-wrap align-items-center gap-4">
+      <div class="text-center">
+        <div class="text-muted small">Avaliação Final</div>
+        <div class="display-5 fw-bold text-primary">{{ af.valor }}</div>
+        <div class="text-muted small">/ {{ af.escala }}</div>
+      </div>
+      <div class="flex-grow-1">
+        <div class="row g-2 small">
+          <div class="col-auto"><span class="text-muted">Posição na turma:</span> <strong>{{ af.pos_turma }}º</strong> de {{ af.n_turma }}</div>
+          <div class="col-auto"><span class="text-muted">Posição no 11º ano:</span> <strong>{{ af.pos_ano }}º</strong> de {{ af.n_ano }}</div>
+          <div class="col-auto"><span class="text-muted">Média da turma:</span> {{ af.media_turma }}</div>
+          <div class="col-auto"><span class="text-muted">Média do 11º ano:</span> {{ af.media_ano }}</div>
+        </div>
+        {% if af.destaque == 'excelencia' %}
+        <span class="badge bg-success mt-2"><i class="bi bi-star-fill me-1"></i>Muito acima da média do 11º ano (z={{ af.z_ano }})</span>
+        {% elif af.destaque == 'alerta' %}
+        <span class="badge bg-danger mt-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Muito abaixo da média do 11º ano (z={{ af.z_ano }})</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <!-- Componentes -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white py-3"><h5 class="mb-0 fw-semibold"><i class="bi bi-list-check me-2 text-primary"></i>Componentes da avaliação</h5></div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr><th>Componente</th><th class="text-end">Nota</th><th class="text-end">Média turma</th><th class="text-end">Média 11º ano</th><th class="text-end">Posição (turma / ano)</th></tr>
+            </thead>
+            <tbody>
+              {% for c in an.componentes %}
+              <tr class="{{ 'table-success' if c.destaque == 'excelencia' else ('table-danger' if c.destaque == 'alerta' else '') }}">
+                <td class="fw-semibold">{{ c.rotulo }}</td>
+                <td class="text-end fw-semibold">{{ c.valor }} <span class="text-muted">/ {{ c.escala }}</span></td>
+                <td class="text-end text-muted">{{ c.media_turma }}</td>
+                <td class="text-end text-muted">{{ c.media_ano }}</td>
+                <td class="text-end text-muted">{{ c.pos_turma }}º / {{ c.n_turma }} · {{ c.pos_ano }}º / {{ c.n_ano }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grupo / tema / orientador -->
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white py-3"><h5 class="mb-0 fw-semibold"><i class="bi bi-people-fill me-2 text-primary"></i>Grupo de Projeto</h5></div>
+        <div class="card-body">
+          {% if an.grupo %}
+          {% if an.grupo.tema %}
+          <div class="mb-3">
+            <div class="text-muted small">Tema</div>
+            <div class="fw-semibold">{{ an.grupo.tema }}</div>
+          </div>
+          {% endif %}
+          {% if an.grupo.questao_orientadora %}
+          <div class="mb-3">
+            <div class="text-muted small">Questão orientadora</div>
+            <div>{{ an.grupo.questao_orientadora }}</div>
+            {% if an.grupo.estado_aprovacao %}<span class="badge bg-secondary mt-1">{{ an.grupo.estado_aprovacao }}</span>{% endif %}
+          </div>
+          {% endif %}
+          {% if an.grupo.professor_orientador %}
+          <div class="mb-3">
+            <div class="text-muted small">Professor orientador</div>
+            <div class="fw-semibold">{{ an.grupo.professor_orientador }}</div>
+          </div>
+          {% endif %}
+          {% if an.grupo.colegas %}
+          <div>
+            <div class="text-muted small mb-1">Colegas de grupo</div>
+            <div class="d-flex flex-wrap gap-2">
+              {% for col in an.grupo.colegas %}
+              <span class="badge bg-light text-dark border">{{ col.nome }} <span class="text-muted">({{ col.turma }})</span></span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          {% else %}
+          <p class="text-muted mb-0">Sem informação de grupo registada para este aluno.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Observação / feedback -->
+  {% if an.observacao %}
+  <div class="card border-0 shadow-sm mt-4 mb-4">
+    <div class="card-header bg-white py-3"><h5 class="mb-0 fw-semibold"><i class="bi bi-chat-quote me-2 text-primary"></i>Observação</h5></div>
+    <div class="card-body">
+      <p class="mb-0 fst-italic">"{{ an.observacao }}"</p>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

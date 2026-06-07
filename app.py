@@ -12,6 +12,7 @@ from werkzeug.utils import secure_filename
 import openpyxl
 
 import analytics
+import analytics_projeto
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
@@ -139,6 +140,60 @@ def init_db():
             melhoria     TEXT NOT NULL DEFAULT 'N',
             ano_letivo   TEXT NOT NULL,
             UNIQUE(aluno_id, cod_exame, ano_letivo)
+        );
+    """)
+    db.commit()
+
+    # ─── Avaliação de Projeto (área admin: análise global / turma / aluno) ────
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS projeto_grupos (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            ano_letivo           TEXT NOT NULL,
+            nivel                TEXT NOT NULL DEFAULT '11º ano',
+            sala                 TEXT,
+            numero               INTEGER,
+            tema                 TEXT,
+            questao_orientadora  TEXT,
+            estado_aprovacao     TEXT,
+            professor_orientador TEXT,
+            UNIQUE(ano_letivo, nivel, sala, numero)
+        );
+
+        CREATE TABLE IF NOT EXISTS projeto_grupo_membros (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            grupo_id  INTEGER NOT NULL REFERENCES projeto_grupos(id) ON DELETE CASCADE,
+            aluno_id  INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            UNIQUE(grupo_id, aluno_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS projeto_avaliacao (
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id                 INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            ano_letivo               TEXT NOT NULL,
+            semestre                 INTEGER NOT NULL DEFAULT 1,
+            media_workshops          REAL,
+            desempenho_aula          REAL,
+            desempenho_aula_nivel    TEXT,
+            apresentacao_oral_qo     REAL,
+            poster                   REAL,
+            questionario             REAL,
+            artigo                   REAL,
+            media_componentes        REAL,
+            apresentacao_final       REAL,
+            avaliacao_produto_final  REAL,
+            avaliacao_final          REAL,
+            observacao               TEXT,
+            UNIQUE(aluno_id, ano_letivo, semestre)
+        );
+
+        CREATE TABLE IF NOT EXISTS projeto_desempenho_mensal (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id    INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            ano_letivo  TEXT NOT NULL,
+            mes         TEXT NOT NULL,
+            nivel       TEXT,
+            valor       REAL,
+            UNIQUE(aluno_id, ano_letivo, mes)
         );
     """)
     db.commit()
@@ -2346,6 +2401,53 @@ def analise_aluno(aluno_id):
                            aluno_anterior=aluno_anterior, aluno_seguinte=aluno_seguinte,
                            posicao_turma=(ids_colegas.index(aluno_id) + 1) if aluno_id in ids_colegas else None,
                            total_turma=len(ids_colegas))
+
+
+# ─── Avaliação de Projeto (área admin) ───────────────────────────────────────
+
+@app.route("/admin/projeto")
+@login_required
+@admin_required
+def projeto_global():
+    """Análise global da Avaliação de Projeto do 11º ano (visível só para admin)."""
+    db = get_db()
+    resumo = analytics_projeto.resumo_global(db)
+    if resumo is None:
+        flash("Ainda não há dados de Avaliação de Projeto importados.", "warning")
+        return redirect(url_for("admin_panel"))
+    return render_template("projeto_global.html", r=resumo)
+
+
+@app.route("/admin/projeto/turma/<path:turma>")
+@login_required
+@admin_required
+def projeto_turma(turma):
+    """Análise da Avaliação de Projeto de uma turma do 11º ano (admin)."""
+    db = get_db()
+    resumo = analytics_projeto.resumo_turma(db, turma)
+    if resumo is None:
+        flash(f"Sem dados de Avaliação de Projeto para a turma {turma}.", "warning")
+        return redirect(url_for("projeto_global"))
+    return render_template("projeto_turma.html", r=resumo)
+
+
+@app.route("/admin/projeto/aluno/<int:aluno_id>")
+@login_required
+@admin_required
+def projeto_aluno(aluno_id):
+    """Ficha de Avaliação de Projeto de um aluno (admin)."""
+    db = get_db()
+    al = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not al:
+        flash("Aluno não encontrado.", "danger")
+        return redirect(url_for("projeto_global"))
+
+    analise = analytics_projeto.analise_aluno_projeto(db, aluno_id)
+    if analise is None:
+        flash("Este aluno não tem dados de Avaliação de Projeto.", "warning")
+        return redirect(url_for("projeto_turma", turma=al["turma"]))
+
+    return render_template("projeto_aluno.html", aluno=al, an=analise)
 
 
 # ─── Importar notas via web (admin) ───────────────────────────────────────────

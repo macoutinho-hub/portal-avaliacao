@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Projeto — Turma {{ r.turma }}{% endblock %}
+
+{% block content %}
+<div class="px-3">
+
+  <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h2 class="fw-bold mb-1"><i class="bi bi-kanban me-2 text-primary"></i>Avaliação de Projeto — Turma {{ r.turma }}</h2>
+      <p class="text-muted mb-0">{{ r.n_alunos }} alunos · comparação com o 11º ano</p>
+    </div>
+    <a href="{{ url_for('projeto_global') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Visão global do 11º ano
+    </a>
+  </div>
+
+  <!-- Comparação com o ano -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+        <div class="text-muted small">Média da turma</div>
+        <div class="fs-3 fw-bold text-primary">{{ r.geral_turma.media if r.geral_turma.media is not none else '—' }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+        <div class="text-muted small">Média do 11º ano</div>
+        <div class="fs-3 fw-bold">{{ r.geral_ano.media if r.geral_ano.media is not none else '—' }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+        <div class="text-muted small">Diferença face ao ano</div>
+        {% if r.diferenca_media is not none %}
+        <div class="fs-3 fw-bold {{ 'text-success' if r.diferenca_media > 0 else ('text-danger' if r.diferenca_media < 0 else '') }}">
+          {{ '+' if r.diferenca_media > 0 }}{{ r.diferenca_media }}
+        </div>
+        {% else %}<div class="fs-3 fw-bold">—</div>{% endif %}
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+        <div class="text-muted small">Mín. / Máx. da turma</div>
+        <div class="fs-5 fw-bold">{{ r.geral_turma.minimo }} <span class="text-muted">/</span> {{ r.geral_turma.maximo }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Médias por componente: turma vs ano -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3"><h5 class="mb-0 fw-semibold"><i class="bi bi-bar-chart me-2 text-primary"></i>Médias por componente — turma vs. 11º ano</h5></div>
+    <div class="card-body">
+      {% set comp_ano = {} %}
+      {% for c in r.componentes_ano %}{% set _ = comp_ano.update({c.chave: c}) %}{% endfor %}
+      {% for c in r.componentes %}
+      {% set ca = comp_ano.get(c.chave) %}
+      <div class="mb-2">
+        <div class="d-flex justify-content-between small mb-1">
+          <span class="fw-semibold">{{ c.rotulo }}</span>
+          <span class="text-muted">turma {{ c.media }} · ano {{ ca.media if ca else '—' }} (escala {{ c.escala }})</span>
+        </div>
+        <div class="progress" style="height:8px">
+          <div class="progress-bar bg-primary" style="width: {{ c.media_pct }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <!-- Excelências -->
+    <div class="col-lg-6">
+      <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #198754 !important">
+        <div class="card-header bg-white py-3"><h5 class="mb-0 fw-semibold text-success"><i class="bi bi-star-fill me-2"></i>Excelências</h5></div>
+        <div class="card-body p-0">
+          {% if r.excelencias %}
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light"><tr><th>Aluno</th><th class="text-end">Nota</th><th class="text-end">z</th></tr></thead>
+            <tbody>
+              {% for a in r.excelencias %}
+              <tr>
+                <td><a href="{{ url_for('projeto_aluno', aluno_id=a.aluno_id) }}" class="text-decoration-none">{{ a.nome }}</a></td>
+                <td class="text-end fw-semibold">{{ a.avaliacao_final }}</td>
+                <td class="text-end text-success">+{{ a.z }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}<p class="text-muted p-3 mb-0">Sem outliers positivos.</p>{% endif %}
+        </div>
+      </div>
+    </div>
+    <!-- Alertas -->
+    <div class="col-lg-6">
+      <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #dc3545 !important">
+        <div class="card-header bg-white py-3"><h5 class="mb-0 fw-semibold text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Alertas</h5></div>
+        <div class="card-body p-0">
+          {% if r.alertas %}
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light"><tr><th>Aluno</th><th class="text-end">Nota</th><th class="text-end">z</th></tr></thead>
+            <tbody>
+              {% for a in r.alertas %}
+              <tr>
+                <td><a href="{{ url_for('projeto_aluno', aluno_id=a.aluno_id) }}" class="text-decoration-none">{{ a.nome }}</a></td>
+                <td class="text-end fw-semibold">{{ a.avaliacao_final }}</td>
+                <td class="text-end text-danger">{{ a.z }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}<p class="text-muted p-3 mb-0">Sem outliers negativos.</p>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lista de alunos -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3"><h5 class="mb-0 fw-semibold"><i class="bi bi-people me-2 text-primary"></i>Alunos da turma — Avaliação Final</h5></div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="table-light">
+          <tr><th>#</th><th>Aluno</th><th>Tema do projeto</th><th class="text-end">Avaliação Final</th><th class="text-end">Posição no 11º ano</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for a in r.alunos %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ a.nome }}</td>
+            <td class="text-muted small">{% if a.tema %}<span title="{{ a.tema }}">{{ a.tema[:60] }}{% if a.tema|length > 60 %}…{% endif %}</span>{% endif %}</td>
+            <td class="text-end fw-semibold">{{ a.avaliacao_final if a.avaliacao_final is not none else '—' }}</td>
+            <td class="text-end text-muted">{% if a.pos_ano %}{{ a.pos_ano }}º de {{ a.n_ano }}{% endif %}</td>
+            <td class="text-end">
+              <a href="{{ url_for('projeto_aluno', aluno_id=a.aluno_id) }}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-graph-up-arrow me-1"></i>Ficha
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
