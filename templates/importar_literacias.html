@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Importar Notas de Literacias{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:700px">
+  <h4 class="mb-1"><i class="bi bi-journal-text me-2"></i>Importar Notas de Literacias</h4>
+  <p class="text-muted small mb-4">
+    Disciplina exclusiva do <strong>2º semestre do 11º ano</strong> — conta para a
+    média do aluno e média final ({{ ano }}).
+  </p>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Carregue o ficheiro Excel com a lista de alunos e respetivas notas
+        (formato "LIT_..._CDF": colunas nº de processo / nome / nota,
+        agrupadas por turno — as linhas de cabeçalho de turno/professor
+        são ignoradas automaticamente).<br>
+        As notas são guardadas como <strong>2º semestre</strong> de {{ ano }}.
+        Pode carregar o ficheiro mais do que uma vez — os registos existentes
+        são atualizados, não duplicados.
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro de notas (.xlsx)</label>
+          <input type="file" name="ficheiro" accept=".xlsx,.xls" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-upload me-1"></i>Importar notas
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {% if not resultado %}
+  <div class="mt-2 text-muted small">
+    <i class="bi bi-info-circle me-1"></i>{{ n_registos }} nota(s) de Literacias já registada(s) para {{ ano }}.
+  </div>
+  {% endif %}
+
+  {% if sem_nota %}
+  <div class="card mt-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-10 text-warning-emphasis fw-semibold">
+      <i class="bi bi-exclamation-triangle me-1"></i>{{ sem_nota|length }} aluno(s) sem nota válida (não importados)
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for r in sem_nota %}
+          <tr><td class="ps-3">{{ r }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if nao_enc %}
+  <div class="card mt-4 border-danger">
+    <div class="card-header bg-danger bg-opacity-10 text-danger-emphasis fw-semibold">
+      <i class="bi bi-person-x me-1"></i>{{ nao_enc|length }} aluno(s) não encontrado(s) na base de dados ({{ ano }})
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for r in nao_enc %}
+          <tr><td class="ps-3">{{ r }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -2911,6 +2911,113 @@ def importar_bi():
     return render_template("importar_bi.html", n_com_bi=n)
 
 
+# ─── Importar notas de "Literacias" (11º ano, só 2º semestre) ─────────────────
+
+@app.route("/admin/importar-literacias", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_literacias():
+    """
+    Importa as notas de "Literacias" a partir de um ficheiro no formato
+    'LIT_..._CDF': lista contínua (nº processo, nome, nota), agrupada por
+    turno/professor (linhas que começam por 'PT' são ignoradas).
+    São sempre guardadas como 2º semestre do ano lectivo actual.
+    """
+    db = get_db()
+    DISCIPLINA = "Literacias"
+    SEMESTRE   = 2
+    ano        = get_setting(db, "ano_letivo_atual", "2025/2026")
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename.endswith((".xlsx", ".xls")):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_literacias"))
+
+        path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+        f.save(path)
+
+        wb = openpyxl.load_workbook(path, data_only=True)
+        ws = wb.active
+
+        def _parse_nota_lit(v):
+            if v is None:
+                return None
+            s = str(v).strip()
+            if s in ("-", "", "NP", "NP.", "NE", "NA", "—", "#VALOR!", "#VALUE!"):
+                return None
+            try:
+                n = float(s)
+            except ValueError:
+                return None
+            return n if 0 <= n <= 20 else None
+
+        importados   = 0
+        atualizados  = 0
+        sem_nota     = []
+        nao_enc      = []
+
+        for row in ws.iter_rows(min_row=1, values_only=True):
+            numero, nome, nota_val = (row + (None, None, None))[:3]
+            if numero is None or nome is None:
+                continue
+            numero_s = str(numero).strip()
+            nome_s   = str(nome).strip()
+            if not numero_s or not nome_s or numero_s.upper() == "PT":
+                continue   # linha de cabeçalho de turno/professor
+
+            # Procurar aluno por nº de processo (com/sem zeros à esquerda)
+            aluno = None
+            for cand in {numero_s, numero_s.lstrip("0") or "0", numero_s.zfill(4)}:
+                aluno = db.execute(
+                    "SELECT id, nome FROM alunos WHERE numero=? AND ano_letivo=?",
+                    (cand, ano)
+                ).fetchone()
+                if aluno:
+                    break
+            if not aluno:
+                nao_enc.append(f"{numero_s} — {nome_s}")
+                continue
+
+            nota = _parse_nota_lit(nota_val)
+            if nota is None:
+                sem_nota.append(f"{numero_s} — {nome_s} (valor: {nota_val!r})")
+                continue
+
+            existente = db.execute(
+                "SELECT id, nota FROM notas WHERE aluno_id=? AND disciplina=? AND periodo=?",
+                (aluno["id"], DISCIPLINA, SEMESTRE)
+            ).fetchone()
+            if existente:
+                if existente["nota"] != nota:
+                    db.execute("UPDATE notas SET nota=? WHERE id=?", (nota, existente["id"]))
+                    atualizados += 1
+            else:
+                db.execute(
+                    "INSERT INTO notas (aluno_id, disciplina, periodo, nota) VALUES (?,?,?,?)",
+                    (aluno["id"], DISCIPLINA, SEMESTRE, nota)
+                )
+                importados += 1
+
+        db.commit()
+
+        msg = f"✓ {importados} nota(s) nova(s) inserida(s), {atualizados} atualizada(s)."
+        if sem_nota: msg += f" {len(sem_nota)} sem nota válida."
+        if nao_enc:  msg += f" {len(nao_enc)} aluno(s) não encontrados."
+        flash(msg, "success" if not (sem_nota or nao_enc) else "warning")
+        return render_template("importar_literacias.html", ano=ano,
+                               sem_nota=sem_nota, nao_enc=nao_enc,
+                               resultado=True)
+
+    n = db.execute(
+        "SELECT COUNT(*) FROM notas n JOIN alunos a ON a.id=n.aluno_id "
+        "WHERE n.disciplina=? AND n.periodo=? AND a.ano_letivo=?",
+        (DISCIPLINA, SEMESTRE, ano)
+    ).fetchone()[0]
+    return render_template("importar_literacias.html", ano=ano, n_registos=n,
+                           sem_nota=[], nao_enc=[], resultado=False)
+
+
 # ─── Ferramenta de auditoria de notas em falta (admin) ────────────────────────
 
 @app.route("/admin/auditoria-notas")
