@@ -1,17 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Projeto — Turma {{ r.turma }}{% endblock %}
 
+{% block extra_head %}
+{% include "_pj_tema_head.html" %}
+{% endblock %}
+
 {% block content %}
-<div class="px-3">
+<div class="px-3" id="pj-wrap" data-bs-theme="light">
 
   <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
     <div>
       <h2 class="fw-bold mb-1"><i class="bi bi-kanban me-2 text-primary"></i>Avaliação de Projeto — Turma {{ r.turma }}</h2>
       <p class="text-muted mb-0">{{ r.n_alunos }} alunos · comparação com o 11º ano</p>
     </div>
-    <a href="{{ url_for('projeto_global') }}" class="btn btn-outline-secondary btn-sm">
-      <i class="bi bi-arrow-left me-1"></i>Visão global do 11º ano
-    </a>
+    <div class="d-flex align-items-center gap-2">
+      {% include "_pj_tema_toggle.html" %}
+      <a href="{{ url_for('projeto_global') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Visão global do 11º ano
+      </a>
+    </div>
   </div>
 
   <!-- Comparação com o ano -->
@@ -143,4 +150,5 @@
   </div>
 
 </div>
+{% include "_pj_tema_js.html" %}
 {% endblock %}

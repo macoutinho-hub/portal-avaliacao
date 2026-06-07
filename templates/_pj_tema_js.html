@@ -1,0 +1,32 @@
+<script>
+(function() {
+  const wrap = document.getElementById('pj-wrap');
+  const btn = document.getElementById('btnPjTema');
+  if (!wrap || !btn) return;
+  const icone = document.getElementById('iconePjTema');
+  const label = document.getElementById('labelPjTema');
+  const CHAVE = 'avaliacaoProjeto.tema';
+
+  function aplicar(tema) {
+    wrap.setAttribute('data-bs-theme', tema);
+    if (tema === 'dark') {
+      icone.className = 'bi bi-sun-fill';
+      label.textContent = 'Modo claro';
+    } else {
+      icone.className = 'bi bi-moon-stars-fill';
+      label.textContent = 'Modo escuro';
+    }
+  }
+
+  let preferido = 'light';
+  try { preferido = localStorage.getItem(CHAVE) || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}
+  aplicar(preferido);
+
+  btn.addEventListener('click', function() {
+    const atual = wrap.getAttribute('data-bs-theme');
+    const novo = atual === 'dark' ? 'light' : 'dark';
+    aplicar(novo);
+    try { localStorage.setItem(CHAVE, novo); } catch (e) {}
+  });
+})();
+</script>

@@ -1,14 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Importar Avaliação de Projeto{% endblock %}
 
-{% block content %}
-<div class="px-3" style="max-width: 760px;">
+{% block extra_head %}
+{% include "_pj_tema_head.html" %}
+{% endblock %}
 
-  <div class="d-flex align-items-center justify-content-between mb-4">
+{% block content %}
+<div class="px-3" id="pj-wrap" data-bs-theme="light" style="max-width: 760px;">
+
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
     <h2 class="fw-bold mb-0"><i class="bi bi-upload me-2 text-primary"></i>Importar Avaliação de Projeto</h2>
-    <a href="{{ url_for('projeto_global') }}" class="btn btn-outline-secondary btn-sm">
-      <i class="bi bi-arrow-left me-1"></i>Avaliação de Projeto
-    </a>
+    <div class="d-flex align-items-center gap-2">
+      {% include "_pj_tema_toggle.html" %}
+      <a href="{{ url_for('projeto_global') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Avaliação de Projeto
+      </a>
+    </div>
   </div>
 
   <div class="card border-0 shadow-sm mb-4">
@@ -47,4 +54,5 @@
   </div>
 
 </div>
+{% include "_pj_tema_js.html" %}
 {% endblock %}

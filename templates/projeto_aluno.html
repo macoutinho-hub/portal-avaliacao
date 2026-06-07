@@ -1,8 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Projeto — {{ aluno.nome }}{% endblock %}
 
+{% block extra_head %}
+{% include "_pj_tema_head.html" %}
+{% endblock %}
+
 {% block content %}
-<div class="px-3">
+<div class="px-3" id="pj-wrap" data-bs-theme="light">
 
   <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
     <div>
@@ -10,6 +14,7 @@
       <p class="text-muted mb-0">Turma {{ aluno.turma }} · nº {{ aluno.numero }} · Avaliação de Projeto (11º ano)</p>
     </div>
     <div class="d-flex gap-2">
+      {% include "_pj_tema_toggle.html" %}
       <a href="{{ url_for('aluno', aluno_id=aluno.id) }}" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-person me-1"></i>Ficha do aluno
       </a>
@@ -126,4 +131,5 @@
   {% endif %}
 
 </div>
+{% include "_pj_tema_js.html" %}
 {% endblock %}

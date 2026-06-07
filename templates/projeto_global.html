@@ -1,14 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Avaliação de Projeto — 11º ano{% endblock %}
 
+{% block extra_head %}
+{% include "_pj_tema_head.html" %}
+{% endblock %}
+
 {% block content %}
-<div class="px-3">
+<div class="px-3" id="pj-wrap" data-bs-theme="light">
 
   <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
     <div>
       <h2 class="fw-bold mb-1"><i class="bi bi-kanban me-2 text-primary"></i>Avaliação de Projeto — 11º ano</h2>
       <p class="text-muted mb-0">{{ r.n_alunos }} alunos · {{ r.n_turmas }} turmas · visão global (apenas administrador)</p>
     </div>
+    {% include "_pj_tema_toggle.html" %}
   </div>
 
   <!-- Resumo geral -->
@@ -196,4 +201,5 @@
   </div>
 
 </div>
+{% include "_pj_tema_js.html" %}
 {% endblock %}
