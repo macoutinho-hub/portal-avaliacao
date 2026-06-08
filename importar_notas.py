@@ -51,6 +51,105 @@ def extrair_turma(cell_val):
         return s.split(" - ", 1)[1].strip()
     return s
 
+# ─── Normalização de nomes de disciplinas ────────────────────────────────────
+# Algumas pautas usam abreviaturas ou grafias diferentes para a mesma
+# disciplina (ex.: "Econ C" / "ECO. C" para "Economia C", "AI B" / "AP. IN"
+# para "Aplicações Informáticas B"). Para que as notas fiquem todas associadas
+# à mesma disciplina na BD (nome canónico = o usado em ORDEM_TODAS/ABREVIATURAS
+# de app.py), mapeamos aqui as variantes conhecidas para o nome canónico.
+# Adicionar novas entradas sempre que surgir uma grafia diferente numa pauta.
+DISCIPLINAS_ALIAS = {
+    "eco. c":       "Economia C",
+    "econ. c":      "Economia C",
+    "eco c":        "Economia C",
+    "econ c":       "Economia C",
+    "eco. a":       "Economia A",
+    "econ. a":      "Economia A",
+    "eco a":        "Economia A",
+    "econ a":       "Economia A",
+    "ap. in":       "Aplicações Informáticas B",
+    "ap.in":        "Aplicações Informáticas B",
+    "ap in":        "Aplicações Informáticas B",
+    "aplic. info":  "Aplicações Informáticas B",
+    "aplicacoes informaticas": "Aplicações Informáticas B",
+    "ai b":         "Aplicações Informáticas B",
+    "mat. a":       "Matemática A",
+    "mat a":        "Matemática A",
+    "mat. b":       "Matemática B",
+    "mat b":        "Matemática B",
+    "mat. g":       "Matemática Geral",
+    "mat g":        "Matemática Geral",
+    "des. a":       "Desenho A",
+    "des a":        "Desenho A",
+    "des. g":       "Desenho Geral",
+    "des g":        "Desenho Geral",
+    "hist. a":      "História A",
+    "hist a":       "História A",
+    "hist. b":      "História B",
+    "hist b":       "História B",
+    "hist. g":      "História Geral",
+    "hist g":       "História Geral",
+    "fis. quim a":  "Física e Química A",
+    "fis quim a":   "Física e Química A",
+    "fq a":         "Física e Química A",
+    "geo. a":       "Geografia A",
+    "geo a":        "Geografia A",
+    "ed. fis":      "Educação Física",
+    "ed.fis":       "Educação Física",
+    "ed fis":       "Educação Física",
+    "ed. fis.":     "Educação Física",
+    "fil.":         "Filosofia",
+    "fil":          "Filosofia",
+    "fil. a":       "Filosofia A",
+    "fil a":        "Filosofia A",
+    "ing.":         "Inglês",
+    "ing":          "Inglês",
+    "port.":        "Português",
+    "port":         "Português",
+    "lit.":         "Literacias",
+    "lit. p":       "Literatura Portuguesa",
+    "lit p":        "Literatura Portuguesa",
+    "bio. geo":     "Biologia e Geologia",
+    "bio geo":      "Biologia e Geologia",
+    "psic. b":      "Psicologia B",
+    "psic b":       "Psicologia B",
+    "c. pol":       "Ciência Política",
+    "c pol":        "Ciência Política",
+    "gda":          "Geometria Descritiva A",
+    "macs":         "Matemática Aplicada Ciências Sociais",
+    "rel.":         "Religião",
+    "rel":          "Religião",
+    "alem.":        "Alemão",
+    "alem":         "Alemão",
+    "esp.":         "Espanhol",
+    "esp":          "Espanhol",
+    "fr.":          "Francês",
+    "fr":           "Francês",
+    "proj.":        "Projeto",
+    "proj":         "Projeto",
+}
+
+def canonizar_disciplina(nome):
+    """
+    Tenta mapear um nome de disciplina, tal como surge na pauta, para o nome
+    canónico usado na BD/portal (as chaves de ABREVIATURAS / ORDEM_TODAS em
+    app.py). Cobre variantes de abreviatura, pontuação e maiúsculas/minúsculas
+    (ex.: 'ECO. C' e 'Econ C' → 'Economia C'; 'AI B' e 'AP. IN' →
+    'Aplicações Informáticas B'). Se não houver alias conhecido, devolve o
+    nome original (sem normalizar) para não perder disciplinas novas/raras —
+    nesse caso convém acrescentar a variante a DISCIPLINAS_ALIAS.
+    """
+    if not nome:
+        return nome
+    chave = normalizar(nome)
+    if chave in DISCIPLINAS_ALIAS:
+        return DISCIPLINAS_ALIAS[chave]
+    # tentar também sem pontuação final (ex.: 'fil.' → 'fil')
+    sem_ponto = chave.rstrip(".").strip()
+    if sem_ponto in DISCIPLINAS_ALIAS:
+        return DISCIPLINAS_ALIAS[sem_ponto]
+    return str(nome).strip()
+
 # ─── Parser do ficheiro ────────────────────────────────────────────────────────
 
 def parse_ficheiro(path):
@@ -87,10 +186,13 @@ def parse_ficheiro(path):
     disc_np_map = {}  # {disciplina: col_np}
     for idx, dc in enumerate(disc_cols):
         end = disc_cols[idx + 1] if idx + 1 < len(disc_cols) else len(np_row)
-        disc_name = str(disc_row[dc]).strip()
+        disc_name = canonizar_disciplina(str(disc_row[dc]).strip())
         for c in range(dc, min(end, len(np_row))):
             if np_row[c] and str(np_row[c]).strip() == "NP.":
-                disc_np_map[disc_name] = c
+                # Se já existe uma coluna NP para esta disciplina (ex.: duas
+                # grafias diferentes da mesma cadeira na mesma pauta), não
+                # substituir — manter a primeira encontrada.
+                disc_np_map.setdefault(disc_name, c)
                 break
 
     # Ler linhas de dados (a partir de header_idx + 2)
@@ -154,11 +256,13 @@ def main():
     total_notas  = 0
     total_novos  = 0
     nao_encontrados = set()
+    disciplinas_vistas = set()
 
     for path in sorted(ficheiros):
         print(f"\nA processar: {os.path.basename(path)}")
         registos = parse_ficheiro(path)
         print(f"  {len(registos)} registos extraídos")
+        disciplinas_vistas.update(r["disciplina"] for r in registos)
 
         for r in registos:
             nome_n = normalizar(r["nome_aluno"])
@@ -211,6 +315,14 @@ def main():
 
     print(f"\n{'='*50}")
     print(f"✓ {total_notas} notas processadas  ({total_novos} novas inserções)")
+
+    print(f"\nDisciplinas encontradas nas pautas ({len(disciplinas_vistas)}):")
+    for d in sorted(disciplinas_vistas):
+        marca = "" if d in DISCIPLINAS_ALIAS.values() or len(d) > 6 else "  ← grafia abreviada/pouco usual? confirmar se corresponde a uma disciplina já existente"
+        print(f"   - {d}{marca}")
+    print("   (Se aqui aparecerem duas entradas para a mesma disciplina com nomes")
+    print("    diferentes — ex. 'Econ C' e 'ECO. C' — adicionar a variante a")
+    print("    DISCIPLINAS_ALIAS no topo deste script e voltar a importar.)")
 
     if nao_encontrados:
         print(f"\n⚠  {len(nao_encontrados)} aluno(s) não encontrado(s) na BD:")
