@@ -944,11 +944,21 @@ def aluno(aluno_id):
         if r["exame_f2"] is not None: nf_ex2[d] = r["exame_f2"]
         if r["cfd"]  is not None: nf_cfd[d]  = r["cfd"]
 
+    # Disciplinas com menções especiais (AM, NA, RF, etc.) em algum semestre →
+    # não calcular CIF/CFD para essas disciplinas (dados insuficientes/inválidos)
+    discs_com_texto = set()
+    for disc_ano in notas_por_ano.values():
+        for d, periodos in disc_ano.items():
+            if any(isinstance(v, str) for v in periodos.values()):
+                discs_com_texto.add(d)
+
     # ── CIF: calculado ou oficial se disponível ───────────────────────────────
     cif_notas = {}
     for d in todas_disciplinas:
         if d in nf_cif:
             cif_notas[d] = arred(nf_cif[d])  # oficial → usar directamente
+        elif d in discs_com_texto:
+            cif_notas[d] = None  # menção especial (AM/NA/RF...) → não calcular
         else:
             # CIF = média do 2º semestre de cada ano (com fallback para 1º sem. se não houver 2º)
             # Para alunos de 11º: 2º sem 10º + 2º sem 11º (ou 1º sem 11º se não houver 2º)
@@ -1008,6 +1018,8 @@ def aluno(aluno_id):
     for d in todas_disciplinas:
         if d in nf_cfd:
             cfd_notas[d] = arred(nf_cfd[d])  # importado com exames → usar directamente
+        elif d in discs_com_texto:
+            cfd_notas[d] = None  # menção especial (AM/NA/RF...) → não calcular
         elif cif_notas.get(d) is not None and exame_notas.get(d) is not None:
             cfd_notas[d] = arred((7.5 * cif_notas[d] + 2.5 * exame_notas[d]) / 10)
         else:
@@ -1250,7 +1262,7 @@ def adicionar_semestre(aluno_id):
     aluno_id_ano = existe["id"]
     guardadas = 0
 
-    VALORES_TEXTO_S = {"AM", "NE", "NA", "NP", "ND"}
+    VALORES_TEXTO_S = {"AM", "NE", "NA", "NP", "ND", "RF"}
 
     for i in range(n_discs):
         disc   = request.form.get(f"disc_{i}", "").strip()
@@ -1360,7 +1372,7 @@ def adicionar_disciplina(aluno_id):
         ).fetchone()
 
     aid = existe["id"]
-    VALORES_TEXTO = {"AM", "NE", "NA", "NP", "ND"}
+    VALORES_TEXTO = {"AM", "NE", "NA", "NP", "ND", "RF"}
     nota, nota_texto = None, None
     if nota_str.upper() in VALORES_TEXTO:
         nota_texto = nota_str.upper()
@@ -1579,7 +1591,7 @@ def editar_nota(aluno_id):
 
     # Converter nota
     # Valores especiais de texto (AM, NE, NA, etc.)
-    VALORES_TEXTO = {"AM", "NE", "NA", "NP", "ND"}
+    VALORES_TEXTO = {"AM", "NE", "NA", "NP", "ND", "RF"}
     nota_texto = None
     nota = None
 
@@ -2070,13 +2082,14 @@ def apresentacao(turma):
     for a in alunos:
         # Notas
         rows = db.execute(
-            "SELECT disciplina, periodo, nota FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
+            "SELECT disciplina, periodo, nota, nota_texto FROM notas WHERE aluno_id=? ORDER BY disciplina, periodo",
             (a["id"],)
         ).fetchall()
 
         notas_por_ano = {a["ano_letivo"]: {}}
         for r in rows:
-            notas_por_ano[a["ano_letivo"]].setdefault(r["disciplina"], {})[r["periodo"]] = r["nota"]
+            val = r["nota_texto"] if r["nota_texto"] else r["nota"]
+            notas_por_ano[a["ano_letivo"]].setdefault(r["disciplina"], {})[r["periodo"]] = val
 
         # Anos anteriores
         if a["numero"]:
@@ -2085,13 +2098,14 @@ def apresentacao(turma):
                 (a["numero"], a["ano_letivo"])
             ).fetchall():
                 rows_ant = db.execute(
-                    "SELECT disciplina, periodo, nota FROM notas WHERE aluno_id=?",
+                    "SELECT disciplina, periodo, nota, nota_texto FROM notas WHERE aluno_id=?",
                     (outro["id"],)
                 ).fetchall()
                 if rows_ant:
                     notas_por_ano[outro["ano_letivo"]] = {}
                     for r in rows_ant:
-                        notas_por_ano[outro["ano_letivo"]].setdefault(r["disciplina"], {})[r["periodo"]] = r["nota"]
+                        val = r["nota_texto"] if r["nota_texto"] else r["nota"]
+                        notas_por_ano[outro["ano_letivo"]].setdefault(r["disciplina"], {})[r["periodo"]] = val
 
         # Disciplinas e abreviaturas
         ABREVS = {
@@ -2167,7 +2181,7 @@ def apresentacao(turma):
 
             for p in periodos:
                 nl = {d: disc_ano.get(d, {}).get(p) for d in todas}
-                vals = [v for v in nl.values() if v is not None]
+                vals = [v for v in nl.values() if isinstance(v, (int, float))]
                 linhas.append({"label": f"{ano_esc} — {p}º Sem.", "tipo": "semestre",
                                 "atual": ano == a["ano_letivo"], "notas": nl,
                                 "media": round(sum(vals)/len(vals),1) if vals else None})
@@ -2191,11 +2205,20 @@ def apresentacao(turma):
             if r["exame_f2"] is not None: ap_ex2[r["disciplina"]]    = r["exame_f2"]
             if r["cfd"]      is not None: ap_cfd_of[r["disciplina"]] = r["cfd"]
 
+        # Disciplinas com menções especiais (AM, NA, RF, etc.) → não calcular CIF/CFD
+        discs_com_texto_ap = set()
+        for da_k in notas_por_ano.values():
+            for d, periodos in da_k.items():
+                if any(isinstance(v, str) for v in periodos.values()):
+                    discs_com_texto_ap.add(d)
+
         # CIF: oficial (importado) ou média dos 2ºs semestres — arredondamento aritmético
         cif = {}
         for d in todas:
             if d in ap_cif_of:
                 cif[d] = arred(ap_cif_of[d])  # oficial → usar directamente
+            elif d in discs_com_texto_ap:
+                cif[d] = None  # menção especial (AM/NA/RF...) → não calcular
             else:
                 ns = []
                 for ano_k, da_k in notas_por_ano.items():
@@ -2203,7 +2226,7 @@ def apresentacao(turma):
                     if not pds: continue
                     pf = 2 if 2 in pds else pds[-1]
                     n = da_k.get(d, {}).get(pf)
-                    if n is not None: ns.append(n)
+                    if isinstance(n, (int, float)): ns.append(n)
                 cif[d] = arred(sum(ns)/len(ns)) if ns else None
         cv = [v for v in cif.values() if v is not None]
         cm = arred(sum(cv)/len(cv)) if cv else None
@@ -2266,6 +2289,8 @@ def apresentacao(turma):
         for d in todas:
             if d in ap_cfd_of:
                 cfd_ap[d] = arred(ap_cfd_of[d])
+            elif d in discs_com_texto_ap:
+                cfd_ap[d] = None  # menção especial (AM/NA/RF...) → não calcular
             elif cif.get(d) is not None and ap_exame.get(d) is not None:
                 cfd_ap[d] = arred((7.5 * cif[d] + 2.5 * ap_exame[d]) / 10)
             else:
