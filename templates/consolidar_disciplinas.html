@@ -23,21 +23,27 @@
 
   <div class="alert alert-warning">
     <i class="bi bi-exclamation-triangle me-1"></i>
-    <strong>Pré-visualização</strong> — nada foi alterado ainda. Reveja os grupos abaixo
-    e, se estiver tudo correto, prima "Aplicar consolidação" no fundo da página.
-    Esta ação:
+    <strong>Sugestões de fusão — nada foi alterado.</strong> Cada grupo abaixo é
+    uma <em>sugestão</em> baseada num mapa de grafias conhecidas; pode haver
+    falsos positivos (por exemplo, <code>Inglês</code> e
+    <code>Líng. Estrang. I - Inglês</code> são disciplinas <strong>diferentes</strong>
+    que partilham a mesma abreviatura "Ing" — não devem ser fundidas).
+    <strong>Reveja cada grupo individualmente</strong> e só aprove os que
+    correspondem mesmo à mesma disciplina, usando o botão "Aprovar e fundir este grupo".
+    Aprovar um grupo:
     <ul class="mb-0 mt-1">
-      <li>renomeia registos com grafias diferentes para o nome oficial da disciplina;</li>
+      <li>renomeia os registos com a(s) grafia(s) listada(s) para o nome oficial da disciplina;</li>
       <li>quando já existe um registo com o nome oficial para o mesmo aluno
           (e período / ano lectivo), remove o registo duplicado em vez de o renomear
-          — assinalado abaixo a <span class="text-danger fw-semibold">vermelho</span>.</li>
+          — assinalado a <span class="text-danger fw-semibold">vermelho</span>.</li>
     </ul>
   </div>
 
   <div class="mb-3 small text-muted">
-    Resumo do que seria feito:
-    <strong>{{ total_renomeados }}</strong> registo(s) a renomear,
-    <strong class="{{ 'text-danger' if total_removidos else '' }}">{{ total_removidos }}</strong> duplicado(s) a remover.
+    {{ entradas|length }} grupo(s) sugerido(s) — no total
+    <strong>{{ total_renomeados }}</strong> registo(s) a renomear e
+    <strong class="{{ 'text-danger' if total_removidos else '' }}">{{ total_removidos }}</strong> duplicado(s) a remover,
+    <em>se todos forem aprovados</em>.
   </div>
 
   {% for e in entradas %}
@@ -45,7 +51,8 @@
     <div class="card-header d-flex justify-content-between align-items-center">
       <span>
         <span class="badge text-bg-secondary me-2">{{ e.tabela }}</span>
-        <i class="bi bi-arrow-right-short"></i>
+        {% for v in e.variantes %}<span class="badge text-bg-light border me-1">{{ v }}</span>{% endfor %}
+        <i class="bi bi-arrow-right-short mx-1"></i>
         <strong>{{ e.canonico }}</strong>
       </span>
       <span class="small text-muted">
@@ -54,15 +61,13 @@
       </span>
     </div>
     <div class="card-body">
-      <p class="mb-2 small">Grafias encontradas que serão fundidas em <strong>{{ e.canonico }}</strong>:</p>
-      <p class="mb-3">
-        {% for v in e.variantes %}
-        <span class="badge text-bg-light border me-1">{{ v }}</span>
-        {% endfor %}
-      </p>
-
       {% if e.conflitos %}
-      <table class="table table-sm table-borderless mb-0">
+      <p class="mb-2 small text-danger">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        {{ e.conflitos|length }} registo(s) duplicado(s) — já existe nota com o nome oficial
+        para o mesmo aluno (e período/ano). Esses serão removidos em vez de renomeados:
+      </p>
+      <table class="table table-sm table-borderless mb-3">
         <thead>
           <tr class="text-danger small">
             <th>Grafia duplicada (será removida)</th>
@@ -81,16 +86,26 @@
         </tbody>
       </table>
       {% endif %}
+
+      <form method="post"
+            onsubmit="return confirm('Confirma que {{ e.variantes|join(\", \") }} e {{ e.canonico }} são a MESMA disciplina?\n\nEsta ação altera {{ e.renomeados }} registo(s){% if e.removidos %} e remove {{ e.removidos }} duplicado(s){% endif %} em \'{{ e.tabela }}\', e não pode ser desfeita automaticamente.');">
+        <input type="hidden" name="grupo_id" value="{{ e.grupo_id }}">
+        <button type="submit" class="btn btn-sm btn-primary">
+          <i class="bi bi-check2-circle me-1"></i>Aprovar e fundir este grupo
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-1" disabled>
+          <i class="bi bi-x-circle me-1"></i>Ignorar (não fundir)
+        </button>
+      </form>
     </div>
   </div>
   {% endfor %}
 
-  <form method="post" onsubmit="return confirm('Aplicar a consolidação? Esta ação altera/remove registos na base de dados e não pode ser desfeita automaticamente.');">
-    <button type="submit" class="btn btn-primary">
-      <i class="bi bi-check2-circle me-1"></i>Aplicar consolidação
-    </button>
-    <span class="text-muted small ms-2">Recarregue esta página para gerar uma nova pré-visualização a qualquer momento.</span>
-  </form>
+  <p class="text-muted small">
+    <i class="bi bi-info-circle me-1"></i>"Ignorar" não precisa de ação — basta não
+    aprovar o grupo; ele continuará a aparecer aqui como sugestão (sem qualquer
+    efeito) até que o nome de uma das disciplinas mude.
+  </p>
   {% endif %}
 
   <details class="mt-4">

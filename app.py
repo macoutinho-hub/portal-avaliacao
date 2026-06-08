@@ -3062,23 +3062,26 @@ def importar_literacias():
 # (definido em importar_notas.py) para detectar esses grupos nas tabelas
 # 'notas' e 'notas_finais', e fundi-los sob o nome canónico.
 
-def _plano_consolidacao_disciplinas(db, aplicar=False):
-    """
-    Analisa 'notas' e 'notas_finais', agrupa nomes de disciplina que
-    correspondem ao mesmo nome canónico (via DISCIPLINAS_ALIAS) e, se
-    aplicar=True, corrige os registos (renomeia ou funde duplicados).
-    Devolve uma lista de entradas para apresentação e contadores-resumo.
-    """
-    tabelas = [
-        ("notas",        ["aluno_id", "periodo"]),
-        ("notas_finais", ["aluno_id", "ano_letivo"]),
-    ]
+_TABELAS_CONSOLIDACAO = [
+    ("notas",        ["aluno_id", "periodo"]),
+    ("notas_finais", ["aluno_id", "ano_letivo"]),
+]
 
+
+def _plano_consolidacao_disciplinas(db):
+    """
+    Analisa 'notas' e 'notas_finais' e devolve, em modo só-leitura, a lista de
+    grupos de nomes de disciplina que o mapa DISCIPLINAS_ALIAS sugere fundir
+    sob o mesmo nome canónico — para revisão e aprovação individual (nunca em
+    bloco, porque pode haver falsos positivos: por ex. "Inglês" e "Líng.
+    Estrang. I - Inglês" são disciplinas distintas mesmo partilhando a mesma
+    abreviatura "Ing").
+    Cada entrada tem um 'grupo_id' estável (tabela + nome canónico) usado para
+    aprovar esse grupo especificamente.
+    """
     entradas = []
-    total_renomeados = 0
-    total_removidos  = 0
 
-    for tabela, colunas_chave in tabelas:
+    for tabela, colunas_chave in _TABELAS_CONSOLIDACAO:
         nomes = [r[0] for r in db.execute(f"SELECT DISTINCT disciplina FROM {tabela}").fetchall()]
 
         grupos = {}
@@ -3090,8 +3093,12 @@ def _plano_consolidacao_disciplinas(db, aplicar=False):
             if not outras:
                 continue
 
-            detalhe = {"tabela": tabela, "canonico": canonico, "variantes": outras,
-                       "renomeados": 0, "removidos": 0, "conflitos": []}
+            detalhe = {
+                "grupo_id": f"{tabela}::{canonico}",
+                "tabela": tabela, "canonico": canonico, "variantes": outras,
+                "colunas_chave": colunas_chave,
+                "renomeados": 0, "removidos": 0, "conflitos": [],
+            }
 
             chave_sel = ", ".join(colunas_chave)
             for variante in outras:
@@ -3116,21 +3123,54 @@ def _plano_consolidacao_disciplinas(db, aplicar=False):
                             "chave": dict(zip(colunas_chave, valores)),
                         })
                         detalhe["removidos"] += 1
-                        total_removidos += 1
-                        if aplicar:
-                            db.execute(f"DELETE FROM {tabela} WHERE id=?", (reg["id"],))
                     else:
                         detalhe["renomeados"] += 1
-                        total_renomeados += 1
-                        if aplicar:
-                            db.execute(f"UPDATE {tabela} SET disciplina=? WHERE id=?", (canonico, reg["id"]))
 
             entradas.append(detalhe)
 
-    if aplicar:
-        db.commit()
+    return entradas
 
-    return entradas, total_renomeados, total_removidos
+
+def _aplicar_grupo_consolidacao(db, grupo_id):
+    """
+    Aplica APENAS o grupo identificado por grupo_id (formato 'tabela::canonico'),
+    recalculando o plano para garantir que os dados ainda correspondem ao que
+    foi mostrado ao utilizador (evita aplicar sobre dados entretanto alterados).
+    Devolve (renomeados, removidos) ou None se o grupo já não existir.
+    """
+    entradas = _plano_consolidacao_disciplinas(db)
+    alvo = next((e for e in entradas if e["grupo_id"] == grupo_id), None)
+    if alvo is None:
+        return None
+
+    tabela, canonico, colunas_chave = alvo["tabela"], alvo["canonico"], alvo["colunas_chave"]
+    chave_sel = ", ".join(colunas_chave)
+    renomeados = removidos = 0
+
+    for variante in alvo["variantes"]:
+        registos = db.execute(
+            f"SELECT id, {chave_sel} FROM {tabela} WHERE disciplina=?",
+            (variante,)
+        ).fetchall()
+
+        for reg in registos:
+            filtro  = " AND ".join(f"{c}=?" for c in colunas_chave)
+            valores = tuple(reg[c] for c in colunas_chave)
+
+            conflito = db.execute(
+                f"SELECT id FROM {tabela} WHERE disciplina=? AND {filtro}",
+                (canonico, *valores)
+            ).fetchone()
+
+            if conflito:
+                db.execute(f"DELETE FROM {tabela} WHERE id=?", (reg["id"],))
+                removidos += 1
+            else:
+                db.execute(f"UPDATE {tabela} SET disciplina=? WHERE id=?", (canonico, reg["id"]))
+                renomeados += 1
+
+    db.commit()
+    return renomeados, removidos
 
 
 @app.route("/admin/consolidar-disciplinas", methods=["GET", "POST"])
@@ -3138,17 +3178,25 @@ def _plano_consolidacao_disciplinas(db, aplicar=False):
 @admin_required
 def consolidar_disciplinas():
     db = get_db()
-    aplicar = request.method == "POST"
 
-    entradas, total_renomeados, total_removidos = _plano_consolidacao_disciplinas(db, aplicar=aplicar)
-
-    if aplicar:
-        if total_renomeados or total_removidos:
-            flash(f"✓ Consolidação aplicada: {total_renomeados} registo(s) renomeado(s), "
-                  f"{total_removidos} duplicado(s) removido(s).", "success")
+    if request.method == "POST":
+        grupo_id = request.form.get("grupo_id", "")
+        resultado = _aplicar_grupo_consolidacao(db, grupo_id)
+        if resultado is None:
+            flash("Este grupo já não existe (talvez já tenha sido aprovado ou os dados mudaram). "
+                  "A página foi actualizada.", "warning")
         else:
-            flash("Nada para consolidar — os nomes de disciplinas já estão coerentes.", "info")
+            renomeados, removidos = resultado
+            tabela, _, canonico = grupo_id.partition("::")
+            msg = f"✓ '{canonico}' ({tabela}): {renomeados} registo(s) renomeado(s)"
+            if removidos:
+                msg += f", {removidos} duplicado(s) removido(s)"
+            flash(msg + ".", "success")
         return redirect(url_for("consolidar_disciplinas"))
+
+    entradas = _plano_consolidacao_disciplinas(db)
+    total_renomeados = sum(e["renomeados"] for e in entradas)
+    total_removidos  = sum(e["removidos"] for e in entradas)
 
     return render_template("consolidar_disciplinas.html", entradas=entradas,
                            total_renomeados=total_renomeados, total_removidos=total_removidos,

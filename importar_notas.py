@@ -98,12 +98,14 @@ DISCIPLINAS_ALIAS = {
     "ed.fis":       "Educação Física",
     "ed fis":       "Educação Física",
     "ed. fis.":     "Educação Física",
-    "fil.":         "Filosofia",
-    "fil":          "Filosofia",
+    # ATENÇÃO — "Filosofia" / "Filosofia A" são disciplinas DISTINTAS, tal como
+    # "Inglês" / "Líng. Estrang. I - Inglês". Grafias curtas como "Fil." ou
+    # "Ing." são ambíguas (não dá para saber a qual das duas se referem) —
+    # propositadamente NÃO mapeadas aqui, para nunca fundir as erradas.
+    # Só incluir alias para estas se a grafia identificar claramente uma delas
+    # (ex.: "Fil. A" → "Filosofia A").
     "fil. a":       "Filosofia A",
     "fil a":        "Filosofia A",
-    "ing.":         "Inglês",
-    "ing":          "Inglês",
     "port.":        "Português",
     "port":         "Português",
     "lit.":         "Literacias",
