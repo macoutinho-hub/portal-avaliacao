@@ -764,6 +764,7 @@ def aluno(aluno_id):
     notas_por_ano = {nivel_para_rotulo(n): d for n, d in sorted(notas_por_nivel_raw.items())}
     # Guardar o nível actual para o CIF
     _ano_atual_key = nivel_para_rotulo(_nivel_atual)
+    _sem_atual_int = semestre_atual(db)
 
     # ── Abreviaturas das disciplinas (apresentação na tabela) ─────────────────
     ABREVIATURAS = {
@@ -889,7 +890,7 @@ def aluno(aluno_id):
             linhas.append({
                 "label":    f"{rotulo_ano} — {p}º Sem.",
                 "tipo":     "semestre",
-                "atual":    e_atual,
+                "atual":    e_atual and p == _sem_atual_int,
                 "notas":    notas_linha,
                 "media":    round(sum(vals_num) / len(vals_num), 1) if vals_num else None,
                 "aluno_id": aid_linha,
@@ -2063,6 +2064,7 @@ def slide_img(filename):
 def apresentacao(turma):
     import json
     db = get_db()
+    sem_atual_ap = semestre_atual(db)
 
     # Verificar permissão
     turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
@@ -2184,7 +2186,7 @@ def apresentacao(turma):
                 nl = {d: disc_ano.get(d, {}).get(p) for d in todas}
                 vals = [v for v in nl.values() if isinstance(v, (int, float))]
                 linhas.append({"label": f"{ano_esc} — {p}º Sem.", "tipo": "semestre",
-                                "atual": ano == a["ano_letivo"], "notas": nl,
+                                "atual": (ano == a["ano_letivo"] and p == sem_atual_ap), "notas": nl,
                                 "media": round(sum(vals)/len(vals),1) if vals else None})
 
         # ── Notas de exame/CIF/CFD da tabela notas_finais ────────────────────
