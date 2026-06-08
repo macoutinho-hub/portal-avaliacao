@@ -124,6 +124,46 @@
       acrescentá-la a <code>DISCIPLINAS_ALIAS</code> em <code>importar_notas.py</code>.
     </p>
   </details>
+
+  <details class="mt-3">
+    <summary class="text-muted small">
+      Ver todos os nomes de disciplina guardados na BD (diagnóstico)
+    </summary>
+    <p class="text-muted small mt-2 mb-3">
+      Se uma grafia que devia ser fundida não aparece como sugestão acima, é
+      porque o nome canónico calculado (coluna "→ seria fundida em") é igual
+      ao próprio nome — ou seja, ainda não há um alias para essa grafia em
+      <code>DISCIPLINAS_ALIAS</code>. Identifique aqui a grafia exacta e
+      acrescente-a ao mapa.
+    </p>
+    {% for tabela, lista in diagnostico.items() %}
+    <p class="fw-semibold small mb-1">{{ tabela }} — {{ lista|length }} nome(s) distinto(s)</p>
+    <table class="table table-sm table-striped mb-4">
+      <thead>
+        <tr class="small text-muted">
+          <th>Nome guardado</th>
+          <th>Nº de registos</th>
+          <th>→ seria fundida em</th>
+        </tr>
+      </thead>
+      <tbody class="small">
+        {% for d in lista %}
+        <tr class="{{ 'table-warning' if d.canonico != d.nome else '' }}">
+          <td><code>{{ d.nome }}</code></td>
+          <td>{{ d.n }}</td>
+          <td>
+            {% if d.canonico != d.nome %}
+              <i class="bi bi-arrow-right-short"></i> <strong>{{ d.canonico }}</strong>
+            {% else %}
+              <span class="text-muted">— (sem alias conhecido / já é o nome canónico)</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endfor %}
+  </details>
 </div>
 
 <script>

@@ -3257,9 +3257,23 @@ def consolidar_disciplinas():
     total_renomeados = sum(e["renomeados"] for e in entradas)
     total_removidos  = sum(e["removidos"] for e in entradas)
 
+    # Diagnóstico: listar TODOS os nomes de disciplina existentes (com
+    # contagem de registos), para se perceber porque é que algumas grafias
+    # não foram sugeridas para consolidação (ex.: variantes ainda não
+    # mapeadas em DISCIPLINAS_ALIAS — basta acrescentá-las e recarregar).
+    diagnostico = {}
+    for tabela, _cols in _TABELAS_CONSOLIDACAO:
+        diagnostico[tabela] = [
+            {"nome": r["disciplina"], "n": r["n"], "canonico": canonizar_disciplina(r["disciplina"])}
+            for r in db.execute(
+                f"SELECT disciplina, COUNT(*) AS n FROM {tabela} "
+                f"GROUP BY disciplina ORDER BY disciplina"
+            ).fetchall()
+        ]
+
     return render_template("consolidar_disciplinas.html", entradas=entradas,
                            total_renomeados=total_renomeados, total_removidos=total_removidos,
-                           aliases=DISCIPLINAS_ALIAS)
+                           aliases=DISCIPLINAS_ALIAS, diagnostico=diagnostico)
 
 
 # ─── Ferramenta de auditoria de notas em falta (admin) ────────────────────────
