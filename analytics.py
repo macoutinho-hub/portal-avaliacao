@@ -532,6 +532,212 @@ def nota_esperada_e_desvio(modelo, aluno_id, disciplina, periodo, ano_letivo):
     return round(esperada, 1), feats, modelo["desvio_residuos"]
 
 
+# ─── Modelos de "Nota Esperada de Exame" (exames nacionais do secundário) ──────
+#
+# Ao contrário do modelo de notas internas (treinado sobre os dados ao vivo da
+# escola), o modelo de exame é treinado sobre um histórico de ~12 anos lectivos
+# de exames nacionais (preparado e validado em `preparar_dados_aval.py` /
+# `treinar_modelos_exame.py` — ver `relatorio_modelos_exame_2026-06-08.md`),
+# fornecido em `dados_treino_exame_secundario.csv`. A BD ao vivo não tem
+# profundidade histórica suficiente para treinar isto de forma fiável.
+#
+# Há DOIS modelos, porque há dois momentos diferentes em que esta informação é
+# útil — e as variáveis disponíveis são diferentes em cada um:
+#
+#   • "previsao"   — ANTES da época de exames, para alunos inscritos. Só pode
+#                    usar variáveis conhecidas com antecedência:
+#                      x1 = média periódica interna do aluno na disciplina
+#                      x2 = CIF do aluno (ou x1 como proxy, se ainda não houver)
+#                      x3 = média histórica nacional/escola da disciplina
+#                           (long-run, calculada sobre o histórico de treino —
+#                           uma constante por disciplina, não depende do ano
+#                           em curso, logo não há circularidade)
+#
+#   • "comparacao" — DEPOIS de o resultado estar lançado em `notas_finais`,
+#                    para comparar nota esperada vs. real (deteção de outliers,
+#                    no mesmo espírito do modelo de notas internas):
+#                      x1, x2 — iguais
+#                      x3 = média de exame da TURMA nessa disciplina/ano
+#                           (excluindo o próprio aluno)
+#                      x4 = média de exame do NÍVEL nessa disciplina/ano
+#                           (excluindo o próprio aluno)
+#                    Estas só existem depois de os colegas também terem
+#                    resultado — por isso não podem ser usadas para prever.
+#
+# (O modelo "comparacao" tem melhor ajuste — R²≈0,69 vs. R²≈0,64 do modelo de
+# "previsao" — precisamente porque tem acesso a mais contexto. É o preço de
+# prever com antecedência: sabe-se sempre um pouco menos.)
+
+NOME_FICHEIRO_TREINO_EXAME = "dados_treino_exame_secundario.csv"
+
+
+def carregar_dados_treino_exame(caminho=None):
+    """Lê o histórico de exames nacionais do secundário já limpo/normalizado/
+    segmentado (ver cabeçalho acima), devolvendo lista de dicts prontos a usar
+    em `construir_modelos_exame`. Devolve [] se o ficheiro não existir (o
+    modelo de exame fica simplesmente indisponível — sem rebentar o portal)."""
+    import csv
+    import os
+
+    if caminho is None:
+        caminho = os.path.join(os.path.dirname(__file__), NOME_FICHEIRO_TREINO_EXAME)
+
+    if not os.path.exists(caminho):
+        return []
+
+    linhas = []
+    with open(caminho, encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            try:
+                nota = float(r["nota_exame_norm_0_20"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            for campo in ("nota_p1", "nota_p2", "nota_p3", "cif"):
+                v = r.get(campo)
+                try:
+                    r[campo] = float(v) if v not in (None, "", "None") else None
+                except ValueError:
+                    r[campo] = None
+            r["nota_exame_norm_0_20"] = nota
+            linhas.append(r)
+    return linhas
+
+
+def _media_periodica_treino(linha):
+    vals = [linha[c] for c in ("nota_p1", "nota_p2", "nota_p3") if linha[c] is not None]
+    return statistics.mean(vals) if vals else None
+
+
+def construir_modelos_exame(dados_treino=None):
+    """Treina os dois modelos de exame (ver explicação acima) a partir do
+    histórico fornecido. Devolve um dict ou None se não houver dados
+    suficientes:
+
+      {
+        "modelo_previsao":   {coefs, desvio_residuos},
+        "modelo_comparacao": {coefs, desvio_residuos},
+        "medias_disciplina": {disciplina: media_historica_0_20},
+        "n_observacoes":     int,
+      }
+    """
+    if dados_treino is None:
+        dados_treino = carregar_dados_treino_exame()
+    if len(dados_treino) < 60:
+        return None
+
+    # Médias históricas por disciplina (long-run — usadas como x3 do modelo de
+    # previsão; não dependem do ano em curso, por isso não há circularidade)
+    notas_por_disciplina = defaultdict(list)
+    for l in dados_treino:
+        notas_por_disciplina[l["disciplina"]].append(l["nota_exame_norm_0_20"])
+    medias_disciplina = {
+        disc: round(statistics.mean(notas), 2)
+        for disc, notas in notas_por_disciplina.items()
+    }
+
+    # Pré-agregações para os contextos turma/nível (modelo de comparação),
+    # por (turma_ou_nivel, disciplina, ano_letivo) -> [(índice, nota)]
+    por_turma = defaultdict(list)
+    por_nivel = defaultdict(list)
+    for i, l in enumerate(dados_treino):
+        nivel = nivel_de_turma(l["turma"])
+        por_turma[(l["turma"], l["disciplina"], l["ano_letivo"])].append((i, l["nota_exame_norm_0_20"]))
+        por_nivel[(nivel, l["disciplina"], l["ano_letivo"])].append((i, l["nota_exame_norm_0_20"]))
+
+    def media_excluindo(grupo, idx):
+        vals = [n for j, n in grupo if j != idx]
+        return statistics.mean(vals) if vals else None
+
+    X_prev, X_comp, y = [], [], []
+    for i, l in enumerate(dados_treino):
+        x1 = _media_periodica_treino(l)
+        if x1 is None:
+            continue
+        x2 = l["cif"] if l["cif"] is not None else x1
+
+        # --- features do modelo de previsão (sem contexto do próprio ano) ---
+        x3_prev = medias_disciplina.get(l["disciplina"])
+        if x3_prev is None:
+            continue
+
+        # --- features do modelo de comparação (contexto leave-one-out) ---
+        x3_comp = media_excluindo(por_turma[(l["turma"], l["disciplina"], l["ano_letivo"])], i)
+        x4_comp = media_excluindo(por_nivel[(l.get("nivel"), l.get("ano_turma"), l["disciplina"], l["ano_letivo"])], i)
+        if x3_comp is None and x4_comp is None:
+            continue
+        if x3_comp is None:
+            x3_comp = x4_comp
+        if x4_comp is None:
+            x4_comp = x3_comp
+
+        X_prev.append([x1, x2, x3_prev])
+        X_comp.append([x1, x2, x3_comp, x4_comp])
+        y.append(l["nota_exame_norm_0_20"])
+
+    if len(y) < 60:
+        return None
+
+    def treinar(X):
+        coefs, residuos = ols_fit(X, y)
+        if coefs is None:
+            return None
+        desvio = statistics.pstdev(residuos) if len(residuos) > 1 else 1.0
+        return {"coefs": coefs, "desvio_residuos": round(desvio, 2) if desvio else 1.0}
+
+    modelo_previsao = treinar(X_prev)
+    modelo_comparacao = treinar(X_comp)
+    if modelo_previsao is None or modelo_comparacao is None:
+        return None
+
+    return {
+        "modelo_previsao":   modelo_previsao,
+        "modelo_comparacao": modelo_comparacao,
+        "medias_disciplina": medias_disciplina,
+        "n_observacoes":     len(y),
+    }
+
+
+def prever_exame(modelos_exame, disciplina, media_periodica, cif=None):
+    """Previsão da nota de exame ANTES dos resultados existirem (para alunos
+    inscritos), a partir da média periódica interna, do CIF (se já existir —
+    senão usa-se a própria média periódica como proxy) e da média histórica
+    da disciplina. Devolve (nota_prevista, desvio_residuos) ou (None, None)
+    se faltarem dados (ex.: disciplina sem histórico suficiente)."""
+    if modelos_exame is None or media_periodica is None:
+        return None, None
+
+    media_disc = modelos_exame["medias_disciplina"].get(disciplina)
+    if media_disc is None:
+        return None, None
+
+    x2 = cif if cif is not None else media_periodica
+    modelo = modelos_exame["modelo_previsao"]
+    prevista = ols_predict(modelo["coefs"], [media_periodica, x2, media_disc])
+    prevista = max(0.0, min(20.0, prevista))
+    return round(prevista, 1), modelo["desvio_residuos"]
+
+
+def comparar_exame_e_desvio(modelos_exame, disciplina, media_periodica, cif,
+                            media_turma_excl, media_nivel_excl):
+    """Comparação nota esperada vs. real DEPOIS de o resultado existir —
+    usa o contexto real da turma/nível desse ano (excluindo o próprio aluno,
+    tal como no modelo de notas internas). Devolve (nota_esperada,
+    desvio_residuos) ou (None, None)."""
+    if modelos_exame is None or media_periodica is None:
+        return None, None
+    if media_turma_excl is None and media_nivel_excl is None:
+        return None, None
+
+    x2 = cif if cif is not None else media_periodica
+    x3 = media_turma_excl if media_turma_excl is not None else media_nivel_excl
+    x4 = media_nivel_excl if media_nivel_excl is not None else media_turma_excl
+
+    modelo = modelos_exame["modelo_comparacao"]
+    esperada = ols_predict(modelo["coefs"], [media_periodica, x2, x3, x4])
+    esperada = max(0.0, min(20.0, esperada))
+    return round(esperada, 1), modelo["desvio_residuos"]
+
+
 # ─── Evolução temporal ─────────────────────────────────────────────────────────
 
 def _grupo_aluno(observacoes, aluno_id):

@@ -204,6 +204,8 @@ def init_db():
         "ALTER TABLE alunos ADD COLUMN bi TEXT",
         "ALTER TABLE notas ADD COLUMN nota_texto TEXT",
         "ALTER TABLE notas ADD COLUMN nivel_curricular INTEGER",
+        "ALTER TABLE notas ADD COLUMN updated_at TEXT",
+        "ALTER TABLE notas_finais ADD COLUMN updated_at TEXT",
     ]:
         try: db.execute(col_sql); db.commit()
         except Exception: pass
@@ -931,7 +933,7 @@ def aluno(aluno_id):
         todos_ids = [aluno_id]
     placeholders = ",".join("?" * len(todos_ids))
     nf_rows = db.execute(
-        f"SELECT disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd FROM notas_finais "
+        f"SELECT disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd, updated_at FROM notas_finais "
         f"WHERE aluno_id IN ({placeholders})", todos_ids
     ).fetchall()
     # Indexar por disciplina (preferir o ano mais recente)
@@ -939,12 +941,38 @@ def aluno(aluno_id):
     nf_ex1  = {}
     nf_ex2  = {}
     nf_cfd  = {}
+    nf_cif_at = {}   # data de importação do CIF, por disciplina
+    nf_cfd_at = {}   # data de importação do CFD, por disciplina
     for r in sorted(nf_rows, key=lambda x: x["ano_letivo"]):
         d = r["disciplina"]
-        if r["cif"]  is not None: nf_cif[d]  = r["cif"]
+        if r["cif"]  is not None:
+            nf_cif[d]  = r["cif"]
+            nf_cif_at[d] = r["updated_at"]
         if r["exame_f1"] is not None: nf_ex1[d] = r["exame_f1"]
         if r["exame_f2"] is not None: nf_ex2[d] = r["exame_f2"]
-        if r["cfd"]  is not None: nf_cfd[d]  = r["cfd"]
+        if r["cfd"]  is not None:
+            nf_cfd[d]  = r["cfd"]
+            nf_cfd_at[d] = r["updated_at"]
+
+    # Data da edição inline mais recente, por disciplina (já mapeada para nome canónico)
+    nota_rows_at = db.execute(
+        f"SELECT disciplina, updated_at FROM notas WHERE aluno_id IN ({placeholders}) "
+        f"AND updated_at IS NOT NULL", todos_ids
+    ).fetchall()
+    nota_edit_at = {}
+    for r in nota_rows_at:
+        can = disc_canonical.get(r["disciplina"], r["disciplina"])
+        if can not in nota_edit_at or (r["updated_at"] or "") > nota_edit_at[can]:
+            nota_edit_at[can] = r["updated_at"]
+
+    def _editado_apos_importacao(d, ref_at):
+        """True se houver uma edição inline da disciplina d posterior à data de importação (ref_at)."""
+        edit_at = nota_edit_at.get(d)
+        if not edit_at:
+            return False
+        if not ref_at:
+            return True
+        return edit_at > ref_at
 
     # Disciplinas com menções especiais (AM, NA, RF, etc.) em algum semestre →
     # não calcular CIF/CFD para essas disciplinas (dados insuficientes/inválidos)
@@ -955,9 +983,11 @@ def aluno(aluno_id):
                 discs_com_texto.add(d)
 
     # ── CIF: calculado ou oficial se disponível ───────────────────────────────
+    # Excepção: se uma nota da disciplina foi editada inline DEPOIS da importação
+    # do CIF/CFD oficial, a edição mais recente prevalece → recalcular.
     cif_notas = {}
     for d in todas_disciplinas:
-        if d in nf_cif:
+        if d in nf_cif and not _editado_apos_importacao(d, nf_cif_at.get(d)):
             cif_notas[d] = arred(nf_cif[d])  # oficial → usar directamente
         elif d in discs_com_texto:
             cif_notas[d] = None  # menção especial (AM/NA/RF...) → não calcular
@@ -1018,7 +1048,7 @@ def aluno(aluno_id):
     # ── CFD: oficial ou calculado (7.5×CIF + 2.5×Exame)/10 ──────────────────
     cfd_notas = {}
     for d in todas_disciplinas:
-        if d in nf_cfd:
+        if d in nf_cfd and not _editado_apos_importacao(d, nf_cfd_at.get(d)):
             cfd_notas[d] = arred(nf_cfd[d])  # importado com exames → usar directamente
         elif d in discs_com_texto:
             cfd_notas[d] = None  # menção especial (AM/NA/RF...) → não calcular
@@ -1629,16 +1659,18 @@ def editar_nota(aluno_id):
             if existing:
                 break
 
+    agora = datetime.now().isoformat(timespec="seconds")
+
     if existing:
         if nota is None and nota_texto is None:
             db.execute("DELETE FROM notas WHERE id=?", (existing["id"],))
         else:
-            db.execute("UPDATE notas SET nota=?, nota_texto=? WHERE id=?",
-                       (nota, nota_texto, existing["id"]))
+            db.execute("UPDATE notas SET nota=?, nota_texto=?, updated_at=? WHERE id=?",
+                       (nota, nota_texto, agora, existing["id"]))
     elif nota is not None or nota_texto is not None:
         db.execute(
-            "INSERT INTO notas (aluno_id, disciplina, periodo, nota, nota_texto) VALUES (?,?,?,?,?)",
-            (aluno_id, disciplina, periodo, nota, nota_texto)
+            "INSERT INTO notas (aluno_id, disciplina, periodo, nota, nota_texto, updated_at) VALUES (?,?,?,?,?,?)",
+            (aluno_id, disciplina, periodo, nota, nota_texto, agora)
         )
 
     db.commit()
@@ -2198,15 +2230,39 @@ def apresentacao(turma):
             ap_ids = [a["id"]]
         ap_ph = ",".join("?" * len(ap_ids))
         nf_ap = db.execute(
-            f"SELECT disciplina, cif, exame_f1, exame_f2, cfd FROM notas_finais WHERE aluno_id IN ({ap_ph})",
+            f"SELECT disciplina, cif, exame_f1, exame_f2, cfd, updated_at FROM notas_finais WHERE aluno_id IN ({ap_ph})",
             ap_ids
         ).fetchall()
         ap_cif_of, ap_ex1, ap_ex2, ap_cfd_of = {}, {}, {}, {}
+        ap_cif_of_at, ap_cfd_of_at = {}, {}
         for r in sorted(nf_ap, key=lambda x: x["disciplina"]):
-            if r["cif"]      is not None: ap_cif_of[r["disciplina"]] = r["cif"]
+            if r["cif"]      is not None:
+                ap_cif_of[r["disciplina"]] = r["cif"]
+                ap_cif_of_at[r["disciplina"]] = r["updated_at"]
             if r["exame_f1"] is not None: ap_ex1[r["disciplina"]]    = r["exame_f1"]
             if r["exame_f2"] is not None: ap_ex2[r["disciplina"]]    = r["exame_f2"]
-            if r["cfd"]      is not None: ap_cfd_of[r["disciplina"]] = r["cfd"]
+            if r["cfd"]      is not None:
+                ap_cfd_of[r["disciplina"]] = r["cfd"]
+                ap_cfd_of_at[r["disciplina"]] = r["updated_at"]
+
+        # Data da edição inline mais recente, por disciplina (nome canónico)
+        nota_rows_at_ap = db.execute(
+            f"SELECT disciplina, updated_at FROM notas WHERE aluno_id IN ({ap_ph}) "
+            f"AND updated_at IS NOT NULL", ap_ids
+        ).fetchall()
+        nota_edit_at_ap = {}
+        for r in nota_rows_at_ap:
+            can = canon_ap.get(r["disciplina"], r["disciplina"])
+            if can not in nota_edit_at_ap or (r["updated_at"] or "") > nota_edit_at_ap[can]:
+                nota_edit_at_ap[can] = r["updated_at"]
+
+        def _editado_apos_importacao_ap(d, ref_at):
+            edit_at = nota_edit_at_ap.get(d)
+            if not edit_at:
+                return False
+            if not ref_at:
+                return True
+            return edit_at > ref_at
 
         # Disciplinas com menções especiais (AM, NA, RF, etc.) → não calcular CIF/CFD
         discs_com_texto_ap = set()
@@ -2218,7 +2274,7 @@ def apresentacao(turma):
         # CIF: oficial (importado) ou média dos 2ºs semestres — arredondamento aritmético
         cif = {}
         for d in todas:
-            if d in ap_cif_of:
+            if d in ap_cif_of and not _editado_apos_importacao_ap(d, ap_cif_of_at.get(d)):
                 cif[d] = arred(ap_cif_of[d])  # oficial → usar directamente
             elif d in discs_com_texto_ap:
                 cif[d] = None  # menção especial (AM/NA/RF...) → não calcular
@@ -2290,7 +2346,7 @@ def apresentacao(turma):
                 ap_exame[d] = None
         cfd_ap = {}
         for d in todas:
-            if d in ap_cfd_of:
+            if d in ap_cfd_of and not _editado_apos_importacao_ap(d, ap_cfd_of_at.get(d)):
                 cfd_ap[d] = arred(ap_cfd_of[d])
             elif d in discs_com_texto_ap:
                 cfd_ap[d] = None  # menção especial (AM/NA/RF...) → não calcular
@@ -2829,15 +2885,16 @@ def importar_pauta(turma):
                         (aluno_id, disc_nome, ano_usar)
                     ).fetchone()
                     ce_conv = round(ce / 10, 1) if ce and ce > 20 else ce
+                    _agora_nf = datetime.now().isoformat(timespec="seconds")
                     if ex:
                         db.execute(
-                            "UPDATE notas_finais SET cif=?, exame_f1=?, cfd=? WHERE id=?",
-                            (round(cif) if cif else None, ce_conv, round(cfd) if cfd else None, ex["id"])
+                            "UPDATE notas_finais SET cif=?, exame_f1=?, cfd=?, updated_at=? WHERE id=?",
+                            (round(cif) if cif else None, ce_conv, round(cfd) if cfd else None, _agora_nf, ex["id"])
                         )
                     else:
                         db.execute(
-                            "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, cfd) VALUES (?,?,?,?,?,?)",
-                            (aluno_id, disc_nome, ano_usar, round(cif) if cif else None, ce_conv, round(cfd) if cfd else None)
+                            "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, cfd, updated_at) VALUES (?,?,?,?,?,?,?)",
+                            (aluno_id, disc_nome, ano_usar, round(cif) if cif else None, ce_conv, round(cfd) if cfd else None, _agora_nf)
                         )
 
         db.commit()
@@ -3353,15 +3410,16 @@ def importar_aludisc():
                         "SELECT id FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
                         (aluno_id, disc_nome, ano_letivo)
                     ).fetchone()
+                    _agora_nf = datetime.now().isoformat(timespec="seconds")
                     if ex_db:
                         db.execute(
-                            "UPDATE notas_finais SET cif=?, exame_f1=?, exame_f2=?, cfd=? WHERE id=?",
-                            (cif_raw, ex1, ex2, cfd_raw, ex_db["id"])
+                            "UPDATE notas_finais SET cif=?, exame_f1=?, exame_f2=?, cfd=?, updated_at=? WHERE id=?",
+                            (cif_raw, ex1, ex2, cfd_raw, _agora_nf, ex_db["id"])
                         )
                     else:
                         db.execute(
-                            "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd) VALUES (?,?,?,?,?,?,?)",
-                            (aluno_id, disc_nome, ano_letivo, cif_raw, ex1, ex2, cfd_raw)
+                            "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                            (aluno_id, disc_nome, ano_letivo, cif_raw, ex1, ex2, cfd_raw, _agora_nf)
                         )
                     importados += 1
 
@@ -3457,15 +3515,16 @@ def importar_aludisc():
                     "SELECT id FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
                     (aluno_id, disc_nome, ano_letivo)
                 ).fetchone()
+                _agora_nf = datetime.now().isoformat(timespec="seconds")
                 if ex:
                     db.execute(
-                        "UPDATE notas_finais SET cif=?, exame_f1=?, exame_f2=?, cfd=? WHERE id=?",
-                        (cif, ex1, ex2, cfd, ex["id"])
+                        "UPDATE notas_finais SET cif=?, exame_f1=?, exame_f2=?, cfd=?, updated_at=? WHERE id=?",
+                        (cif, ex1, ex2, cfd, _agora_nf, ex["id"])
                     )
                 else:
                     db.execute(
-                        "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd) VALUES (?,?,?,?,?,?,?)",
-                        (aluno_id, disc_nome, ano_letivo, cif, ex1, ex2, cfd)
+                        "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, cif, exame_f1, exame_f2, cfd, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (aluno_id, disc_nome, ano_letivo, cif, ex1, ex2, cfd, _agora_nf)
                     )
                 importados += 1
 
@@ -3650,17 +3709,18 @@ def importar_notas_exame():
                     "SELECT id FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
                     (aluno_id, disc_nome, ano)
                 ).fetchone()
+                _agora_nf = datetime.now().isoformat(timespec="seconds")
                 if ex:
                     db.execute(
-                        f"UPDATE notas_finais SET {campo_exame}=? WHERE id=?",
-                        (nota, ex["id"])
+                        f"UPDATE notas_finais SET {campo_exame}=?, updated_at=? WHERE id=?",
+                        (nota, _agora_nf, ex["id"])
                     )
                 else:
                     f1 = nota if fase == "1" else None
                     f2 = nota if fase == "2" else None
                     db.execute(
-                        "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, exame_f1, exame_f2) VALUES (?,?,?,?,?)",
-                        (aluno_id, disc_nome, ano, f1, f2)
+                        "INSERT INTO notas_finais (aluno_id, disciplina, ano_letivo, exame_f1, exame_f2, updated_at) VALUES (?,?,?,?,?,?)",
+                        (aluno_id, disc_nome, ano, f1, f2, _agora_nf)
                     )
                 importados += 1
 
