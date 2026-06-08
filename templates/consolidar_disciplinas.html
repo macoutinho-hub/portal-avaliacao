@@ -87,8 +87,12 @@
       </table>
       {% endif %}
 
-      <form method="post"
-            onsubmit="return confirm('Confirma que {{ e.variantes|join(\", \") }} e {{ e.canonico }} são a MESMA disciplina?\n\nEsta ação altera {{ e.renomeados }} registo(s){% if e.removidos %} e remove {{ e.removidos }} duplicado(s){% endif %} em \'{{ e.tabela }}\', e não pode ser desfeita automaticamente.');">
+      <form method="post" class="form-aprovar-fusao"
+            data-variantes="{{ e.variantes|join(', ') }}"
+            data-canonico="{{ e.canonico }}"
+            data-tabela="{{ e.tabela }}"
+            data-renomeados="{{ e.renomeados }}"
+            data-removidos="{{ e.removidos }}">
         <input type="hidden" name="grupo_id" value="{{ e.grupo_id }}">
         <button type="submit" class="btn btn-sm btn-primary">
           <i class="bi bi-check2-circle me-1"></i>Aprovar e fundir este grupo
@@ -121,4 +125,21 @@
     </p>
   </details>
 </div>
+
+<script>
+document.querySelectorAll(".form-aprovar-fusao").forEach(function (form) {
+  form.addEventListener("submit", function (ev) {
+    var d = form.dataset;
+    var msg = "Confirma que \"" + d.variantes + "\" e \"" + d.canonico + "\" são a MESMA disciplina?\n\n" +
+              "Esta ação altera " + d.renomeados + " registo(s)";
+    if (parseInt(d.removidos, 10) > 0) {
+      msg += " e remove " + d.removidos + " duplicado(s)";
+    }
+    msg += " em '" + d.tabela + "', e não pode ser desfeita automaticamente.";
+    if (!confirm(msg)) {
+      ev.preventDefault();
+    }
+  });
+});
+</script>
 {% endblock %}
