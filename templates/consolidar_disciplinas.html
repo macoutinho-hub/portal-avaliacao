@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Consolidar Disciplinas{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:900px">
+  <h4 class="mb-1"><i class="bi bi-signpost-split me-2"></i>Consolidar Nomes de Disciplinas</h4>
+  <p class="text-muted small mb-4">
+    Algumas pautas usam abreviaturas ou grafias diferentes para a mesma disciplina
+    (ex.: <code>ECO. C</code> / <code>Econ C</code> em vez de <code>Economia C</code>,
+    ou <code>AI B</code> / <code>AP. IN</code> em vez de
+    <code>Aplicações Informáticas B</code>), o que faz com que apareçam como colunas
+    separadas na ficha do aluno. Esta ferramenta detecta esses casos (com base num
+    mapa de variantes conhecidas) e funde-os sob o nome oficial.
+  </p>
+
+  {% if not entradas %}
+  <div class="alert alert-success">
+    <i class="bi bi-check-circle me-1"></i>
+    Não foi encontrado nada a consolidar — os nomes de disciplinas em <code>notas</code>
+    e <code>notas_finais</code> já estão coerentes.
+  </div>
+  {% else %}
+
+  <div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    <strong>Pré-visualização</strong> — nada foi alterado ainda. Reveja os grupos abaixo
+    e, se estiver tudo correto, prima "Aplicar consolidação" no fundo da página.
+    Esta ação:
+    <ul class="mb-0 mt-1">
+      <li>renomeia registos com grafias diferentes para o nome oficial da disciplina;</li>
+      <li>quando já existe um registo com o nome oficial para o mesmo aluno
+          (e período / ano lectivo), remove o registo duplicado em vez de o renomear
+          — assinalado abaixo a <span class="text-danger fw-semibold">vermelho</span>.</li>
+    </ul>
+  </div>
+
+  <div class="mb-3 small text-muted">
+    Resumo do que seria feito:
+    <strong>{{ total_renomeados }}</strong> registo(s) a renomear,
+    <strong class="{{ 'text-danger' if total_removidos else '' }}">{{ total_removidos }}</strong> duplicado(s) a remover.
+  </div>
+
+  {% for e in entradas %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>
+        <span class="badge text-bg-secondary me-2">{{ e.tabela }}</span>
+        <i class="bi bi-arrow-right-short"></i>
+        <strong>{{ e.canonico }}</strong>
+      </span>
+      <span class="small text-muted">
+        {{ e.renomeados }} a renomear
+        {% if e.removidos %}<span class="text-danger">· {{ e.removidos }} a remover</span>{% endif %}
+      </span>
+    </div>
+    <div class="card-body">
+      <p class="mb-2 small">Grafias encontradas que serão fundidas em <strong>{{ e.canonico }}</strong>:</p>
+      <p class="mb-3">
+        {% for v in e.variantes %}
+        <span class="badge text-bg-light border me-1">{{ v }}</span>
+        {% endfor %}
+      </p>
+
+      {% if e.conflitos %}
+      <table class="table table-sm table-borderless mb-0">
+        <thead>
+          <tr class="text-danger small">
+            <th>Grafia duplicada (será removida)</th>
+            <th>Já existe registo com o nome oficial</th>
+            <th>Chave (aluno / período ou ano)</th>
+          </tr>
+        </thead>
+        <tbody class="small">
+          {% for c in e.conflitos %}
+          <tr>
+            <td><span class="badge text-bg-danger-subtle text-danger-emphasis">{{ c.variante }}</span> (id {{ c.id_variante }})</td>
+            <td>id {{ c.id_canonico }}</td>
+            <td>{{ c.chave }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <form method="post" onsubmit="return confirm('Aplicar a consolidação? Esta ação altera/remove registos na base de dados e não pode ser desfeita automaticamente.');">
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-check2-circle me-1"></i>Aplicar consolidação
+    </button>
+    <span class="text-muted small ms-2">Recarregue esta página para gerar uma nova pré-visualização a qualquer momento.</span>
+  </form>
+  {% endif %}
+
+  <details class="mt-4">
+    <summary class="text-muted small">Ver mapa de variantes conhecidas ({{ aliases|length }})</summary>
+    <div class="mt-2 small text-muted">
+      {% for k, v in aliases.items() %}
+      <span class="badge text-bg-light border me-1 mb-1"><code>{{ k }}</code> → {{ v }}</span>
+      {% endfor %}
+    </div>
+    <p class="text-muted small mt-2">
+      Se aparecer uma grafia nova que não esteja a ser detectada, é preciso
+      acrescentá-la a <code>DISCIPLINAS_ALIAS</code> em <code>importar_notas.py</code>.
+    </p>
+  </details>
+</div>
+{% endblock %}

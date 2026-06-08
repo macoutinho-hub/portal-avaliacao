@@ -14,6 +14,7 @@ import openpyxl
 import analytics
 import analytics_projeto
 import importar_projeto_consolidado as projeto_import
+from importar_notas import canonizar_disciplina, DISCIPLINAS_ALIAS
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
@@ -3051,6 +3052,107 @@ def importar_literacias():
     ).fetchone()[0]
     return render_template("importar_literacias.html", ano=ano, n_registos=n,
                            sem_nota=[], nao_enc=[], resultado=False)
+
+
+# ─── Consolidar nomes de disciplinas divergentes (admin) ──────────────────────
+# Algumas pautas usam abreviaturas/grafias diferentes para a mesma disciplina
+# (ex.: "ECO. C" / "Econ C" para "Economia C", "AI B" / "AP. IN" para
+# "Aplicações Informáticas B"), o que faz com que apareçam como colunas
+# separadas na ficha do aluno. Esta ferramenta usa o mapa DISCIPLINAS_ALIAS
+# (definido em importar_notas.py) para detectar esses grupos nas tabelas
+# 'notas' e 'notas_finais', e fundi-los sob o nome canónico.
+
+def _plano_consolidacao_disciplinas(db, aplicar=False):
+    """
+    Analisa 'notas' e 'notas_finais', agrupa nomes de disciplina que
+    correspondem ao mesmo nome canónico (via DISCIPLINAS_ALIAS) e, se
+    aplicar=True, corrige os registos (renomeia ou funde duplicados).
+    Devolve uma lista de entradas para apresentação e contadores-resumo.
+    """
+    tabelas = [
+        ("notas",        ["aluno_id", "periodo"]),
+        ("notas_finais", ["aluno_id", "ano_letivo"]),
+    ]
+
+    entradas = []
+    total_renomeados = 0
+    total_removidos  = 0
+
+    for tabela, colunas_chave in tabelas:
+        nomes = [r[0] for r in db.execute(f"SELECT DISTINCT disciplina FROM {tabela}").fetchall()]
+
+        grupos = {}
+        for nome in nomes:
+            grupos.setdefault(canonizar_disciplina(nome), []).append(nome)
+
+        for canonico, variantes in sorted(grupos.items()):
+            outras = [v for v in variantes if v != canonico]
+            if not outras:
+                continue
+
+            detalhe = {"tabela": tabela, "canonico": canonico, "variantes": outras,
+                       "renomeados": 0, "removidos": 0, "conflitos": []}
+
+            chave_sel = ", ".join(colunas_chave)
+            for variante in outras:
+                registos = db.execute(
+                    f"SELECT id, {chave_sel} FROM {tabela} WHERE disciplina=?",
+                    (variante,)
+                ).fetchall()
+
+                for reg in registos:
+                    filtro  = " AND ".join(f"{c}=?" for c in colunas_chave)
+                    valores = tuple(reg[c] for c in colunas_chave)
+
+                    conflito = db.execute(
+                        f"SELECT id FROM {tabela} WHERE disciplina=? AND {filtro}",
+                        (canonico, *valores)
+                    ).fetchone()
+
+                    if conflito:
+                        detalhe["conflitos"].append({
+                            "variante": variante, "id_variante": reg["id"],
+                            "id_canonico": conflito["id"],
+                            "chave": dict(zip(colunas_chave, valores)),
+                        })
+                        detalhe["removidos"] += 1
+                        total_removidos += 1
+                        if aplicar:
+                            db.execute(f"DELETE FROM {tabela} WHERE id=?", (reg["id"],))
+                    else:
+                        detalhe["renomeados"] += 1
+                        total_renomeados += 1
+                        if aplicar:
+                            db.execute(f"UPDATE {tabela} SET disciplina=? WHERE id=?", (canonico, reg["id"]))
+
+            entradas.append(detalhe)
+
+    if aplicar:
+        db.commit()
+
+    return entradas, total_renomeados, total_removidos
+
+
+@app.route("/admin/consolidar-disciplinas", methods=["GET", "POST"])
+@login_required
+@admin_required
+def consolidar_disciplinas():
+    db = get_db()
+    aplicar = request.method == "POST"
+
+    entradas, total_renomeados, total_removidos = _plano_consolidacao_disciplinas(db, aplicar=aplicar)
+
+    if aplicar:
+        if total_renomeados or total_removidos:
+            flash(f"✓ Consolidação aplicada: {total_renomeados} registo(s) renomeado(s), "
+                  f"{total_removidos} duplicado(s) removido(s).", "success")
+        else:
+            flash("Nada para consolidar — os nomes de disciplinas já estão coerentes.", "info")
+        return redirect(url_for("consolidar_disciplinas"))
+
+    return render_template("consolidar_disciplinas.html", entradas=entradas,
+                           total_renomeados=total_renomeados, total_removidos=total_removidos,
+                           aliases=DISCIPLINAS_ALIAS)
 
 
 # ─── Ferramenta de auditoria de notas em falta (admin) ────────────────────────
