@@ -451,6 +451,90 @@
   </div>
   {% endif %}
 
+  <!-- ── PREVISÃO / COMPARAÇÃO DE EXAMES NACIONAIS ─────────────────── -->
+  {% if an.exames_previstos %}
+  <div class="card an-card mb-4">
+    <div class="card-body">
+      <div class="secao-titulo mb-1"><i class="bi bi-mortarboard-fill"></i>Exames Nacionais — Previsão e Comparação</div>
+      <p class="secao-sub mb-3">
+        Para as disciplinas de exame em que o aluno está inscrito este ano lectivo. Antes da época de exames mostra-se
+        uma <strong>previsão</strong> (com base no histórico nacional, na média periódica e no CIF); depois de o
+        resultado estar lançado mostra-se a <strong>comparação</strong> entre a nota prevista e a nota real, com o
+        mesmo tipo de alerta de desvio (|z| ≥ 1.5) usado nas notas internas.
+      </p>
+      <div class="table-responsive">
+        <table class="an-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">Disciplina</th>
+              <th>Estado</th>
+              <th>Nota prevista vs. real</th>
+              <th>Avaliação do desvio</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in an.exames_previstos %}
+            <tr class="{% if l.alerta and l.alerta.startswith('abaixo') %}an-row-alerta-baixo{% elif l.alerta and l.alerta.startswith('acima') %}an-row-alerta-alto{% endif %}">
+              <td class="lbl">{{ l.disciplina }}</td>
+              <td>
+                {% if l.tipo == 'comparacao' %}
+                  <span class="badge" style="background:#4b5563;color:#fff">Resultado disponível</span>
+                {% else %}
+                  <span class="badge" style="background:#0d6efd;color:#fff">Previsão (pré-exame)</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if l.tipo == 'comparacao' %}
+                  <div class="ne-comp" title="Nota real: {{ '%.0f'|format(l.nota_real) }}{% if l.nota_prevista is not none %} · Nota prevista: {{ '%.1f'|format(l.nota_prevista) }}{% endif %} (escala 0-20)">
+                    <span class="ne-real">{{ "%.0f"|format(l.nota_real) }}</span>
+                    <div class="ne-track">
+                      <div class="ne-track-fill" style="width: {{ (l.nota_real / 20 * 100) | round(1) }}%"></div>
+                      {% if l.nota_prevista is not none %}
+                      <div class="ne-track-marker" style="left: {{ (l.nota_prevista / 20 * 100) | round(1) }}%"></div>
+                      {% endif %}
+                    </div>
+                    <span class="ne-esperada">
+                      {% if l.nota_prevista is not none %}prev. {{ "%.1f"|format(l.nota_prevista) }}
+                      {% else %}sem estimativa{% endif %}
+                    </span>
+                  </div>
+                {% else %}
+                  {% if l.nota_prevista is not none %}
+                    <span class="nota-cell" style="background:#0d6efd;color:white">{{ "%.1f"|format(l.nota_prevista) }}</span>
+                    <span class="secao-sub ms-1" style="font-size:.72rem">previsão (escala 0-20)</span>
+                  {% else %}
+                    <span class="secao-sub">Sem estimativa disponível</span>
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td style="text-align:left">
+                {% if l.tipo == 'comparacao' and l.desvio is defined %}
+                  <span class="ne-pill ne-{{ l.alerta.replace('_','-') if l.alerta else 'neutro' }}">
+                    {{ "%+.1f"|format(l.desvio) }} <small>z = {{ "%+.2f"|format(l.z) }}</small>
+                  </span>
+                  {% if l.alerta %}
+                    <div class="secao-sub mt-1" style="font-size:.72rem">
+                      {% if l.alerta == 'abaixo_forte' %}Muito abaixo do esperado
+                      {% elif l.alerta == 'abaixo' %}Abaixo do esperado
+                      {% elif l.alerta == 'acima' %}Acima do esperado
+                      {% elif l.alerta == 'acima_forte' %}Muito acima do esperado{% endif %}
+                    </div>
+                  {% endif %}
+                {% elif l.tipo == 'comparacao' %}
+                  <span class="secao-sub">Sem estimativa disponível</span>
+                {% else %}
+                  <span class="secao-sub" style="font-size:.72rem">Avaliação de desvio disponível após o resultado</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ── EVOLUÇÃO TEMPORAL ─────────────────────────────────────────── -->
   {% if an.evolucao|length > 1 %}
   <div class="card an-card mb-4">

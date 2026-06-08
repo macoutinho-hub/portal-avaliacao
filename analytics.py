@@ -661,8 +661,9 @@ def construir_modelos_exame(dados_treino=None):
             continue
 
         # --- features do modelo de comparação (contexto leave-one-out) ---
+        nivel = nivel_de_turma(l["turma"])
         x3_comp = media_excluindo(por_turma[(l["turma"], l["disciplina"], l["ano_letivo"])], i)
-        x4_comp = media_excluindo(por_nivel[(l.get("nivel"), l.get("ano_turma"), l["disciplina"], l["ano_letivo"])], i)
+        x4_comp = media_excluindo(por_nivel[(nivel, l["disciplina"], l["ano_letivo"])], i)
         if x3_comp is None and x4_comp is None:
             continue
         if x3_comp is None:
@@ -695,6 +696,19 @@ def construir_modelos_exame(dados_treino=None):
         "medias_disciplina": medias_disciplina,
         "n_observacoes":     len(y),
     }
+
+
+_cache_exame = {"modelos": None, "carregado": False}
+
+
+def _obter_modelos_exame():
+    """Modelos de exame, treinados uma única vez por arranque do processo —
+    o histórico de treino é estático (não depende da BD ao vivo), por isso
+    não precisa do fingerprint usado em `_obter_dados_cache`."""
+    if not _cache_exame["carregado"]:
+        _cache_exame["modelos"] = construir_modelos_exame()
+        _cache_exame["carregado"] = True
+    return _cache_exame["modelos"]
 
 
 def prever_exame(modelos_exame, disciplina, media_periodica, cif=None):
@@ -879,6 +893,100 @@ def deteccao_mudancas_bruscas(serie_evolucao, limiar=2.0):
 
 # ─── Análise completa de um aluno (ponto de entrada) ───────────────────────────
 
+def analisar_exames_aluno(db, aluno_id, ano_letivo, turma, observacoes):
+    """Para cada disciplina de exame nacional em que o aluno está inscrito
+    no ano corrente (`inscricoes_exame`), devolve uma entrada com:
+
+      • tipo "previsao"   — se ainda não há resultado em `notas_finais`:
+                            só a nota prevista (pré-época de exames).
+      • tipo "comparacao" — se já existe `exame_f1`/`exame_f2`: nota
+                            prevista vs. real, com alerta por z-score
+                            (mesmo espírito do `nota_esperada_tabela`).
+
+    Devolve [] se faltarem inscrições, modelos ou dados suficientes —
+    nunca rebenta a página de análise do aluno.
+    """
+    modelos = _obter_modelos_exame()
+    if modelos is None:
+        return []
+
+    inscricoes = db.execute(
+        "SELECT DISTINCT disciplina FROM inscricoes_exame WHERE aluno_id=? AND ano_letivo=?",
+        (aluno_id, ano_letivo),
+    ).fetchall()
+    disciplinas = [r["disciplina"] for r in inscricoes]
+    if not disciplinas:
+        return []
+
+    nivel = nivel_de_turma(turma)
+    resultado = []
+
+    for disciplina in disciplinas:
+        notas_disc = [
+            o["nota"] for o in observacoes
+            if o["aluno_id"] == aluno_id and o["disciplina"] == disciplina
+            and o["ano_letivo"] == ano_letivo
+        ]
+        media_periodica = round(statistics.mean(notas_disc), 2) if notas_disc else None
+
+        nf = db.execute(
+            "SELECT cif, exame_f1, exame_f2 FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+            (aluno_id, disciplina, ano_letivo),
+        ).fetchone()
+        cif = nf["cif"] if nf else None
+        nota_real = (nf["exame_f2"] if nf and nf["exame_f2"] is not None else
+                     (nf["exame_f1"] if nf else None))
+
+        if nota_real is not None:
+            # --- Comparação: já há resultado — usar contexto real do ano ---
+            colegas = db.execute("""
+                SELECT nf.aluno_id, COALESCE(nf.exame_f2, nf.exame_f1) AS nota, a.turma
+                FROM notas_finais nf
+                JOIN alunos a ON a.id = nf.aluno_id
+                WHERE nf.disciplina=? AND nf.ano_letivo=?
+                  AND COALESCE(nf.exame_f2, nf.exame_f1) IS NOT NULL
+            """, (disciplina, ano_letivo)).fetchall()
+
+            notas_turma = [c["nota"] for c in colegas if c["turma"] == turma and c["aluno_id"] != aluno_id]
+            notas_nivel = [c["nota"] for c in colegas
+                           if nivel_de_turma(c["turma"]) == nivel and c["aluno_id"] != aluno_id]
+            media_turma = round(statistics.mean(notas_turma), 2) if notas_turma else None
+            media_nivel = round(statistics.mean(notas_nivel), 2) if notas_nivel else None
+
+            esperada, desvio_residuos = comparar_exame_e_desvio(
+                modelos, disciplina, media_periodica, cif, media_turma, media_nivel
+            )
+            linha = {
+                "disciplina":    disciplina,
+                "tipo":          "comparacao",
+                "nota_prevista": esperada,
+                "nota_real":     nota_real,
+                "alerta":        None,
+            }
+            if esperada is not None:
+                desvio = round(nota_real - esperada, 1)
+                z = round(desvio / desvio_residuos, 2) if desvio_residuos else 0.0
+                linha["desvio"] = desvio
+                linha["z"] = z
+                if z <= -1.5:
+                    linha["alerta"] = "abaixo_forte" if z <= -2.0 else "abaixo"
+                elif z >= 1.5:
+                    linha["alerta"] = "acima_forte" if z >= 2.0 else "acima"
+            resultado.append(linha)
+        else:
+            # --- Previsão: ainda sem resultado — só variáveis conhecidas antes ---
+            prevista, _ = prever_exame(modelos, disciplina, media_periodica, cif)
+            resultado.append({
+                "disciplina":    disciplina,
+                "tipo":          "previsao",
+                "nota_prevista": prevista,
+                "nota_real":     None,
+                "alerta":        None,
+            })
+
+    return resultado
+
+
 def analisar_aluno(db, aluno_id):
     """Ponto de entrada principal: obtém observações e modelo pooled da
     cache (recalculados apenas quando os dados de `notas` mudam — ver
@@ -893,6 +1001,10 @@ def analisar_aluno(db, aluno_id):
         return None
 
     ano_letivo_aluno = max(o["ano_letivo"] for o in aluno_obs)
+    turma_atual = next(
+        (o["turma"] for o in aluno_obs if o["ano_letivo"] == ano_letivo_aluno),
+        aluno_obs[-1]["turma"],
+    )
 
     posicionamento = posicionamento_por_disciplina(observacoes, aluno_id, ano_letivo_aluno)
     perfil = perfil_academico(observacoes, aluno_id)
@@ -929,6 +1041,10 @@ def analisar_aluno(db, aluno_id):
                 outliers.append({**linha, "tipo": tipo})
         nota_esperada_tabela.append(linha)
 
+    # Previsão / comparação de exames nacionais (disciplinas em que o aluno
+    # está inscrito este ano — ver `analisar_exames_aluno`)
+    exames_previstos = analisar_exames_aluno(db, aluno_id, ano_letivo_aluno, turma_atual, observacoes)
+
     # Indicadores de risco / potencial (resumo)
     disciplinas_alerta = [o for o in outliers if o["tipo"].startswith("abaixo")]
     disciplinas_excelencia = [o for o in outliers if o["tipo"].startswith("acima")]
@@ -941,6 +1057,7 @@ def analisar_aluno(db, aluno_id):
         "evolucao_disciplinas":  evolucao_disciplinas,
         "mudancas_bruscas":      mudancas,
         "nota_esperada_tabela":  nota_esperada_tabela,
+        "exames_previstos":      exames_previstos,
         "outliers":              outliers,
         "disciplinas_alerta":    disciplinas_alerta,
         "disciplinas_excelencia": disciplinas_excelencia,
