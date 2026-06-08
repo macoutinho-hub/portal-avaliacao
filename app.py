@@ -1057,12 +1057,20 @@ def aluno(aluno_id):
     linha_cfd = next((l for l in reversed(linhas) if l["tipo"] == "cfd"), None)
     resumo = None
     if ultima_linha_sem:
-        negas = [(d, n) for d, n in ultima_linha_sem["notas"].items() if n is not None and n < 10]
+        NEG_TEXTOS = {"AM", "NA", "RF"}  # códigos textuais considerados negativa (< 10)
+        def _e_nega(n):
+            if isinstance(n, (int, float)):
+                return n < 10
+            if isinstance(n, str):
+                return n.strip().upper() in NEG_TEXTOS
+            return False
+        negas = [(d, n) for d, n in ultima_linha_sem["notas"].items() if n is not None and _e_nega(n)]
         media_cfd = linha_cfd["media"] if linha_cfd and linha_cfd.get("media") is not None else ultima_linha_sem["media"]
         resumo = {
             "media_atual": media_cfd,
             "num_negas": len(negas),
-            "negas": sorted(negas, key=lambda x: x[1]),
+            # Ordenar: numéricas primeiro (da mais baixa para a mais alta), depois textuais
+            "negas": sorted(negas, key=lambda x: (isinstance(x[1], str), x[1] if isinstance(x[1], (int, float)) else 0)),
         }
 
     # Verificar se existe foto
