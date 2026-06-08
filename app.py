@@ -2817,7 +2817,9 @@ def importar_pauta(turma):
         if nao_enc:
             msg += f" {len(nao_enc)} aluno(s) não encontrado(s)."
         flash(msg, "success" if not nao_enc else "warning")
-        return redirect(url_for("ver_turma", turma=tb))
+        if session["role"] == "admin":
+            return redirect(url_for("ver_turma", turma=tb))
+        return redirect(url_for("dashboard", turma=tb))
 
     return render_template("importar_pauta.html", turma=tb,
                            ano_conf=ano_conf, sem_conf=sem_conf)
