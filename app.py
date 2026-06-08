@@ -3115,11 +3115,15 @@ def importar_literacias():
 
 # ─── Consolidar nomes de disciplinas divergentes (admin) ──────────────────────
 # Algumas pautas usam abreviaturas/grafias diferentes para a mesma disciplina
-# (ex.: "ECO. C" / "Econ C" para "Economia C", "AI B" / "AP. IN" para
-# "Aplicações Informáticas B"), o que faz com que apareçam como colunas
-# separadas na ficha do aluno. Esta ferramenta usa o mapa DISCIPLINAS_ALIAS
-# (definido em importar_notas.py) para detectar esses grupos nas tabelas
-# 'notas' e 'notas_finais', e fundi-los sob o nome canónico.
+# (ex.: "ECO. C" / "Econ C" para "Economia C", "MAT.A" / "Mat A" para
+# "Matemática A"), o que faz com que apareçam como colunas separadas na ficha
+# do aluno. Em vez de confiar apenas num mapa automático de variantes (que
+# nunca cobre tudo e pode gerar falsos positivos — ex.: "Inglês" e "Líng.
+# Estrang. I - Inglês" são disciplinas DISTINTAS), esta ferramenta dá ao
+# utilizador uma lista de todos os nomes existentes e deixa-o escolher,
+# manualmente e um de cada vez, para qual nome cada um deve ser fundido
+# (com uma sugestão automática pré-seleccionada quando exista, via
+# canonizar_disciplina/DISCIPLINAS_ALIAS de importar_notas.py).
 
 _TABELAS_CONSOLIDACAO = [
     ("notas",        ["aluno_id", "periodo"]),
@@ -3127,89 +3131,49 @@ _TABELAS_CONSOLIDACAO = [
 ]
 
 
-def _plano_consolidacao_disciplinas(db):
+def _nomes_disciplina(db):
     """
-    Analisa 'notas' e 'notas_finais' e devolve, em modo só-leitura, a lista de
-    grupos de nomes de disciplina que o mapa DISCIPLINAS_ALIAS sugere fundir
-    sob o mesmo nome canónico — para revisão e aprovação individual (nunca em
-    bloco, porque pode haver falsos positivos: por ex. "Inglês" e "Líng.
-    Estrang. I - Inglês" são disciplinas distintas mesmo partilhando a mesma
-    abreviatura "Ing").
-    Cada entrada tem um 'grupo_id' estável (tabela + nome canónico) usado para
-    aprovar esse grupo especificamente.
+    Devolve a lista de todos os nomes de disciplina distintos encontrados em
+    'notas' e 'notas_finais', com a contagem total de registos e a sugestão
+    automática (se existir e for diferente do próprio nome). Ordenada por
+    nome.
     """
-    entradas = []
+    contagens = {}
+    for tabela, _cols in _TABELAS_CONSOLIDACAO:
+        for r in db.execute(
+            f"SELECT disciplina, COUNT(*) AS n FROM {tabela} GROUP BY disciplina"
+        ).fetchall():
+            contagens[r["disciplina"]] = contagens.get(r["disciplina"], 0) + r["n"]
 
-    for tabela, colunas_chave in _TABELAS_CONSOLIDACAO:
-        nomes = [r[0] for r in db.execute(f"SELECT DISTINCT disciplina FROM {tabela}").fetchall()]
+    nomes = sorted(contagens)
+    sugestoes = {n: canonizar_disciplina(n) for n in nomes}
 
-        grupos = {}
-        for nome in nomes:
-            grupos.setdefault(canonizar_disciplina(nome), []).append(nome)
-
-        for canonico, variantes in sorted(grupos.items()):
-            outras = [v for v in variantes if v != canonico]
-            if not outras:
-                continue
-
-            detalhe = {
-                "grupo_id": f"{tabela}::{canonico}",
-                "tabela": tabela, "canonico": canonico, "variantes": outras,
-                "colunas_chave": colunas_chave,
-                "renomeados": 0, "removidos": 0, "conflitos": [],
-            }
-
-            chave_sel = ", ".join(colunas_chave)
-            for variante in outras:
-                registos = db.execute(
-                    f"SELECT id, {chave_sel} FROM {tabela} WHERE disciplina=?",
-                    (variante,)
-                ).fetchall()
-
-                for reg in registos:
-                    filtro  = " AND ".join(f"{c}=?" for c in colunas_chave)
-                    valores = tuple(reg[c] for c in colunas_chave)
-
-                    conflito = db.execute(
-                        f"SELECT id FROM {tabela} WHERE disciplina=? AND {filtro}",
-                        (canonico, *valores)
-                    ).fetchone()
-
-                    if conflito:
-                        detalhe["conflitos"].append({
-                            "variante": variante, "id_variante": reg["id"],
-                            "id_canonico": conflito["id"],
-                            "chave": dict(zip(colunas_chave, valores)),
-                        })
-                        detalhe["removidos"] += 1
-                    else:
-                        detalhe["renomeados"] += 1
-
-            entradas.append(detalhe)
-
-    return entradas
+    return [
+        {
+            "nome": n,
+            "n": contagens[n],
+            "sugestao": sugestoes[n] if sugestoes[n] != n and sugestoes[n] in contagens else "",
+        }
+        for n in nomes
+    ], nomes
 
 
-def _aplicar_grupo_consolidacao(db, grupo_id):
+def _fundir_disciplina(db, origem, destino):
     """
-    Aplica APENAS o grupo identificado por grupo_id (formato 'tabela::canonico'),
-    recalculando o plano para garantir que os dados ainda correspondem ao que
-    foi mostrado ao utilizador (evita aplicar sobre dados entretanto alterados).
-    Devolve (renomeados, removidos) ou None se o grupo já não existir.
+    Funde TODOS os registos com disciplina=origem para disciplina=destino,
+    em 'notas' e 'notas_finais'. Quando já existe um registo com o nome de
+    destino para a mesma chave (aluno+período, ou aluno+ano lectivo), remove
+    o registo de origem em vez de o renomear (para não duplicar).
+    Devolve (renomeados, removidos).
     """
-    entradas = _plano_consolidacao_disciplinas(db)
-    alvo = next((e for e in entradas if e["grupo_id"] == grupo_id), None)
-    if alvo is None:
-        return None
+    if not origem or not destino or origem == destino:
+        return 0, 0
 
-    tabela, canonico, colunas_chave = alvo["tabela"], alvo["canonico"], alvo["colunas_chave"]
-    chave_sel = ", ".join(colunas_chave)
     renomeados = removidos = 0
-
-    for variante in alvo["variantes"]:
+    for tabela, colunas_chave in _TABELAS_CONSOLIDACAO:
+        chave_sel = ", ".join(colunas_chave)
         registos = db.execute(
-            f"SELECT id, {chave_sel} FROM {tabela} WHERE disciplina=?",
-            (variante,)
+            f"SELECT id, {chave_sel} FROM {tabela} WHERE disciplina=?", (origem,)
         ).fetchall()
 
         for reg in registos:
@@ -3218,14 +3182,14 @@ def _aplicar_grupo_consolidacao(db, grupo_id):
 
             conflito = db.execute(
                 f"SELECT id FROM {tabela} WHERE disciplina=? AND {filtro}",
-                (canonico, *valores)
+                (destino, *valores)
             ).fetchone()
 
             if conflito:
                 db.execute(f"DELETE FROM {tabela} WHERE id=?", (reg["id"],))
                 removidos += 1
             else:
-                db.execute(f"UPDATE {tabela} SET disciplina=? WHERE id=?", (canonico, reg["id"]))
+                db.execute(f"UPDATE {tabela} SET disciplina=? WHERE id=?", (destino, reg["id"]))
                 renomeados += 1
 
     db.commit()
@@ -3239,41 +3203,26 @@ def consolidar_disciplinas():
     db = get_db()
 
     if request.method == "POST":
-        grupo_id = request.form.get("grupo_id", "")
-        resultado = _aplicar_grupo_consolidacao(db, grupo_id)
-        if resultado is None:
-            flash("Este grupo já não existe (talvez já tenha sido aprovado ou os dados mudaram). "
-                  "A página foi actualizada.", "warning")
+        origem  = (request.form.get("origem")  or "").strip()
+        destino = (request.form.get("destino") or "").strip()
+
+        if not origem or not destino:
+            flash("Selecione a disciplina de origem e o nome para o qual pretende fundi-la.", "warning")
+        elif origem == destino:
+            flash("A origem e o destino são o mesmo nome — nada a fazer.", "info")
         else:
-            renomeados, removidos = resultado
-            tabela, _, canonico = grupo_id.partition("::")
-            msg = f"✓ '{canonico}' ({tabela}): {renomeados} registo(s) renomeado(s)"
+            renomeados, removidos = _fundir_disciplina(db, origem, destino)
+            msg = f"✓ '{origem}' fundida em '{destino}': {renomeados} registo(s) renomeado(s)"
             if removidos:
                 msg += f", {removidos} duplicado(s) removido(s)"
             flash(msg + ".", "success")
+
         return redirect(url_for("consolidar_disciplinas"))
 
-    entradas = _plano_consolidacao_disciplinas(db)
-    total_renomeados = sum(e["renomeados"] for e in entradas)
-    total_removidos  = sum(e["removidos"] for e in entradas)
+    disciplinas, nomes = _nomes_disciplina(db)
 
-    # Diagnóstico: listar TODOS os nomes de disciplina existentes (com
-    # contagem de registos), para se perceber porque é que algumas grafias
-    # não foram sugeridas para consolidação (ex.: variantes ainda não
-    # mapeadas em DISCIPLINAS_ALIAS — basta acrescentá-las e recarregar).
-    diagnostico = {}
-    for tabela, _cols in _TABELAS_CONSOLIDACAO:
-        diagnostico[tabela] = [
-            {"nome": r["disciplina"], "n": r["n"], "canonico": canonizar_disciplina(r["disciplina"])}
-            for r in db.execute(
-                f"SELECT disciplina, COUNT(*) AS n FROM {tabela} "
-                f"GROUP BY disciplina ORDER BY disciplina"
-            ).fetchall()
-        ]
-
-    return render_template("consolidar_disciplinas.html", entradas=entradas,
-                           total_renomeados=total_renomeados, total_removidos=total_removidos,
-                           aliases=DISCIPLINAS_ALIAS, diagnostico=diagnostico)
+    return render_template("consolidar_disciplinas.html",
+                           disciplinas=disciplinas, nomes=nomes)
 
 
 # ─── Ferramenta de auditoria de notas em falta (admin) ────────────────────────
