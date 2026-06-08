@@ -133,8 +133,12 @@
       color: rgba(255,255,255,.8); white-space: nowrap; font-size: 1.1rem;
     }
     .ap-table tr:hover td { background: rgba(255,255,255,.04); }
-    .ap-table tr.atual-row td { background: rgba(245,158,11,.1); }
-    .ap-table tr.atual-row td.label-col { border-left: 3px solid #f59e0b; color: #fcd34d; }
+    .ap-table tr.sem2-row td { background: rgba(96,165,250,.1); border-top: 1px solid rgba(96,165,250,.18); border-bottom: 1px solid rgba(96,165,250,.18); }
+    .ap-table tr.sem2-row td.label-col { border-left: 3px solid #60a5fa; color: #bfdbfe; font-weight: 800; }
+    .ap-table tr.atual-row td { background: rgba(245,158,11,.3); font-weight: 700; border-top: 1px solid rgba(245,158,11,.5); border-bottom: 1px solid rgba(245,158,11,.5); }
+    .ap-table tr.atual-row td.label-col { border-left: 4px solid #f59e0b; color: #fde68a; font-weight: 900; }
+    .ap-table tr.atual-row.sem2-row td { background: rgba(245,158,11,.3); }
+    .ap-table tr.atual-row.sem2-row td.label-col { border-left: 4px solid #f59e0b; color: #fde68a; }
     .ap-table tr.auto-av-row td { background: rgba(147,51,234,.15); font-weight:700; border-top:2px dashed #9333ea; border-bottom:2px dashed #9333ea; }
     .ap-table tr.auto-av-row td.label-col { color:#c084fc; font-style:italic; }
     .ap-table tr.cif-row td  { background: var(--azul); font-weight: 900; font-size: 1rem; border-top: 2px solid var(--azul2); }
@@ -576,7 +580,9 @@ function mostrar(i) {
           <td class="media-col"></td>`;
         return;
       }
-      const cls = l.tipo==='cif' ? 'cif-row' : l.tipo==='cfd' ? 'cfd-row' : l.tipo==='exame' ? 'exame-row' : l.tipo==='auto_av' ? 'auto-av-row' : (l.atual ? 'atual-row' : '');
+      const isSem2 = l.tipo==='semestre' && /2º\s*Sem\.?/i.test(l.label||'');
+      const cls = l.tipo==='cif' ? 'cif-row' : l.tipo==='cfd' ? 'cfd-row' : l.tipo==='exame' ? 'exame-row' : l.tipo==='auto_av' ? 'auto-av-row'
+        : [l.atual ? 'atual-row' : '', isSem2 ? 'sem2-row' : ''].filter(Boolean).join(' ');
       html += `<tr class="${cls}">
         <td class="label-col">${l.label}</td>
         ${discs.map((d,i) => {
