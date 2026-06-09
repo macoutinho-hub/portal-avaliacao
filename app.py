@@ -2394,8 +2394,13 @@ def apresentacao(turma):
         ul = next((l for l in reversed(linhas) if l["tipo"]=="semestre" and l["atual"]), None)
         negas = []
         if ul:
-            negas = [[d, n] for d, n in ul["notas"].items() if isinstance(n, (int, float)) and n < 10]
-            negas.sort(key=lambda x: x[1])
+            _NEG_TEXTOS_AP = {"AM", "NA", "RF"}
+            def _e_nega_ap(n):
+                if isinstance(n, (int, float)): return n < 10
+                if isinstance(n, str): return n.strip().upper() in _NEG_TEXTOS_AP
+                return False
+            negas = [[d, n] for d, n in ul["notas"].items() if _e_nega_ap(n)]
+            negas.sort(key=lambda x: (isinstance(x[1], str), x[1] if isinstance(x[1], (int, float)) else 0))
 
         # Foto
         foto_url = None
