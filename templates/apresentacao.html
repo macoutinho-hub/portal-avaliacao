@@ -60,13 +60,26 @@
     .ap-meta { font-size: 1.05rem; opacity: .5; text-align: center; margin-top: .3rem; margin-bottom: 1rem; }
 
     /* Médias destacadas */
-    .ap-medias { display: flex; gap: .8rem; justify-content: center; margin-bottom: 1.2rem; flex-wrap: wrap; }
-    .ap-media-box { text-align: center; }
+    .ap-medias { display: flex; flex-direction: column; gap: 0; margin-bottom: 1.2rem; }
+    .ap-media-block {
+      text-align: center; padding: .7rem .8rem; border-radius: 10px;
+    }
+    .ap-media-block.bloco-sem {
+      background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.3);
+      margin-bottom: .5rem;
+    }
+    .ap-media-block.bloco-cfd {
+      background: rgba(252,211,77,.08); border: 1px solid rgba(252,211,77,.35);
+    }
+    .ap-media-tag {
+      font-size: .72rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .8px; margin-bottom: .3rem; opacity: .9;
+    }
     .ap-media-val {
       font-size: 2.8rem; font-weight: 900; border-radius: 10px;
       padding: .1rem .9rem; display: inline-block;
     }
-    .ap-media-lbl { font-size: .85rem; opacity: .6; margin-top: .2rem; }
+    .ap-media-lbl { font-size: .8rem; opacity: .5; margin-top: .25rem; }
 
     /* Alerta negativas */
     .ap-alerta {
@@ -493,19 +506,32 @@ function mostrar(i) {
   document.getElementById('nome-aluno').textContent = a.nome;
   document.getElementById('meta-aluno').textContent = `Nº ${a.numero||'—'} · ${a.turma}`;
 
-  // Médias por semestre actual
+  // Médias: semestre atual + global (CFD)
   const linhasSem = (a.linhas||[]).filter(l => l.tipo==='semestre' && l.atual);
+  const linhaCfd  = (a.linhas||[]).find(l => l.tipo==='cfd' && l.media !== null && l.media !== undefined);
   let mediasHtml = '';
+
   linhasSem.forEach(l => {
     if (l.media !== null && l.media !== undefined) {
       const cls = l.media < 10 ? 'nc-neg' : l.media < 14 ? 'nc-med' : l.media < 17 ? 'nc-bom' : 'nc-exc';
-      const lbl = l.label.split('—')[1]?.trim() || '';
-      mediasHtml += `<div class="ap-media-box">
+      const lbl = l.label.split('—')[1]?.trim() || l.label || '';
+      mediasHtml += `<div class="ap-media-block bloco-sem">
+        <div class="ap-media-tag" style="color:#93c5fd">Semestre Atual</div>
         <div class="ap-media-val nc ${cls}">${l.media.toFixed(1)}</div>
         <div class="ap-media-lbl">${lbl}</div>
       </div>`;
     }
   });
+
+  if (linhaCfd) {
+    const cls = linhaCfd.media < 10 ? 'nc-neg' : linhaCfd.media < 14 ? 'nc-med' : linhaCfd.media < 17 ? 'nc-bom' : 'nc-exc';
+    mediasHtml += `<div class="ap-media-block bloco-cfd">
+      <div class="ap-media-tag" style="color:#fcd34d">Média Global · CFD</div>
+      <div class="ap-media-val nc ${cls}">${linhaCfd.media.toFixed(1)}</div>
+      <div class="ap-media-lbl">Classificação Final</div>
+    </div>`;
+  }
+
   document.getElementById('medias-box').innerHTML = mediasHtml;
 
   // Alertas
