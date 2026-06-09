@@ -457,17 +457,16 @@
     <div class="card-body">
       <div class="secao-titulo mb-1"><i class="bi bi-mortarboard-fill"></i>Exames Nacionais — Previsão e Comparação</div>
       <p class="secao-sub mb-3">
-        Para as disciplinas de exame em que o aluno está inscrito este ano lectivo. Antes da época de exames mostra-se
-        uma <strong>previsão</strong> (com base no histórico nacional, na média periódica e no CIF); depois de o
-        resultado estar lançado mostra-se a <strong>comparação</strong> entre a nota prevista e a nota real, com o
-        mesmo tipo de alerta de desvio (|z| ≥ 1.5) usado nas notas internas.
+        Histórico completo de exames nacionais do aluno. Para exames já realizados mostra-se a <strong>comparação</strong>
+        entre nota real e nota esperada (com alertas de desvio). Para inscrições deste ano sem resultado ainda,
+        mostra-se a <strong>previsão</strong> com base na média periódica, CIF e histórico nacional da disciplina.
       </p>
       <div class="table-responsive">
         <table class="an-table">
           <thead>
             <tr>
               <th style="text-align:left">Disciplina</th>
-              <th>Estado</th>
+              <th>Ano / Estado</th>
               <th>Nota prevista vs. real</th>
               <th>Avaliação do desvio</th>
             </tr>
@@ -477,10 +476,14 @@
             <tr class="{% if l.alerta and l.alerta.startswith('abaixo') %}an-row-alerta-baixo{% elif l.alerta and l.alerta.startswith('acima') %}an-row-alerta-alto{% endif %}">
               <td class="lbl">{{ l.disciplina }}</td>
               <td>
+                <div style="font-size:.8rem;font-weight:600;color:var(--an-muted);margin-bottom:.2rem">{{ l.ano_letivo }}</div>
                 {% if l.tipo == 'comparacao' %}
-                  <span class="badge" style="background:#4b5563;color:#fff">Resultado disponível</span>
+                  <span class="badge" style="background:#4b5563;color:#fff">Resultado</span>
                 {% else %}
-                  <span class="badge" style="background:#0d6efd;color:#fff">Previsão (pré-exame)</span>
+                  <span class="badge" style="background:#0d6efd;color:#fff">Previsão</span>
+                  {% if l.reinscricao %}
+                    <span class="badge ms-1" style="background:#7c3aed;color:#fff">Reinscrição</span>
+                  {% endif %}
                 {% endif %}
               </td>
               <td>

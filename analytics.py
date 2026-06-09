@@ -915,102 +915,139 @@ def deteccao_mudancas_bruscas(serie_evolucao, limiar=2.0):
 # ─── Análise completa de um aluno (ponto de entrada) ───────────────────────────
 
 def analisar_exames_aluno(db, aluno_id, ano_letivo, turma, observacoes):
-    """Para cada disciplina de exame nacional em que o aluno está inscrito
-    no ano corrente (`inscricoes_exame`), devolve uma entrada com:
+    """Devolve a lista completa de entradas de exame para o aluno:
 
-      • tipo "previsao"   — se ainda não há resultado em `notas_finais`:
-                            só a nota prevista (pré-época de exames).
-      • tipo "comparacao" — se já existe `exame_f1`/`exame_f2`: nota
-                            prevista vs. real, com alerta por z-score
-                            (mesmo espírito do `nota_esperada_tabela`).
+      • tipo "comparacao" — para TODOS os exames realizados em qualquer
+                            ano letivo (histórico completo via _grupo_aluno).
+                            Compara nota real com nota esperada (z-score).
+      • tipo "previsao"   — para disciplinas em que o aluno está inscrito
+                            este ano letivo mas ainda não tem resultado.
+                            Inclui flag `reinscrição=True` se já realizou
+                            a mesma disciplina num ano anterior.
 
-    Devolve [] se faltarem inscrições, modelos ou dados suficientes —
-    nunca rebenta a página de análise do aluno.
+    Ordenação: previsões primeiro (ano actual), depois comparações por
+    ano letivo descendente e disciplina.
+    Devolve [] se não houver dados ou modelos disponíveis.
     """
     modelos = _obter_modelos_exame()
     if modelos is None:
         return []
 
+    # Todos os aluno_ids históricos (BD cria um novo id por ano letivo)
+    todos_ids = _grupo_aluno(observacoes, aluno_id)
+    ph = ",".join("?" * len(todos_ids))
+
+    # ── 1. Todos os resultados de exame realizados (todos os anos) ──────────
+    resultados_db = db.execute(f"""
+        SELECT nf.aluno_id AS aid, nf.disciplina, nf.ano_letivo,
+               nf.cif, COALESCE(nf.exame_f2, nf.exame_f1) AS nota_real,
+               a.turma
+        FROM notas_finais nf
+        JOIN alunos a ON a.id = nf.aluno_id
+        WHERE nf.aluno_id IN ({ph})
+          AND COALESCE(nf.exame_f2, nf.exame_f1) IS NOT NULL
+        ORDER BY nf.ano_letivo DESC, nf.disciplina
+    """, list(todos_ids)).fetchall()
+
+    # Conjunto de disciplinas com resultado (qualquer ano) — para flag "reinscrição"
+    discs_com_historico = {r["disciplina"] for r in resultados_db}
+    # Conjunto de (disciplina, ano_letivo) com resultado — para excluir da previsão
+    discs_com_resultado_este_ano = {
+        r["disciplina"] for r in resultados_db if r["ano_letivo"] == ano_letivo
+    }
+
+    resultado = []
+
+    # ── 2. Previsões: inscrições do ano actual sem resultado ainda ───────────
     inscricoes = db.execute(
         "SELECT DISTINCT disciplina FROM inscricoes_exame WHERE aluno_id=? AND ano_letivo=?",
         (aluno_id, ano_letivo),
     ).fetchall()
-    disciplinas = [r["disciplina"] for r in inscricoes]
-    if not disciplinas:
-        return []
 
-    nivel = nivel_de_turma(turma)
-    resultado = []
-
-    for disciplina in disciplinas:
-        # `disciplina` está no formato canónico da BD ("Matemática A", …);
-        # os modelos de exame foram treinados com abreviações ("MAT.A", …).
+    for row in inscricoes:
+        disciplina = row["disciplina"]
+        if disciplina in discs_com_resultado_este_ano:
+            continue  # já tem resultado este ano → aparece em comparações
         disc_modelo = MAPA_DISC_BD_PARA_EXAME.get(disciplina)
-        if disc_modelo is None:
-            # Disciplina sem modelo (ex.: Inglês) — ignorar silenciosamente
+        if not disc_modelo:
             continue
 
-        notas_disc = [
-            o["nota"] for o in observacoes
-            if o["aluno_id"] == aluno_id and o["disciplina"] == disciplina
-            and o["ano_letivo"] == ano_letivo
-        ]
+        notas_disc = [o["nota"] for o in observacoes
+                      if o["aluno_id"] == aluno_id and o["disciplina"] == disciplina
+                      and o["ano_letivo"] == ano_letivo]
         media_periodica = round(statistics.mean(notas_disc), 2) if notas_disc else None
 
         nf = db.execute(
-            "SELECT cif, exame_f1, exame_f2 FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+            "SELECT cif FROM notas_finais WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
             (aluno_id, disciplina, ano_letivo),
         ).fetchone()
         cif = nf["cif"] if nf else None
-        nota_real = (nf["exame_f2"] if nf and nf["exame_f2"] is not None else
-                     (nf["exame_f1"] if nf else None))
 
-        if nota_real is not None:
-            # --- Comparação: já há resultado — usar contexto real do ano ---
-            colegas = db.execute("""
-                SELECT nf.aluno_id, COALESCE(nf.exame_f2, nf.exame_f1) AS nota, a.turma
-                FROM notas_finais nf
-                JOIN alunos a ON a.id = nf.aluno_id
-                WHERE nf.disciplina=? AND nf.ano_letivo=?
-                  AND COALESCE(nf.exame_f2, nf.exame_f1) IS NOT NULL
-            """, (disciplina, ano_letivo)).fetchall()
+        prevista, _ = prever_exame(modelos, disc_modelo, media_periodica, cif)
+        resultado.append({
+            "disciplina":    disciplina,
+            "ano_letivo":    ano_letivo,
+            "tipo":          "previsao",
+            "reinscricao":   disciplina in discs_com_historico,
+            "nota_prevista": prevista,
+            "nota_real":     None,
+            "alerta":        None,
+        })
 
-            notas_turma = [c["nota"] for c in colegas if c["turma"] == turma and c["aluno_id"] != aluno_id]
-            notas_nivel = [c["nota"] for c in colegas
-                           if nivel_de_turma(c["turma"]) == nivel and c["aluno_id"] != aluno_id]
-            media_turma = round(statistics.mean(notas_turma), 2) if notas_turma else None
-            media_nivel = round(statistics.mean(notas_nivel), 2) if notas_nivel else None
+    # ── 3. Comparações: todos os exames realizados ───────────────────────────
+    for r in resultados_db:
+        disciplina = r["disciplina"]
+        disc_modelo = MAPA_DISC_BD_PARA_EXAME.get(disciplina)
+        if not disc_modelo:
+            continue
 
-            esperada, desvio_residuos = comparar_exame_e_desvio(
-                modelos, disc_modelo, media_periodica, cif, media_turma, media_nivel
-            )
-            linha = {
-                "disciplina":    disciplina,
-                "tipo":          "comparacao",
-                "nota_prevista": esperada,
-                "nota_real":     nota_real,
-                "alerta":        None,
-            }
-            if esperada is not None:
-                desvio = round(nota_real - esperada, 1)
-                z = round(desvio / desvio_residuos, 2) if desvio_residuos else 0.0
-                linha["desvio"] = desvio
-                linha["z"] = z
-                if z <= -1.5:
-                    linha["alerta"] = "abaixo_forte" if z <= -2.0 else "abaixo"
-                elif z >= 1.5:
-                    linha["alerta"] = "acima_forte" if z >= 2.0 else "acima"
-            resultado.append(linha)
-        else:
-            # --- Previsão: ainda sem resultado — só variáveis conhecidas antes ---
-            prevista, _ = prever_exame(modelos, disc_modelo, media_periodica, cif)
-            resultado.append({
-                "disciplina":    disciplina,
-                "tipo":          "previsao",
-                "nota_prevista": prevista,
-                "nota_real":     None,
-                "alerta":        None,
-            })
+        aid       = r["aid"]
+        ano       = r["ano_letivo"]
+        turma_ano = r["turma"]
+        nivel_ano = nivel_de_turma(turma_ano)
+        nota_real = r["nota_real"]
+        cif       = r["cif"]
+
+        notas_disc = [o["nota"] for o in observacoes
+                      if o["aluno_id"] == aid and o["disciplina"] == disciplina
+                      and o["ano_letivo"] == ano]
+        media_periodica = round(statistics.mean(notas_disc), 2) if notas_disc else None
+
+        colegas = db.execute("""
+            SELECT nf.aluno_id, COALESCE(nf.exame_f2, nf.exame_f1) AS nota, a.turma
+            FROM notas_finais nf
+            JOIN alunos a ON a.id = nf.aluno_id
+            WHERE nf.disciplina=? AND nf.ano_letivo=?
+              AND COALESCE(nf.exame_f2, nf.exame_f1) IS NOT NULL
+        """, (disciplina, ano)).fetchall()
+
+        notas_turma = [c["nota"] for c in colegas if c["turma"] == turma_ano and c["aluno_id"] != aid]
+        notas_nivel = [c["nota"] for c in colegas if nivel_de_turma(c["turma"]) == nivel_ano and c["aluno_id"] != aid]
+        media_turma = round(statistics.mean(notas_turma), 2) if notas_turma else None
+        media_nivel = round(statistics.mean(notas_nivel), 2) if notas_nivel else None
+
+        esperada, desvio_residuos = comparar_exame_e_desvio(
+            modelos, disc_modelo, media_periodica, cif, media_turma, media_nivel
+        )
+        linha = {
+            "disciplina":    disciplina,
+            "ano_letivo":    ano,
+            "tipo":          "comparacao",
+            "reinscricao":   False,
+            "nota_prevista": esperada,
+            "nota_real":     nota_real,
+            "alerta":        None,
+        }
+        if esperada is not None:
+            desvio = round(nota_real - esperada, 1)
+            z = round(desvio / desvio_residuos, 2) if desvio_residuos else 0.0
+            linha["desvio"] = desvio
+            linha["z"] = z
+            if z <= -1.5:
+                linha["alerta"] = "abaixo_forte" if z <= -2.0 else "abaixo"
+            elif z >= 1.5:
+                linha["alerta"] = "acima_forte" if z >= 2.0 else "acima"
+        resultado.append(linha)
 
     return resultado
 
