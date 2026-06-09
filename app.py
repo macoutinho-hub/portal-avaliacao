@@ -2394,7 +2394,7 @@ def apresentacao(turma):
         ul = next((l for l in reversed(linhas) if l["tipo"]=="semestre" and l["atual"]), None)
         negas = []
         if ul:
-            negas = [[d, n] for d, n in ul["notas"].items() if n is not None and n < 10]
+            negas = [[d, n] for d, n in ul["notas"].items() if isinstance(n, (int, float)) and n < 10]
             negas.sort(key=lambda x: x[1])
 
         # Foto
