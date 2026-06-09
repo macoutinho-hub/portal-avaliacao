@@ -570,6 +570,27 @@ def nota_esperada_e_desvio(modelo, aluno_id, disciplina, periodo, ano_letivo):
 
 NOME_FICHEIRO_TREINO_EXAME = "dados_treino_exame_secundario.csv"
 
+# Tradução do nome canónico da BD (nome completo, usado em `notas_finais`,
+# `inscricoes_exame`, `notas`) para a abreviatura usada no CSV de treino.
+MAPA_DISC_BD_PARA_EXAME = {
+    "Português":                            "PORT.",
+    "Matemática A":                         "MAT.A",
+    "Matemática B":                         "MAT.B",
+    "Matemática Aplicada Ciências Sociais": "MACS",
+    "Biologia e Geologia":                  "BIO.GEO.",
+    "Física e Química A":                   "FÍS.QUÍM.A",
+    "Geografia A":                          "GEOG.A",
+    "Economia A":                           "ECON.A",
+    "Filosofia":                            "FILO.",
+    "História A":                           "HIST.A",
+    "História B":                           "HIST. B",
+    "História da Cultura e das Artes":      "HCA",
+    "Desenho A":                            "DES.A",
+    "Geometria Descritiva A":               "GEO.DESC.A",
+    "Literatura Portuguesa":                "LIT.PORT.",
+    "Líng. Estrang. I - Inglês":            None,   # sem modelo de exame
+}
+
 
 def carregar_dados_treino_exame(caminho=None):
     """Lê o histórico de exames nacionais do secundário já limpo/normalizado/
@@ -922,6 +943,13 @@ def analisar_exames_aluno(db, aluno_id, ano_letivo, turma, observacoes):
     resultado = []
 
     for disciplina in disciplinas:
+        # `disciplina` está no formato canónico da BD ("Matemática A", …);
+        # os modelos de exame foram treinados com abreviações ("MAT.A", …).
+        disc_modelo = MAPA_DISC_BD_PARA_EXAME.get(disciplina)
+        if disc_modelo is None:
+            # Disciplina sem modelo (ex.: Inglês) — ignorar silenciosamente
+            continue
+
         notas_disc = [
             o["nota"] for o in observacoes
             if o["aluno_id"] == aluno_id and o["disciplina"] == disciplina
@@ -954,7 +982,7 @@ def analisar_exames_aluno(db, aluno_id, ano_letivo, turma, observacoes):
             media_nivel = round(statistics.mean(notas_nivel), 2) if notas_nivel else None
 
             esperada, desvio_residuos = comparar_exame_e_desvio(
-                modelos, disciplina, media_periodica, cif, media_turma, media_nivel
+                modelos, disc_modelo, media_periodica, cif, media_turma, media_nivel
             )
             linha = {
                 "disciplina":    disciplina,
@@ -975,7 +1003,7 @@ def analisar_exames_aluno(db, aluno_id, ano_letivo, turma, observacoes):
             resultado.append(linha)
         else:
             # --- Previsão: ainda sem resultado — só variáveis conhecidas antes ---
-            prevista, _ = prever_exame(modelos, disciplina, media_periodica, cif)
+            prevista, _ = prever_exame(modelos, disc_modelo, media_periodica, cif)
             resultado.append({
                 "disciplina":    disciplina,
                 "tipo":          "previsao",
