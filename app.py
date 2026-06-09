@@ -987,10 +987,10 @@ def aluno(aluno_id):
     # do CIF/CFD oficial, a edição mais recente prevalece → recalcular.
     cif_notas = {}
     for d in todas_disciplinas:
-        if d in nf_cif and not _editado_apos_importacao(d, nf_cif_at.get(d)):
+        if d in discs_com_texto:
+            cif_notas[d] = None  # menção especial (AM/NA/RF...) → prevalece sempre
+        elif d in nf_cif and not _editado_apos_importacao(d, nf_cif_at.get(d)):
             cif_notas[d] = arred(nf_cif[d])  # oficial → usar directamente
-        elif d in discs_com_texto:
-            cif_notas[d] = None  # menção especial (AM/NA/RF...) → não calcular
         else:
             # CIF = média do 2º semestre de cada ano (com fallback para 1º sem. se não houver 2º)
             # Para alunos de 11º: 2º sem 10º + 2º sem 11º (ou 1º sem 11º se não houver 2º)
@@ -1048,10 +1048,10 @@ def aluno(aluno_id):
     # ── CFD: oficial ou calculado (7.5×CIF + 2.5×Exame)/10 ──────────────────
     cfd_notas = {}
     for d in todas_disciplinas:
-        if d in nf_cfd and not _editado_apos_importacao(d, nf_cfd_at.get(d)):
+        if d in discs_com_texto:
+            cfd_notas[d] = None  # menção especial (AM/NA/RF...) → prevalece sempre
+        elif d in nf_cfd and not _editado_apos_importacao(d, nf_cfd_at.get(d)):
             cfd_notas[d] = arred(nf_cfd[d])  # importado com exames → usar directamente
-        elif d in discs_com_texto:
-            cfd_notas[d] = None  # menção especial (AM/NA/RF...) → não calcular
         elif cif_notas.get(d) is not None and exame_notas.get(d) is not None:
             cfd_notas[d] = arred((7.5 * cif_notas[d] + 2.5 * exame_notas[d]) / 10)
         else:
@@ -1648,8 +1648,11 @@ def editar_nota(aluno_id):
     ).fetchone()
 
     if not existing and a["numero"]:
+        # Restringir ao mesmo ano_letivo para evitar que AM (ou outra nota)
+        # seja escrita no semestre de um ano anterior com o mesmo número de período.
         outros_ids = [r["id"] for r in db.execute(
-            "SELECT id FROM alunos WHERE numero=? AND id!=?", (a["numero"], aluno_id)
+            "SELECT id FROM alunos WHERE numero=? AND id!=? AND ano_letivo=?",
+            (a["numero"], aluno_id, a["ano_letivo"])
         ).fetchall()]
         for oid in outros_ids:
             existing = db.execute(
@@ -2274,10 +2277,10 @@ def apresentacao(turma):
         # CIF: oficial (importado) ou média dos 2ºs semestres — arredondamento aritmético
         cif = {}
         for d in todas:
-            if d in ap_cif_of and not _editado_apos_importacao_ap(d, ap_cif_of_at.get(d)):
+            if d in discs_com_texto_ap:
+                cif[d] = None  # menção especial (AM/NA/RF...) → prevalece sempre
+            elif d in ap_cif_of and not _editado_apos_importacao_ap(d, ap_cif_of_at.get(d)):
                 cif[d] = arred(ap_cif_of[d])  # oficial → usar directamente
-            elif d in discs_com_texto_ap:
-                cif[d] = None  # menção especial (AM/NA/RF...) → não calcular
             else:
                 ns = []
                 for ano_k, da_k in notas_por_ano.items():
@@ -2346,10 +2349,10 @@ def apresentacao(turma):
                 ap_exame[d] = None
         cfd_ap = {}
         for d in todas:
-            if d in ap_cfd_of and not _editado_apos_importacao_ap(d, ap_cfd_of_at.get(d)):
+            if d in discs_com_texto_ap:
+                cfd_ap[d] = None  # menção especial (AM/NA/RF...) → prevalece sempre
+            elif d in ap_cfd_of and not _editado_apos_importacao_ap(d, ap_cfd_of_at.get(d)):
                 cfd_ap[d] = arred(ap_cfd_of[d])
-            elif d in discs_com_texto_ap:
-                cfd_ap[d] = None  # menção especial (AM/NA/RF...) → não calcular
             elif cif.get(d) is not None and ap_exame.get(d) is not None:
                 cfd_ap[d] = arred((7.5 * cif[d] + 2.5 * ap_exame[d]) / 10)
             else:
