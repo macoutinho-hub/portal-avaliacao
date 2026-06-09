@@ -2125,6 +2125,7 @@ def apresentacao(turma):
         ).fetchall()
 
         notas_por_ano = {a["ano_letivo"]: {}}
+        turma_por_ano = {a["ano_letivo"]: a["turma"]}
         for r in rows:
             val = r["nota_texto"] if r["nota_texto"] else r["nota"]
             notas_por_ano[a["ano_letivo"]].setdefault(r["disciplina"], {})[r["periodo"]] = val
@@ -2132,7 +2133,7 @@ def apresentacao(turma):
         # Anos anteriores
         if a["numero"]:
             for outro in db.execute(
-                "SELECT id, ano_letivo FROM alunos WHERE numero=? AND ano_letivo!=? ORDER BY ano_letivo",
+                "SELECT id, ano_letivo, turma FROM alunos WHERE numero=? AND ano_letivo!=? ORDER BY ano_letivo",
                 (a["numero"], a["ano_letivo"])
             ).fetchall():
                 rows_ant = db.execute(
@@ -2141,6 +2142,7 @@ def apresentacao(turma):
                 ).fetchall()
                 if rows_ant:
                     notas_por_ano[outro["ano_letivo"]] = {}
+                    turma_por_ano[outro["ano_letivo"]] = outro["turma"]
                     for r in rows_ant:
                         val = r["nota_texto"] if r["nota_texto"] else r["nota"]
                         notas_por_ano[outro["ano_letivo"]].setdefault(r["disciplina"], {})[r["periodo"]] = val
@@ -2212,9 +2214,7 @@ def apresentacao(turma):
         for ano in sorted(notas_por_ano.keys()):
             disc_ano = notas_por_ano[ano]
             periodos = sorted({p for d in disc_ano.values() for p in d})
-            al_ano = db.execute("SELECT turma FROM alunos WHERE numero=? AND ano_letivo=?",
-                                (a["numero"], ano)).fetchone()
-            t_ano = al_ano["turma"] if al_ano else a["turma"]
+            t_ano = turma_por_ano.get(ano, a["turma"])
             ano_esc = ano_turma(t_ano)
 
             for p in periodos:
