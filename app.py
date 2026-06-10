@@ -223,6 +223,19 @@ def init_db():
     except Exception:
         pass
 
+    # Tabela de mapeamento professor → turma → disciplina
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS prof_disc (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            professor   TEXT NOT NULL,
+            turma       TEXT NOT NULL,
+            disciplina  TEXT NOT NULL,
+            ano_letivo  TEXT NOT NULL DEFAULT '2025/2026',
+            UNIQUE(professor, turma, disciplina, ano_letivo)
+        );
+    """)
+    db.commit()
+
     # Valores por defeito das settings
     for key, val in [("ano_letivo_atual", "2025/2026"), ("semestre_atual", "2")]:
         db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, val))
@@ -4097,6 +4110,197 @@ def importar_notas_web():
         return redirect(url_for("importar_notas_web"))
 
     return render_template("importar_notas.html")
+
+
+# ─── Importar mapeamento Professor → Turma → Disciplina ───────────────────────
+
+@app.route("/admin/importar-professores", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_professores():
+    """Importa um ficheiro xlsx/csv com colunas: Professor, Turma, Disciplina.
+    Coluna opcional: Ano Letivo (usa o ano atual se ausente).
+    """
+    db = get_db()
+    ano_letivo_atual = get_setting(db, "ano_letivo_atual") or "2025/2026"
+    n_registos = db.execute(
+        "SELECT COUNT(*) FROM prof_disc WHERE ano_letivo=?", (ano_letivo_atual,)
+    ).fetchone()[0]
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        if not f or not f.filename:
+            flash("Por favor carregue um ficheiro.", "danger")
+            return redirect(url_for("importar_professores"))
+
+        fname = secure_filename(f.filename)
+        ext = fname.rsplit(".", 1)[-1].lower()
+        if ext not in ("xlsx", "xls", "csv"):
+            flash("Formato não suportado. Use .xlsx, .xls ou .csv.", "danger")
+            return redirect(url_for("importar_professores"))
+
+        path = os.path.join(UPLOAD_FOLDER, fname)
+        f.save(path)
+
+        try:
+            if ext in ("xlsx", "xls"):
+                wb = openpyxl.load_workbook(path, data_only=True)
+                ws = wb.active
+                headers = [str(c.value or "").strip().lower() for c in ws[1]]
+                rows_raw = [[c.value for c in row] for row in ws.iter_rows(min_row=2)]
+            else:
+                import csv as _csv
+                with open(path, encoding="utf-8-sig") as fh:
+                    reader = _csv.reader(fh)
+                    all_rows = list(reader)
+                headers = [h.strip().lower() for h in all_rows[0]]
+                rows_raw = all_rows[1:]
+        except Exception as e:
+            flash(f"Erro ao ler ficheiro: {e}", "danger")
+            return redirect(url_for("importar_professores"))
+
+        def _col(names):
+            for n in names:
+                for i, h in enumerate(headers):
+                    if n in h:
+                        return i
+            return None
+
+        # Suporte para colunas do ficheiro "Dados Prof Disciplinas.xlsx"
+        # (Docente: Nome / Turma: Nome / Disciplina: Nome)
+        idx_prof  = _col(["professor", "docente: nome", "docente nome", "docente"])
+        idx_turma = _col(["turma: nome", "turma"])
+        idx_disc  = _col(["disciplina", "disc"])
+        idx_ano   = _col(["ano letivo", "letivo"])
+
+        # Normalização de nomes de disciplinas (variantes no ficheiro → nome canónico do portal)
+        _NORM_DISC = {
+            "eco. c":   "Economia C",
+            "eco. a":   "Economia A",
+            "mat. a":   "Matemática A",
+            "mat. b":   "Matemática B",
+            "mat. g":   "Matemática Geral",
+            "macs":     "Matemática Aplicada Ciências Sociais",
+            "fq a":     "Física e Química A",
+            "f&q a":    "Física e Química A",
+            "bio geo":  "Biologia e Geologia",
+            "gda":      "Geometria Descritiva A",
+            "ai b":     "Aplicações Informáticas B",
+            "ed. fis":  "Educação Física",
+            "ed fis":   "Educação Física",
+        }
+
+        def _normalizar_disc(nome):
+            chave = nome.strip().lower()
+            return _NORM_DISC.get(chave, nome.strip())
+
+        if idx_prof is None or idx_turma is None or idx_disc is None:
+            flash(f"Colunas obrigatórias não encontradas (Professor/Docente, Turma, Disciplina). Colunas detectadas: {', '.join(headers)}", "danger")
+            return redirect(url_for("importar_professores"))
+
+        inseridos = 0
+        ignorados = 0
+        for row in rows_raw:
+            def _v(i):
+                if i is None or i >= len(row):
+                    return ""
+                return str(row[i] or "").strip()
+
+            prof  = _v(idx_prof)
+            turma = _v(idx_turma)
+            disc  = _normalizar_disc(_v(idx_disc))
+            ano   = _v(idx_ano) or ano_letivo_atual
+
+            if not prof or not turma or not disc:
+                ignorados += 1
+                continue
+
+            try:
+                db.execute(
+                    """INSERT INTO prof_disc (professor, turma, disciplina, ano_letivo)
+                       VALUES (?,?,?,?)
+                       ON CONFLICT(professor, turma, disciplina, ano_letivo)
+                       DO UPDATE SET professor=excluded.professor""",
+                    (prof, turma, disc, ano)
+                )
+                inseridos += 1
+            except Exception:
+                ignorados += 1
+
+        db.commit()
+        flash(f"✓ {inseridos} registo(s) importado(s). {ignorados} ignorado(s).", "success")
+        return redirect(url_for("importar_professores"))
+
+    professores = db.execute(
+        "SELECT DISTINCT professor FROM prof_disc WHERE ano_letivo=? ORDER BY professor",
+        (ano_letivo_atual,)
+    ).fetchall()
+    return render_template("importar_professores.html",
+                           n_registos=n_registos,
+                           ano_letivo=ano_letivo_atual,
+                           professores=[r["professor"] for r in professores])
+
+
+# ─── Estatísticas Globais ─────────────────────────────────────────────────────
+
+@app.route("/admin/estatisticas")
+@login_required
+@admin_required
+def estatisticas_globais():
+    """Página principal de análise estatística global."""
+    import analytics_global as ag
+    from analytics import _obter_dados_cache
+
+    db = get_db()
+    obs, modelo = _obter_dados_cache(db)
+    ano_letivo_atual = get_setting(db, "ano_letivo_atual") or "2025/2026"
+    periodo_atual    = semestre_atual(db)
+
+    # Filtros via query string
+    ano   = request.args.get("ano",    ano_letivo_atual)
+    per   = request.args.get("periodo", str(periodo_atual))
+    periodo_int = int(per) if per.isdigit() else periodo_atual
+
+    # Listas para os selectores
+    anos_disp    = ag.anos_letivos_disponiveis(obs)
+    periodos_disp= ag.periodos_disponiveis(obs, ano)
+    disciplinas  = ag.disciplinas_disponiveis(obs, ano, periodo_int)
+    turmas       = ag.turmas_disponiveis(obs, ano)
+
+    # ── Tab 1: Disciplinas ──────────────────────────────────────────────────
+    comp_disc = ag.comparacao_disciplinas(obs, ano, periodo_int)
+
+    # ── Tab 2: Turmas ───────────────────────────────────────────────────────
+    disc_sel = request.args.get("disciplina", disciplinas[0] if disciplinas else None)
+    comp_turmas = ag.comparacao_turmas(obs, disc_sel, ano, periodo_int)
+
+    # ── Tab 3: Nota esperada vs real (por disciplina) ───────────────────────
+    desvio_disc = ag.desvio_esperado_disciplina(obs, modelo, ano, periodo_int)
+
+    # ── Tab 4: Nota esperada vs real (por turma) ────────────────────────────
+    desvio_turma = ag.desvio_esperado_turma(obs, modelo, disc_sel, ano, periodo_int)
+
+    # ── Tab 5: Professores ──────────────────────────────────────────────────
+    mapa_prof = ag.carregar_mapeamento_professores(db, ano)
+    comp_prof = ag.comparacao_professores(obs, modelo, mapa_prof, ano, periodo_int)
+    resumo_prof = ag.resumo_por_professor(comp_prof)
+    tem_professores = bool(mapa_prof)
+
+    return render_template("estatisticas_global.html",
+        ano=ano, periodo=periodo_int,
+        anos_disp=anos_disp,
+        periodos_disp=periodos_disp,
+        disciplinas=disciplinas,
+        turmas=turmas,
+        disc_sel=disc_sel,
+        comp_disc=comp_disc,
+        comp_turmas=comp_turmas,
+        desvio_disc=desvio_disc,
+        desvio_turma=desvio_turma,
+        comp_prof=comp_prof,
+        resumo_prof=resumo_prof,
+        tem_professores=tem_professores,
+    )
 
 
 # ─── Run ───────────────────────────────────────────────────────────────────────

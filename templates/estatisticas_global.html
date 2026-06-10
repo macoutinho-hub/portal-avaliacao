@@ -1,0 +1,722 @@
+{% extends "base.html" %}
+{% block title %}Estatísticas Globais{% endblock %}
+
+{% block content %}
+<style>
+  .stat-card { border:0; box-shadow:0 2px 8px rgba(14,77,125,.10); }
+  .kpi-val   { font-size:1.6rem; font-weight:700; color:var(--azul-escuro); }
+  .kpi-lbl   { font-size:.75rem; color:#6c757d; text-transform:uppercase; letter-spacing:.5px; }
+  .tab-pane  { padding-top:1.2rem; }
+  .bar-bg    { height:8px; border-radius:4px; background:#e9ecef; overflow:hidden; }
+  .bar-fill  { height:100%; border-radius:4px; transition:width .4s; }
+  .tbl-stat thead th { background:var(--azul-claro); color:var(--azul-escuro); font-size:.8rem; position:sticky; top:0; z-index:1; }
+  .tbl-stat tbody td { font-size:.85rem; vertical-align:middle; }
+  .tbl-stat tbody tr:hover { background:#f0f7ff; }
+  .desvio-pos  { color:#16a34a; font-weight:600; }
+  .desvio-neg  { color:#dc2626; font-weight:600; }
+  .desvio-neu  { color:#6b7280; }
+  .pill-disc   { font-size:.72rem; padding:2px 7px; border-radius:10px; }
+  .filtros-bar { background:#f8f9fa; border-radius:8px; padding:.75rem 1rem; margin-bottom:1rem; }
+  .chart-wrap  { position:relative; height:320px; }
+  .chart-wrap-sm { position:relative; height:220px; }
+  @media(max-width:768px) { .chart-wrap { height:220px; } }
+</style>
+
+<div class="container-fluid py-3 px-3 px-md-4">
+
+  <!-- Cabeçalho -->
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div>
+      <h4 class="mb-0"><i class="bi bi-bar-chart-line me-2 text-primary"></i>Estatísticas Globais</h4>
+      <div class="text-muted small">Análise comparativa de classificações da escola</div>
+    </div>
+    <div class="ms-auto d-flex gap-2 flex-wrap">
+      <!-- Filtro ano letivo -->
+      <form method="get" class="d-flex gap-2 align-items-center" id="filtro-form">
+        <select name="ano" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+          {% for a in anos_disp %}
+            <option value="{{ a }}" {% if a == ano %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+        <select name="periodo" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+          {% for p in periodos_disp %}
+            <option value="{{ p }}" {% if p == periodo %}selected{% endif %}>{{ p }}º Semestre</option>
+          {% endfor %}
+        </select>
+        <select name="disciplina" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+          {% for d in disciplinas %}
+            <option value="{{ d }}" {% if d == disc_sel %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="tab" id="tab-hidden" value="{{ request.args.get('tab','disc') }}">
+      </form>
+    </div>
+  </div>
+
+  <!-- KPIs sumário -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card stat-card h-100 p-3 text-center">
+        <div class="kpi-val">{{ comp_disc | length }}</div>
+        <div class="kpi-lbl">disciplinas</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card h-100 p-3 text-center">
+        <div class="kpi-val">
+          {% if comp_disc %}
+            {{ "%.1f"|format(comp_disc | map(attribute='media') | select | list | sum / comp_disc|length) }}
+          {% else %}—{% endif %}
+        </div>
+        <div class="kpi-lbl">média escola</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card h-100 p-3 text-center">
+        <div class="kpi-val">
+          {% set melhor = comp_disc | sort(attribute='media', reverse=True) | first %}
+          {% if melhor %}{{ melhor.disciplina[:12] }}{% else %}—{% endif %}
+        </div>
+        <div class="kpi-lbl">disciplina c/ média mais alta</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card h-100 p-3 text-center">
+        <div class="kpi-val">
+          {% set pior = comp_disc | sort(attribute='media') | first %}
+          {% if pior %}{{ pior.disciplina[:12] }}{% else %}—{% endif %}
+        </div>
+        <div class="kpi-lbl">disciplina c/ média mais baixa</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+    <li class="nav-item">
+      <button class="nav-link active" id="tab-disc-btn" data-bs-toggle="tab" data-bs-target="#tab-disc" data-tabkey="disc">
+        <i class="bi bi-book me-1"></i>Disciplinas
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" id="tab-turmas-btn" data-bs-toggle="tab" data-bs-target="#tab-turmas" data-tabkey="turmas">
+        <i class="bi bi-diagram-3 me-1"></i>Turmas
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" id="tab-esp-btn" data-bs-toggle="tab" data-bs-target="#tab-esp" data-tabkey="esp">
+        <i class="bi bi-bullseye me-1"></i>Real vs. Esperado
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" id="tab-prof-btn" data-bs-toggle="tab" data-bs-target="#tab-prof" data-tabkey="prof">
+        <i class="bi bi-person-workspace me-1"></i>Professores
+        {% if not tem_professores %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">sem dados</span>{% endif %}
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="mainTabContent">
+
+    <!-- ═══════════════════ TAB 1: DISCIPLINAS ═══════════════════ -->
+    <div class="tab-pane fade show active" id="tab-disc" role="tabpanel">
+      <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-7">
+          <!-- Gráfico de médias por disciplina -->
+          <div class="card stat-card p-3">
+            <div class="fw-semibold small mb-2">Média por disciplina</div>
+            <div class="chart-wrap"><canvas id="chart-disc-media"></canvas></div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-5">
+          <!-- Gráfico de distribuição empilhada -->
+          <div class="card stat-card p-3">
+            <div class="fw-semibold small mb-2">Distribuição de classificações</div>
+            <div class="chart-wrap"><canvas id="chart-disc-dist"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabela detalhada -->
+      <div class="card stat-card">
+        <div class="card-body p-0">
+          <div style="overflow-x:auto; max-height:500px; overflow-y:auto;">
+            <table class="table table-hover tbl-stat mb-0">
+              <thead>
+                <tr>
+                  <th>Disciplina</th>
+                  <th class="text-end">N</th>
+                  <th class="text-end">Média</th>
+                  <th class="text-end">Mediana</th>
+                  <th class="text-end">DP</th>
+                  <th class="text-end">% Neg.</th>
+                  <th class="text-end">% Exc.</th>
+                  <th class="text-end" title="Nº de alunos para quem esta é a disciplina com nota mais alta">Melhor disc.</th>
+                  <th class="text-end" title="Nº de alunos com nota acima da sua média pessoal">Acima média pessoal</th>
+                  <th style="min-width:120px">Distribuição</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for d in comp_disc %}
+                <tr>
+                  <td class="fw-semibold">{{ d.disciplina }}</td>
+                  <td class="text-end text-muted">{{ d.n_alunos }}</td>
+                  <td class="text-end">
+                    <span class="fw-bold {% if d.media and d.media >= 14 %}text-success{% elif d.media and d.media < 10 %}text-danger{% endif %}">
+                      {{ "%.1f"|format(d.media) if d.media else "—" }}
+                    </span>
+                  </td>
+                  <td class="text-end">{{ "%.1f"|format(d.mediana) if d.mediana else "—" }}</td>
+                  <td class="text-end text-muted">{{ "%.1f"|format(d.desvio_padrao) if d.desvio_padrao else "—" }}</td>
+                  <td class="text-end {% if d.pct_negativas and d.pct_negativas > 30 %}text-danger fw-semibold{% endif %}">
+                    {{ "%.0f"|format(d.pct_negativas) ~ "%" if d.pct_negativas is not none else "—" }}
+                  </td>
+                  <td class="text-end {% if d.pct_excelencia and d.pct_excelencia > 20 %}text-success fw-semibold{% endif %}">
+                    {{ "%.0f"|format(d.pct_excelencia) ~ "%" if d.pct_excelencia is not none else "—" }}
+                  </td>
+                  <td class="text-end">
+                    {% if d.n_melhor_disciplina %}
+                      <span class="badge bg-primary-subtle text-primary">{{ d.n_melhor_disciplina }}</span>
+                      <span class="text-muted small">({{ "%.0f"|format(d.pct_melhor_disciplina) }}%)</span>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if d.n_acima_media_pessoal %}
+                      <span class="badge bg-success-subtle text-success">{{ d.n_acima_media_pessoal }}</span>
+                      <span class="text-muted small">({{ "%.0f"|format(d.pct_acima_media_pessoal) }}%)</span>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td>
+                    {% if d.distribuicao %}
+                      {% set total = d.distribuicao.neg + d.distribuicao.suf + d.distribuicao.bom + d.distribuicao.exc %}
+                      {% if total > 0 %}
+                      <div class="bar-bg d-flex">
+                        {% if d.distribuicao.neg %}
+                          <div class="bar-fill bg-danger" title="Negativas: {{ d.distribuicao.neg }}"
+                               style="width:{{ (d.distribuicao.neg / total * 100)|round }}%"></div>
+                        {% endif %}
+                        {% if d.distribuicao.suf %}
+                          <div class="bar-fill bg-warning" title="Suf (10-13): {{ d.distribuicao.suf }}"
+                               style="width:{{ (d.distribuicao.suf / total * 100)|round }}%"></div>
+                        {% endif %}
+                        {% if d.distribuicao.bom %}
+                          <div class="bar-fill bg-info" title="Bom (14-17): {{ d.distribuicao.bom }}"
+                               style="width:{{ (d.distribuicao.bom / total * 100)|round }}%"></div>
+                        {% endif %}
+                        {% if d.distribuicao.exc %}
+                          <div class="bar-fill bg-success" title="Excelente (18+): {{ d.distribuicao.exc }}"
+                               style="width:{{ (d.distribuicao.exc / total * 100)|round }}%"></div>
+                        {% endif %}
+                      </div>
+                      <div class="d-flex gap-1 mt-1">
+                        <span class="pill-disc bg-danger-subtle text-danger">{{ d.distribuicao.neg }}</span>
+                        <span class="pill-disc bg-warning-subtle text-warning-emphasis">{{ d.distribuicao.suf }}</span>
+                        <span class="pill-disc bg-info-subtle text-info-emphasis">{{ d.distribuicao.bom }}</span>
+                        <span class="pill-disc bg-success-subtle text-success">{{ d.distribuicao.exc }}</span>
+                      </div>
+                      {% endif %}
+                    {% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10" class="text-center text-muted py-4">Sem dados para o período seleccionado.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="d-flex gap-3 mt-2 small text-muted">
+        <span><span class="badge bg-danger-subtle text-danger me-1">■</span>Negativas (&lt;10)</span>
+        <span><span class="badge bg-warning-subtle text-warning-emphasis me-1">■</span>Suficiente (10-13)</span>
+        <span><span class="badge bg-info-subtle text-info-emphasis me-1">■</span>Bom (14-17)</span>
+        <span><span class="badge bg-success-subtle text-success me-1">■</span>Excelente (18+)</span>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ TAB 2: TURMAS ═══════════════════ -->
+    <div class="tab-pane fade" id="tab-turmas" role="tabpanel">
+      <div class="card stat-card mb-3 p-3">
+        <div class="fw-semibold small mb-2">
+          Comparação de turmas — <em>{{ disc_sel or "todas as disciplinas" }}</em>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-turmas"></canvas></div>
+      </div>
+      <div class="card stat-card">
+        <div class="card-body p-0">
+          <div style="overflow-x:auto; max-height:500px; overflow-y:auto;">
+            <table class="table table-hover tbl-stat mb-0">
+              <thead>
+                <tr>
+                  <th>Turma</th>
+                  <th>Disciplina</th>
+                  <th class="text-end">N</th>
+                  <th class="text-end">Média turma</th>
+                  <th class="text-end">Mediana</th>
+                  <th class="text-end">DP</th>
+                  <th class="text-end">% Neg.</th>
+                  <th class="text-end">% Exc.</th>
+                  <th class="text-end">Média escola</th>
+                  <th class="text-end">Desvio vs escola</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in comp_turmas %}
+                <tr>
+                  <td class="fw-semibold">{{ r.turma }}</td>
+                  <td>{{ r.disciplina }}</td>
+                  <td class="text-end text-muted">{{ r.n_alunos }}</td>
+                  <td class="text-end fw-bold {% if r.media and r.media >= 14 %}text-success{% elif r.media and r.media < 10 %}text-danger{% endif %}">
+                    {{ "%.1f"|format(r.media) if r.media else "—" }}
+                  </td>
+                  <td class="text-end">{{ "%.1f"|format(r.mediana) if r.mediana else "—" }}</td>
+                  <td class="text-end text-muted">{{ "%.1f"|format(r.desvio_padrao) if r.desvio_padrao else "—" }}</td>
+                  <td class="text-end">{{ "%.0f"|format(r.pct_negativas) ~ "%" if r.pct_negativas is not none else "—" }}</td>
+                  <td class="text-end">{{ "%.0f"|format(r.pct_excelencia) ~ "%" if r.pct_excelencia is not none else "—" }}</td>
+                  <td class="text-end text-muted">{{ "%.1f"|format(r.media_escola) if r.media_escola else "—" }}</td>
+                  <td class="text-end">
+                    {% if r.desvio_vs_escola is not none %}
+                      <span class="{% if r.desvio_vs_escola > 0.5 %}desvio-pos{% elif r.desvio_vs_escola < -0.5 %}desvio-neg{% else %}desvio-neu{% endif %}">
+                        {% if r.desvio_vs_escola > 0 %}+{% endif %}{{ "%.1f"|format(r.desvio_vs_escola) }}
+                      </span>
+                    {% else %}—{% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10" class="text-center text-muted py-4">Sem dados. Seleccione uma disciplina nos filtros acima.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ TAB 3: REAL VS ESPERADO ═══════════════════ -->
+    <div class="tab-pane fade" id="tab-esp" role="tabpanel">
+
+      <div class="alert alert-info py-2 small mb-3">
+        <i class="bi bi-info-circle me-1"></i>
+        A <strong>nota esperada</strong> é calculada pelo modelo de regressão pooled (treinado com todo o histórico da escola), que estima a nota provável de cada aluno com base no seu perfil e no contexto da turma. Um desvio positivo indica que as notas atribuídas estão acima do esperado pelo modelo.
+      </div>
+
+      <!-- Por disciplina -->
+      <div class="card stat-card mb-3 p-3">
+        <div class="fw-semibold small mb-2">Real vs. Esperado — por disciplina</div>
+        <div class="chart-wrap"><canvas id="chart-esp-disc"></canvas></div>
+      </div>
+      <div class="card stat-card mb-4">
+        <div class="card-body p-0">
+          <div style="overflow-x:auto; max-height:400px; overflow-y:auto;">
+            <table class="table table-hover tbl-stat mb-0">
+              <thead>
+                <tr>
+                  <th>Disciplina</th>
+                  <th class="text-end">N</th>
+                  <th class="text-end">Média real</th>
+                  <th class="text-end">Média esperada</th>
+                  <th class="text-end">Desvio médio</th>
+                  <th class="text-end" title="Notas reais > esperada + 0.5">Acima esp.</th>
+                  <th class="text-end" title="Notas reais < esperada - 0.5">Abaixo esp.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in desvio_disc %}
+                <tr>
+                  <td class="fw-semibold">{{ r.disciplina }}</td>
+                  <td class="text-end text-muted">{{ r.n_obs }}</td>
+                  <td class="text-end">{{ "%.1f"|format(r.media_real) if r.media_real else "—" }}</td>
+                  <td class="text-end text-muted">{{ "%.1f"|format(r.media_esperada) if r.media_esperada else "—" }}</td>
+                  <td class="text-end">
+                    {% if r.desvio_medio is not none %}
+                      <span class="{% if r.desvio_medio > 0.5 %}desvio-pos{% elif r.desvio_medio < -0.5 %}desvio-neg{% else %}desvio-neu{% endif %} fw-bold">
+                        {% if r.desvio_medio > 0 %}+{% endif %}{{ "%.2f"|format(r.desvio_medio) }}
+                      </span>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="text-end">
+                    <span class="badge bg-success-subtle text-success">{{ r.n_acima_esperado }}</span>
+                    <span class="text-muted small">({{ "%.0f"|format(r.pct_acima_esperado) }}%)</span>
+                  </td>
+                  <td class="text-end">
+                    <span class="badge bg-danger-subtle text-danger">{{ r.n_abaixo_esperado }}</span>
+                    <span class="text-muted small">({{ "%.0f"|format(r.pct_abaixo_esperado) }}%)</span>
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-4">Sem dados de nota esperada calculados para este período.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Por turma (disciplina seleccionada) -->
+      <div class="fw-semibold mb-2">Real vs. Esperado por turma — <em>{{ disc_sel or "todas as disciplinas" }}</em></div>
+      <div class="card stat-card mb-3 p-3">
+        <div class="chart-wrap-sm"><canvas id="chart-esp-turma"></canvas></div>
+      </div>
+      <div class="card stat-card">
+        <div class="card-body p-0">
+          <div style="overflow-x:auto; max-height:350px; overflow-y:auto;">
+            <table class="table table-hover tbl-stat mb-0">
+              <thead>
+                <tr>
+                  <th>Turma</th>
+                  <th>Disciplina</th>
+                  <th class="text-end">N</th>
+                  <th class="text-end">Média real</th>
+                  <th class="text-end">Média esperada</th>
+                  <th class="text-end">Desvio médio</th>
+                  <th class="text-end">Acima esp.</th>
+                  <th class="text-end">Abaixo esp.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in desvio_turma %}
+                <tr>
+                  <td class="fw-semibold">{{ r.turma }}</td>
+                  <td>{{ r.disciplina }}</td>
+                  <td class="text-end text-muted">{{ r.n_obs }}</td>
+                  <td class="text-end">{{ "%.1f"|format(r.media_real) if r.media_real else "—" }}</td>
+                  <td class="text-end text-muted">{{ "%.1f"|format(r.media_esperada) if r.media_esperada else "—" }}</td>
+                  <td class="text-end">
+                    {% if r.desvio_medio is not none %}
+                      <span class="{% if r.desvio_medio > 0.5 %}desvio-pos{% elif r.desvio_medio < -0.5 %}desvio-neg{% else %}desvio-neu{% endif %} fw-bold">
+                        {% if r.desvio_medio > 0 %}+{% endif %}{{ "%.2f"|format(r.desvio_medio) }}
+                      </span>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="text-end">
+                    <span class="badge bg-success-subtle text-success">{{ r.n_acima_esperado }}</span>
+                    <span class="text-muted small">({{ "%.0f"|format(r.pct_acima_esperado) }}%)</span>
+                  </td>
+                  <td class="text-end">
+                    <span class="badge bg-danger-subtle text-danger">{{ r.n_abaixo_esperado }}</span>
+                    <span class="text-muted small">({{ "%.0f"|format(r.pct_abaixo_esperado) }}%)</span>
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center text-muted py-4">Sem dados. Seleccione uma disciplina nos filtros acima.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ TAB 4: PROFESSORES ═══════════════════ -->
+    <div class="tab-pane fade" id="tab-prof" role="tabpanel">
+      {% if not tem_professores %}
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          Ainda não foram importados dados de professores.
+          <a href="{{ url_for('importar_professores') }}" class="btn btn-sm btn-warning ms-2">
+            <i class="bi bi-upload me-1"></i>Importar agora
+          </a>
+        </div>
+      {% else %}
+
+        <!-- Resumo por professor -->
+        <div class="fw-semibold mb-2">Resumo por professor — desvio médio global (nota real − esperada)</div>
+        <div class="card stat-card mb-3 p-3">
+          <div class="chart-wrap"><canvas id="chart-prof"></canvas></div>
+        </div>
+        <div class="card stat-card mb-4">
+          <div class="card-body p-0">
+            <div style="overflow-x:auto;">
+              <table class="table table-hover tbl-stat mb-0">
+                <thead>
+                  <tr>
+                    <th>Professor</th>
+                    <th class="text-end">Turmas</th>
+                    <th class="text-end">Disciplinas</th>
+                    <th class="text-end">N obs.</th>
+                    <th class="text-end">Média real</th>
+                    <th class="text-end">Média esperada</th>
+                    <th class="text-end">Desvio médio global</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for r in resumo_prof %}
+                  <tr>
+                    <td class="fw-semibold">{{ r.professor }}</td>
+                    <td class="text-end text-muted">{{ r.n_turmas }}</td>
+                    <td class="text-end text-muted">{{ r.n_disciplinas }}</td>
+                    <td class="text-end text-muted">{{ r.n_obs_total }}</td>
+                    <td class="text-end">{{ "%.1f"|format(r.media_real_global) if r.media_real_global else "—" }}</td>
+                    <td class="text-end text-muted">{{ "%.1f"|format(r.media_esperada_global) if r.media_esperada_global else "—" }}</td>
+                    <td class="text-end">
+                      {% if r.desvio_medio_global is not none %}
+                        <span class="{% if r.desvio_medio_global > 0.5 %}desvio-pos{% elif r.desvio_medio_global < -0.5 %}desvio-neg{% else %}desvio-neu{% endif %} fw-bold fs-6">
+                          {% if r.desvio_medio_global > 0 %}+{% endif %}{{ "%.2f"|format(r.desvio_medio_global) }}
+                        </span>
+                      {% else %}—{% endif %}
+                    </td>
+                  </tr>
+                  {% else %}
+                  <tr><td colspan="7" class="text-center text-muted py-4">Sem dados calculados.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detalhe por professor / turma / disciplina -->
+        <div class="fw-semibold mb-2">Detalhe por professor, turma e disciplina</div>
+        <div class="card stat-card">
+          <div class="card-body p-0">
+            <div style="overflow-x:auto; max-height:450px; overflow-y:auto;">
+              <table class="table table-hover tbl-stat mb-0">
+                <thead>
+                  <tr>
+                    <th>Professor</th>
+                    <th>Turma</th>
+                    <th>Disciplina</th>
+                    <th class="text-end">N</th>
+                    <th class="text-end">Média real</th>
+                    <th class="text-end">Média esperada</th>
+                    <th class="text-end">Desvio</th>
+                    <th class="text-end">Acima esp.</th>
+                    <th class="text-end">Abaixo esp.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for r in comp_prof %}
+                  <tr>
+                    <td class="fw-semibold">{{ r.professor }}</td>
+                    <td>{{ r.turma }}</td>
+                    <td>{{ r.disciplina }}</td>
+                    <td class="text-end text-muted">{{ r.n_obs }}</td>
+                    <td class="text-end">{{ "%.1f"|format(r.media_real) if r.media_real else "—" }}</td>
+                    <td class="text-end text-muted">{{ "%.1f"|format(r.media_esperada) if r.media_esperada else "—" }}</td>
+                    <td class="text-end">
+                      {% if r.desvio_medio is not none %}
+                        <span class="{% if r.desvio_medio > 0.5 %}desvio-pos{% elif r.desvio_medio < -0.5 %}desvio-neg{% else %}desvio-neu{% endif %} fw-bold">
+                          {% if r.desvio_medio > 0 %}+{% endif %}{{ "%.2f"|format(r.desvio_medio) }}
+                        </span>
+                      {% else %}—{% endif %}
+                    </td>
+                    <td class="text-end">
+                      <span class="badge bg-success-subtle text-success">{{ r.n_acima_esperado }}</span>
+                      <span class="text-muted small">({{ "%.0f"|format(r.pct_acima_esperado) }}%)</span>
+                    </td>
+                    <td class="text-end">
+                      <span class="badge bg-danger-subtle text-danger">{{ r.n_abaixo_esperado }}</span>
+                      <span class="text-muted small">({{ "%.0f"|format(r.pct_abaixo_esperado) }}%)</span>
+                    </td>
+                  </tr>
+                  {% else %}
+                  <tr><td colspan="9" class="text-center text-muted py-4">Sem dados.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>{# /tab-content #}
+</div>
+
+<!-- ═══════════════════ CHART.JS ═══════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+// ── Dados injectados pelo servidor ──────────────────────────────────────────
+const discData = {{ comp_disc | tojson }};
+const turmasData = {{ comp_turmas | tojson }};
+const desvioDiscData = {{ desvio_disc | tojson }};
+const desvioTurmaData = {{ desvio_turma | tojson }};
+const resumoProfData = {{ resumo_prof | tojson }};
+
+// ── Paleta de cores ──────────────────────────────────────────────────────────
+const AZUL = 'rgba(14,77,125,0.75)';
+const AZUL_B = 'rgba(14,77,125,1)';
+const VERDE = 'rgba(22,163,74,0.75)';
+const VERMELHO = 'rgba(220,38,38,0.75)';
+const CINZA = 'rgba(107,114,128,0.5)';
+
+function corDesvio(v) {
+  if (v === null || v === undefined) return CINZA;
+  if (v >  0.5) return VERDE;
+  if (v < -0.5) return VERMELHO;
+  return CINZA;
+}
+
+const baseOpts = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false },
+             tooltip: { callbacks: { label: ctx => ' ' + Number(ctx.raw).toFixed(2) } } },
+  scales: { x: { ticks: { font: { size: 10 }, maxRotation: 45 } },
+            y: { beginAtZero: false } }
+};
+
+// ── 1. Médias por disciplina (horizontal bar) ────────────────────────────────
+(function() {
+  if (!discData.length) return;
+  const sorted = [...discData].sort((a,b) => (a.media||0)-(b.media||0));
+  const ctx = document.getElementById('chart-disc-media');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(d => d.disciplina),
+      datasets: [{
+        data: sorted.map(d => d.media),
+        backgroundColor: sorted.map(d => d.media >= 14 ? VERDE : d.media < 10 ? VERMELHO : AZUL),
+        borderRadius: 3,
+      }]
+    },
+    options: { ...baseOpts, indexAxis: 'y',
+      scales: { x: { min: 0, max: 20, ticks: { font:{size:10} } },
+                y: { ticks: { font:{size:10} } } },
+      plugins: { legend:{display:false},
+                 tooltip:{ callbacks:{ label: ctx => ' Média: ' + Number(ctx.raw).toFixed(1) } } }
+    }
+  });
+})();
+
+// ── 2. Distribuição empilhada ────────────────────────────────────────────────
+(function() {
+  if (!discData.length) return;
+  const sorted = [...discData].sort((a,b) => (a.media||0)-(b.media||0));
+  const ctx = document.getElementById('chart-disc-dist');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(d => d.disciplina),
+      datasets: [
+        { label: 'Negativas',  data: sorted.map(d => d.distribuicao?.neg||0), backgroundColor:'rgba(220,38,38,0.8)', stack:'s' },
+        { label: 'Suf',        data: sorted.map(d => d.distribuicao?.suf||0), backgroundColor:'rgba(234,179,8,0.8)',  stack:'s' },
+        { label: 'Bom',        data: sorted.map(d => d.distribuicao?.bom||0), backgroundColor:'rgba(59,130,246,0.8)',stack:'s' },
+        { label: 'Excelente',  data: sorted.map(d => d.distribuicao?.exc||0), backgroundColor:'rgba(22,163,74,0.8)', stack:'s' },
+      ]
+    },
+    options: { ...baseOpts, indexAxis: 'y',
+      scales: { x: { stacked:true, ticks:{font:{size:9}} }, y: { stacked:true, ticks:{font:{size:10}} } },
+      plugins: { legend: { display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}} },
+                 tooltip:{ callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${ctx.raw}` } } }
+    }
+  });
+})();
+
+// ── 3. Comparação turmas ─────────────────────────────────────────────────────
+(function() {
+  if (!turmasData.length) return;
+  const ctx = document.getElementById('chart-turmas');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: turmasData.map(r => r.turma),
+      datasets: [
+        { label:'Média turma',  data: turmasData.map(r => r.media),        backgroundColor: AZUL, borderRadius:3 },
+        { label:'Média escola', data: turmasData.map(r => r.media_escola),  type:'line', borderColor:VERMELHO, borderWidth:2, pointRadius:3, fill:false, tension:.3 },
+      ]
+    },
+    options: { ...baseOpts,
+      scales: { y: { min:0, max:20 } },
+      plugins: { legend: { display:true, position:'bottom', labels:{boxWidth:12,font:{size:10}} },
+                 tooltip: { callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${Number(ctx.raw).toFixed(1)}` } } }
+    }
+  });
+})();
+
+// ── 4. Real vs Esperado — por disciplina ────────────────────────────────────
+(function() {
+  if (!desvioDiscData.length) return;
+  const sorted = [...desvioDiscData].sort((a,b) => a.desvio_medio - b.desvio_medio);
+  const ctx = document.getElementById('chart-esp-disc');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(d => d.disciplina),
+      datasets: [{
+        label: 'Desvio médio (real − esperado)',
+        data: sorted.map(d => d.desvio_medio),
+        backgroundColor: sorted.map(d => corDesvio(d.desvio_medio)),
+        borderRadius: 3,
+      }]
+    },
+    options: { ...baseOpts, indexAxis: 'y',
+      scales: {
+        x: { ticks:{font:{size:10}},
+             grid: { color: ctx2 => ctx2.tick.value === 0 ? '#333' : '#e5e7eb' } },
+        y: { ticks: { font:{size:10} } }
+      },
+      plugins: { legend:{display:false},
+                 tooltip:{ callbacks:{ label: ctx => ' Desvio: ' + (ctx.raw>0?'+':'') + Number(ctx.raw).toFixed(2) } } }
+    }
+  });
+})();
+
+// ── 5. Real vs Esperado — por turma ─────────────────────────────────────────
+(function() {
+  if (!desvioTurmaData.length) return;
+  const ctx = document.getElementById('chart-esp-turma');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: desvioTurmaData.map(r => r.turma),
+      datasets: [{
+        label: 'Desvio médio',
+        data: desvioTurmaData.map(r => r.desvio_medio),
+        backgroundColor: desvioTurmaData.map(r => corDesvio(r.desvio_medio)),
+        borderRadius: 3,
+      }]
+    },
+    options: { ...baseOpts,
+      scales: { y: { ticks:{font:{size:10}} }, x: { ticks:{font:{size:10}, maxRotation:45} } },
+      plugins: { legend:{display:false},
+                 tooltip:{ callbacks:{ label: ctx => ' Desvio: ' + (ctx.raw>0?'+':'') + Number(ctx.raw).toFixed(2) } } }
+    }
+  });
+})();
+
+// ── 6. Resumo professores ────────────────────────────────────────────────────
+(function() {
+  if (!resumoProfData.length) return;
+  const sorted = [...resumoProfData].sort((a,b) => a.desvio_medio_global - b.desvio_medio_global);
+  const ctx = document.getElementById('chart-prof');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(r => r.professor),
+      datasets: [{
+        label: 'Desvio médio global',
+        data: sorted.map(r => r.desvio_medio_global),
+        backgroundColor: sorted.map(r => corDesvio(r.desvio_medio_global)),
+        borderRadius: 3,
+      }]
+    },
+    options: { ...baseOpts, indexAxis: 'y',
+      scales: { x: { ticks:{font:{size:10}} }, y: { ticks:{font:{size:10}} } },
+      plugins: { legend:{display:false},
+                 tooltip:{ callbacks:{ label: ctx => ' Desvio: ' + (ctx.raw>0?'+':'') + Number(ctx.raw).toFixed(2) } } }
+    }
+  });
+})();
+
+// ── Guardar tab activa no hidden input (para o form de filtros) ──────────────
+document.querySelectorAll('#mainTabs button[data-tabkey]').forEach(btn => {
+  btn.addEventListener('shown.bs.tab', () => {
+    document.getElementById('tab-hidden').value = btn.dataset.tabkey;
+  });
+});
+// Restaurar tab activa ao carregar a página
+(function() {
+  const saved = new URLSearchParams(location.search).get('tab');
+  if (!saved) return;
+  const btn = document.querySelector(`#mainTabs button[data-tabkey="${saved}"]`);
+  if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
+})();
+</script>
+{% endblock %}

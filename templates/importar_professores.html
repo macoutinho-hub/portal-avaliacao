@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Importar Professores{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:700px">
+  <h4 class="mb-1"><i class="bi bi-person-workspace me-2 text-primary"></i>Importar Professores por Disciplina</h4>
+  <p class="text-muted small mb-4">Carregue um ficheiro com o mapeamento professor → turma → disciplina para activar a análise comparativa na área de Estatísticas Globais.</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }} alert-dismissible fade show py-2">{{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- Estado actual -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body d-flex align-items-center gap-3">
+      <div class="rounded-circle d-flex align-items-center justify-content-center"
+           style="width:48px;height:48px;background:var(--azul-claro);flex-shrink:0">
+        <i class="bi bi-people-fill text-primary fs-5"></i>
+      </div>
+      <div>
+        <div class="fw-bold fs-5">{{ n_registos }}</div>
+        <div class="text-muted small">registos para {{ ano_letivo }}</div>
+        {% if professores %}
+          <div class="text-muted small mt-1">{{ professores | length }} professor(es): {{ professores | join(", ") }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Formato esperado -->
+  <div class="alert alert-info py-2 mb-4">
+    <strong>Formato do ficheiro (.xlsx ou .csv):</strong><br>
+    Colunas obrigatórias: <code>Professor</code>, <code>Turma</code>, <code>Disciplina</code><br>
+    Coluna opcional: <code>Ano Letivo</code> (usa <em>{{ ano_letivo }}</em> se ausente)<br>
+    <span class="text-muted small">A turma deve corresponder exactamente às turmas registadas no portal (ex: <em>11ºA1 CT</em>). A disciplina deve corresponder ao nome exacto usado nas notas.</span>
+  </div>
+
+  <!-- Formulário de upload -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white fw-semibold py-2">
+      <i class="bi bi-upload me-2 text-primary"></i>Carregar ficheiro
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label">Ficheiro (.xlsx, .xls ou .csv)</label>
+          <input type="file" class="form-control" name="ficheiro" accept=".xlsx,.xls,.csv" required>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-cloud-upload me-1"></i>Importar
+          </button>
+          <a href="{{ url_for('estatisticas_globais') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-bar-chart-line me-1"></i>Ver Estatísticas
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

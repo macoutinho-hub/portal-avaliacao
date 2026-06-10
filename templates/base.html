@@ -110,6 +110,7 @@
           </a>
           <ul class="dropdown-menu dropdown-menu-end">
             <li><a class="dropdown-item" href="{{ url_for('admin_panel') }}"><i class="bi bi-people me-2"></i>Utilizadores</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('estatisticas_globais') }}"><i class="bi bi-bar-chart-line me-2"></i>Estatísticas Globais</a></li>
             <li><a class="dropdown-item" href="{{ url_for('projeto_global') }}"><i class="bi bi-kanban me-2"></i>Avaliação de Projeto</a></li>
             <li><a class="dropdown-item" href="{{ url_for('importar_projeto_web') }}"><i class="bi bi-upload me-2"></i>Importar Avaliação de Projeto</a></li>
             <li><a class="dropdown-item" href="{{ url_for('importar_pts') }}"><i class="bi bi-person-plus me-2"></i>Criar PTs</a></li>
@@ -146,6 +147,9 @@
             </a></li>
             <li><a class="dropdown-item" href="{{ url_for('importar_bi') }}">
               <i class="bi bi-person-vcard me-2"></i>BI dos Alunos
+            </a></li>
+            <li><a class="dropdown-item" href="{{ url_for('importar_professores') }}">
+              <i class="bi bi-person-workspace me-2"></i>Professores por Disciplina
             </a></li>
           </ul>
         </li>
