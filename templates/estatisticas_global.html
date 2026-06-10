@@ -63,11 +63,7 @@
     </div>
     <div class="col-6 col-md-3">
       <div class="card stat-card h-100 p-3 text-center">
-        <div class="kpi-val">
-          {% if comp_disc %}
-            {{ "%.1f"|format(comp_disc | map(attribute='media') | select | list | sum / comp_disc|length) }}
-          {% else %}—{% endif %}
-        </div>
+        <div class="kpi-val">{{ "%.1f"|format(media_escola_global) if media_escola_global else "—" }}</div>
         <div class="kpi-lbl">média escola</div>
       </div>
     </div>

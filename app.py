@@ -4270,6 +4270,10 @@ def estatisticas_globais():
     # ── Tab 1: Disciplinas ──────────────────────────────────────────────────
     comp_disc = ag.comparacao_disciplinas(obs, ano, periodo_int)
 
+    # KPI: média global da escola (calculado em Python para evitar aritmética em Jinja2)
+    medias_validas = [d["media"] for d in comp_disc if d.get("media") is not None]
+    media_escola_global = round(sum(medias_validas) / len(medias_validas), 1) if medias_validas else None
+
     # ── Tab 2: Turmas ───────────────────────────────────────────────────────
     disc_sel = request.args.get("disciplina", disciplinas[0] if disciplinas else None)
     comp_turmas = ag.comparacao_turmas(obs, disc_sel, ano, periodo_int)
@@ -4294,6 +4298,7 @@ def estatisticas_globais():
         turmas=turmas,
         disc_sel=disc_sel,
         comp_disc=comp_disc,
+        media_escola_global=media_escola_global,
         comp_turmas=comp_turmas,
         desvio_disc=desvio_disc,
         desvio_turma=desvio_turma,

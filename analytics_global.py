@@ -246,11 +246,11 @@ def desvio_esperado_disciplina(obs, modelo, ano_letivo=None, periodo=None):
     })
 
     for o in dados:
-        res = nota_esperada_e_desvio(modelo, o["aluno_id"], o["disciplina"],
-                                     o["periodo"], o["ano_letivo"])
-        if res is None or res.get("nota_esperada") is None:
+        # nota_esperada_e_desvio devolve tuple (nota_esperada, feats, desvio_residuos)
+        esp, _, _ = nota_esperada_e_desvio(modelo, o["aluno_id"], o["disciplina"],
+                                           o["periodo"], o["ano_letivo"])
+        if esp is None:
             continue
-        esp = res["nota_esperada"]
         real = o["nota"]
         desvio = real - esp
         d = por_disc[o["disciplina"]]
@@ -307,11 +307,10 @@ def desvio_esperado_turma(obs, modelo, disciplina=None, ano_letivo=None, periodo
     })
 
     for o in dados:
-        res = nota_esperada_e_desvio(modelo, o["aluno_id"], o["disciplina"],
-                                     o["periodo"], o["ano_letivo"])
-        if res is None or res.get("nota_esperada") is None:
+        esp, _, _ = nota_esperada_e_desvio(modelo, o["aluno_id"], o["disciplina"],
+                                           o["periodo"], o["ano_letivo"])
+        if esp is None:
             continue
-        esp = res["nota_esperada"]
         real = o["nota"]
         desvio = real - esp
         d = agrup[(o["turma"], o["disciplina"])]
@@ -392,11 +391,10 @@ def comparacao_professores(obs, modelo, mapeamento_prof, ano_letivo=None, period
         prof = mapeamento_prof.get(chave_mapa)
         if prof is None:
             continue
-        res = nota_esperada_e_desvio(modelo, o["aluno_id"], o["disciplina"],
-                                     o["periodo"], o["ano_letivo"])
-        if res is None or res.get("nota_esperada") is None:
+        esp, _, _ = nota_esperada_e_desvio(modelo, o["aluno_id"], o["disciplina"],
+                                           o["periodo"], o["ano_letivo"])
+        if esp is None:
             continue
-        esp = res["nota_esperada"]
         real = o["nota"]
         desvio = real - esp
         chave = (prof, o["disciplina"], o["turma"])
