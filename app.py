@@ -3305,6 +3305,223 @@ def auditoria_notas():
     return render_template("auditoria_notas.html", resultados=resultados, ano=ano)
 
 
+@app.route("/admin/inconsistencias-cif")
+@login_required
+@admin_required
+def inconsistencias_cif():
+    """
+    Detecta inconsistências para cálculo do CIF em alunos do 11º ano:
+    disciplinas terminais (que abrangem 10º e 11º ano) onde faltam notas
+    num dos dois níveis curriculares, ou onde falta o 2º semestre.
+    """
+    import re as _re_ic
+
+    db = get_db()
+    ano = ano_letivo_atual(db)
+
+    # Todos os alunos do 11º ano no ano actual
+    alunos_11 = db.execute(
+        "SELECT id, numero, nome, turma FROM alunos "
+        "WHERE ano_letivo=? ORDER BY turma, nome",
+        (ano,)
+    ).fetchall()
+    alunos_11 = [a for a in alunos_11
+                 if _re_ic.match(r"11", str(a["turma"] or ""))]
+
+    resultados = []
+
+    for a in alunos_11:
+        # Todos os registos deste aluno (todos os anos lectivos)
+        outros = db.execute(
+            "SELECT id, ano_letivo FROM alunos WHERE numero=? ORDER BY ano_letivo",
+            (a["numero"],)
+        ).fetchall()
+        todos_ids = [o["id"] for o in outros]
+
+        if not todos_ids:
+            continue
+
+        ph = ",".join("?" * len(todos_ids))
+
+        # Buscar todas as notas, com nivel_curricular
+        rows = db.execute(
+            f"SELECT n.disciplina, n.periodo, n.nota, n.nota_texto, "
+            f"n.nivel_curricular, al.turma "
+            f"FROM notas n JOIN alunos al ON al.id=n.aluno_id "
+            f"WHERE n.aluno_id IN ({ph}) ORDER BY n.id DESC",
+            todos_ids
+        ).fetchall()
+
+        # nivel_base de cada aluno_id a partir da turma
+        nivel_base = {}
+        for o in outros:
+            al_t = db.execute("SELECT turma FROM alunos WHERE id=?", (o["id"],)).fetchone()
+            m = _re_ic.match(r"(\d+)", str((al_t["turma"] if al_t else "") or ""))
+            nivel_base[o["id"]] = int(m.group(1)) if m else 11
+
+        # Agregar: {nivel: {disciplina: {periodo: valor}}}
+        por_nivel = {}
+        seen = {}  # evitar duplicados: (nivel, disc, periodo) → primeiro = mais recente
+        for r in rows:
+            # Determinar nivel_curricular
+            aid = None
+            for o in outros:
+                # encontrar aluno_id pela turma da row (join já feito, usar nivel_base via turma)
+                pass
+            # A query já fez JOIN; o nivel_curricular está na nota ou inferido da turma
+            nivel = r["nivel_curricular"]
+            if not nivel:
+                # Inferir pelo turma do registo (o JOIN deu-nos a turma)
+                m2 = _re_ic.match(r"(\d+)", str(r["turma"] or ""))
+                nivel = int(m2.group(1)) if m2 else 11
+            disc = r["disciplina"]
+            per  = r["periodo"]
+            val  = r["nota_texto"] if r["nota_texto"] else r["nota"]
+            key  = (nivel, disc, per)
+            if key not in seen:
+                seen[key] = True
+                por_nivel.setdefault(nivel, {}).setdefault(disc, {})[per] = val
+
+        # Unificar famílias de disciplinas (ex: Mat B ↔ Matemática B)
+        # Usar o nome canónico do 11º ano quando disponível
+        disc_11 = set(por_nivel.get(11, {}).keys())
+        disc_10 = set(por_nivel.get(10, {}).keys())
+
+        # Expandir com famílias: se disc X está no 10º mas o seu equivalente Y está no 11º → mesma disciplina
+        def canonico_para_nivel(disc, nivel_alvo, por_nivel):
+            """Devolve o nome canónico de disc no nivel_alvo (ou disc se não encontrar)."""
+            membros = membros_familia(disc)
+            presentes = [m for m in membros if m in por_nivel.get(nivel_alvo, {})]
+            return presentes[0] if presentes else None
+
+        # Disciplinas do 11º que também devem ter notas do 10º (disciplinas de 2 anos)
+        # Critério: discipline presente no 11º E (presente no 10º OU "deveria estar")
+        # Excluir disciplinas que são tipicamente só de 1 ano no 11º:
+        SO_11 = {"Projeto", "Literacias", "Hora de PT", "Tempo de Trabalho Autónomo"}
+
+        problemas = []
+
+        for disc in sorted(disc_11):
+            if disc in SO_11:
+                continue
+
+            # Menção especial no 11º → não calcular CIF → ignorar
+            periodos_11 = por_nivel.get(11, {}).get(disc, {})
+            if any(isinstance(v, str) for v in periodos_11.values()):
+                continue
+
+            # Verificar se existe equivalente no 10º (mesma família)
+            membros = membros_familia(disc)
+            disc_10_equiv = next(
+                (m for m in membros if m in por_nivel.get(10, {})),
+                None
+            )
+            periodos_10 = por_nivel.get(10, {}).get(disc_10_equiv, {}) if disc_10_equiv else {}
+
+            # Nota do 2º semestre (ou fallback para último disponível) em cada nível
+            def nota_cif_nivel(periodos):
+                if not periodos:
+                    return None
+                nums = {p: v for p, v in periodos.items() if isinstance(v, (int, float))}
+                if not nums:
+                    return None
+                p = 2 if 2 in nums else max(nums.keys())
+                return nums[p]
+
+            nota10 = nota_cif_nivel(periodos_10)
+            nota11 = nota_cif_nivel(periodos_11)
+
+            issues = []
+
+            if not disc_10_equiv and not periodos_10:
+                issues.append("Sem notas de 10º ano")
+            else:
+                if not periodos_10:
+                    issues.append("Sem notas de 10º ano")
+                elif nota10 is None:
+                    issues.append("Só menções especiais no 10º ano")
+                elif 2 not in {p for p, v in periodos_10.items() if isinstance(v, (int, float))}:
+                    issues.append("Falta 2º semestre de 10º ano (só tem 1º sem.)")
+
+            if not periodos_11:
+                issues.append("Sem notas de 11º ano")
+            elif nota11 is None:
+                issues.append("Só menções especiais no 11º ano")
+            elif 2 not in {p for p, v in periodos_11.items() if isinstance(v, (int, float))}:
+                issues.append("Falta 2º semestre de 11º ano (só tem 1º sem.)")
+
+            # CIF calculado com quantos anos?
+            n_anos = sum([nota10 is not None, nota11 is not None])
+            cif_calc = None
+            if n_anos > 0:
+                vals = [v for v in [nota10, nota11] if v is not None]
+                cif_calc = round(sum(vals) / len(vals))
+
+            if issues:
+                problemas.append({
+                    "disciplina": disc,
+                    "disc_10_nome": disc_10_equiv or "—",
+                    "nota10": nota10,
+                    "nota11": nota11,
+                    "n_anos": n_anos,
+                    "cif_calc": cif_calc,
+                    "issues": issues,
+                })
+
+        # Também verificar disciplinas que estão no 10º mas NÃO no 11º
+        # (podem ter sido perdidas/não inseridas no 11º)
+        for disc10 in sorted(disc_10):
+            if disc10 in SO_11:
+                continue
+            membros = membros_familia(disc10)
+            disc_11_equiv = next(
+                (m for m in membros if m in disc_11),
+                disc10 if disc10 in disc_11 else None
+            )
+            if disc_11_equiv:
+                continue  # já tratada acima
+            # Disciplina só tem notas no 10º, nada no 11º
+            periodos_10 = por_nivel.get(10, {}).get(disc10, {})
+            nota10 = None
+            nums10 = {p: v for p, v in periodos_10.items() if isinstance(v, (int, float))}
+            if nums10:
+                p = 2 if 2 in nums10 else max(nums10.keys())
+                nota10 = nums10[p]
+            if nota10 is not None:  # só reportar se havia nota numérica
+                problemas.append({
+                    "disciplina": disc10,
+                    "disc_10_nome": disc10,
+                    "nota10": nota10,
+                    "nota11": None,
+                    "n_anos": 1,
+                    "cif_calc": nota10,
+                    "issues": ["Sem notas de 11º ano (disciplina só em 10º)"],
+                })
+
+        if problemas:
+            resultados.append({
+                "id": a["id"],
+                "numero": a["numero"],
+                "nome": a["nome"],
+                "turma": a["turma"],
+                "problemas": problemas,
+            })
+
+    # Estatísticas resumo
+    total_alunos = len(alunos_11)
+    alunos_com_issues = len(resultados)
+    total_issues = sum(len(r["problemas"]) for r in resultados)
+
+    return render_template(
+        "inconsistencias_cif.html",
+        resultados=resultados,
+        ano=ano,
+        total_alunos=total_alunos,
+        alunos_com_issues=alunos_com_issues,
+        total_issues=total_issues,
+    )
+
+
 @app.route("/admin/importar-aludisc", methods=["GET", "POST"])
 @login_required
 @admin_required

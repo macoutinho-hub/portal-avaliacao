@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Inconsistências CIF — 11º Ano{% endblock %}
+{% block content %}
+<div class="px-3">
+  <h2 class="fw-bold mb-1">
+    <i class="bi bi-exclamation-diamond me-2 text-warning"></i>Inconsistências CIF — 11º Ano
+  </h2>
+  <p class="text-muted mb-4">
+    Disciplinas terminais de 11º ano ({{ ano }}) onde faltam notas de 10º ou 11º para calcular o CIF correctamente (média de 2 anos).
+  </p>
+
+  {# Resumo #}
+  <div class="row g-3 mb-4">
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm text-center px-4 py-3">
+        <div class="fs-3 fw-bold text-secondary">{{ total_alunos }}</div>
+        <div class="small text-muted">Alunos 11º ano</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm text-center px-4 py-3">
+        <div class="fs-3 fw-bold {% if alunos_com_issues > 0 %}text-warning{% else %}text-success{% endif %}">
+          {{ alunos_com_issues }}
+        </div>
+        <div class="small text-muted">Alunos com inconsistências</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm text-center px-4 py-3">
+        <div class="fs-3 fw-bold {% if total_issues > 0 %}text-danger{% else %}text-success{% endif %}">
+          {{ total_issues }}
+        </div>
+        <div class="small text-muted">Total de problemas</div>
+      </div>
+    </div>
+  </div>
+
+  {% if not resultados %}
+  <div class="alert alert-success border-0 shadow-sm">
+    <i class="bi bi-check-circle-fill me-2"></i>
+    Nenhuma inconsistência detectada. Todos os alunos têm notas de 10º e 11º ano para as disciplinas terminais.
+  </div>
+
+  {% else %}
+
+  {# Filtro por turma #}
+  {% set turmas = resultados | map(attribute='turma') | list | unique | sort %}
+  <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+    <span class="text-muted small fw-semibold">Filtrar turma:</span>
+    <button class="btn btn-sm btn-primary filtro-turma" data-turma="">Todas</button>
+    {% for t in turmas %}
+    <button class="btn btn-sm btn-outline-secondary filtro-turma" data-turma="{{ t }}">{{ t }}</button>
+    {% endfor %}
+  </div>
+
+  {# Tabela principal #}
+  {% for r in resultados %}
+  <div class="card border-0 shadow-sm mb-3 aluno-card" data-turma="{{ r.turma }}">
+    <div class="card-header bg-light border-0 d-flex justify-content-between align-items-center py-2 px-3">
+      <div>
+        <strong>{{ r.nome }}</strong>
+        <span class="badge bg-secondary ms-2">{{ r.turma }}</span>
+        <span class="text-muted small ms-2">nº {{ r.numero }}</span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-warning text-dark">
+          {{ r.problemas | length }} problema{{ 's' if r.problemas | length != 1 else '' }}
+        </span>
+        <a href="{{ url_for('aluno', aluno_id=r.id) }}" class="btn btn-sm btn-outline-primary" target="_blank">
+          <i class="bi bi-person-lines-fill me-1"></i>Ver ficha
+        </a>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3" style="width:220px">Disciplina (11º)</th>
+              <th style="width:160px">Equiv. 10º</th>
+              <th class="text-center" style="width:90px">Nota 10º</th>
+              <th class="text-center" style="width:90px">Nota 11º</th>
+              <th class="text-center" style="width:70px">Anos</th>
+              <th class="text-center" style="width:80px">CIF calc.</th>
+              <th>Problema</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in r.problemas %}
+            <tr class="{% if p.n_anos < 2 %}table-warning{% endif %}">
+              <td class="ps-3 fw-semibold">{{ p.disciplina }}</td>
+              <td class="text-muted small">{{ p.disc_10_nome }}</td>
+              <td class="text-center">
+                {% if p.nota10 is not none %}
+                  <span class="badge {% if p.nota10 < 10 %}bg-danger{% elif p.nota10 < 14 %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                    {{ p.nota10 }}
+                  </span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if p.nota11 is not none %}
+                  <span class="badge {% if p.nota11 < 10 %}bg-danger{% elif p.nota11 < 14 %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                    {{ p.nota11 }}
+                  </span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <span class="badge {% if p.n_anos < 2 %}bg-danger{% else %}bg-success{% endif %}">
+                  {{ p.n_anos }}/2
+                </span>
+              </td>
+              <td class="text-center">
+                {% if p.cif_calc is not none %}
+                  <span class="badge bg-secondary">{{ p.cif_calc }}</span>
+                  {% if p.n_anos < 2 %}
+                  <i class="bi bi-exclamation-triangle text-warning ms-1" title="CIF incompleto — baseado em {{ p.n_anos }} ano(s)"></i>
+                  {% endif %}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% for iss in p.issues %}
+                <span class="badge bg-warning text-dark me-1">{{ iss }}</span>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('.filtro-turma').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filtro-turma').forEach(b => b.classList.replace('btn-primary','btn-outline-secondary'));
+    btn.classList.replace('btn-outline-secondary','btn-primary');
+    const turma = btn.dataset.turma;
+    document.querySelectorAll('.aluno-card').forEach(card => {
+      card.style.display = (!turma || card.dataset.turma === turma) ? '' : 'none';
+    });
+  });
+});
+</script>
+{% endblock %}
