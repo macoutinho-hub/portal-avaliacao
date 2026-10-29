@@ -20,8 +20,8 @@
           <div class="col-md-6">
             <label class="form-label fw-semibold">Turmas já atribuídas</label>
             <select name="turmas_existentes" class="form-select">
-              <option value="manter" selected>Manter e juntar as turmas do ficheiro</option>
-              <option value="substituir">Substituir pelas turmas do ficheiro</option>
+              <option value="substituir" selected>Substituir pelas turmas do ficheiro</option>
+              <option value="manter">Manter e juntar as turmas do ficheiro</option>
             </select>
           </div>
           <div class="col-md-6">
@@ -32,6 +32,12 @@
             </select>
           </div>
         </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="retirar_ausentes" value="1" id="retirar" checked>
+          <label class="form-check-label" for="retirar">
+            Retirar as turmas aos diretores que não constam no ficheiro
+          </label>
+        </div>
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-upload me-1"></i>Importar
         </button>
@@ -41,7 +47,15 @@
 
   <div class="mt-3 text-muted small">
     <i class="bi bi-info-circle me-1"></i>Ano letivo atual: {{ ano }}.
+    As turmas atribuídas aos diretores valem para o ano letivo atual. Ao aplicar, as turmas
+    que tinham antes ficam guardadas como as do ano anterior, e as novas como as de {{ ano }}.
     Os diretores só veem as novas turmas depois de terminarem a sessão e entrarem de novo.
+    {% if registo %}
+    <div class="mt-1">
+      Registo guardado:
+      {% for r in registo %}{{ r.ano_letivo }} ({{ r.n_dir }} diretores, {{ r.n }} turmas){% if not loop.last %}; {% endif %}{% endfor %}.
+    </div>
+    {% endif %}
   </div>
 
   {% if relatorio %}
@@ -107,7 +121,19 @@
       </div>
       {% endif %}
 
-      {% if relatorio.sem_turma_no_ficheiro %}
+      {% if relatorio.retirados %}
+      <h6>Diretores sem turma em {{ relatorio.ano }} (não constam no ficheiro)</h6>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Diretor</th><th>Turmas até agora{% if relatorio.ano_ant %} ({{ relatorio.ano_ant }}){% endif %}</th></tr></thead>
+          <tbody>
+            {% for a in relatorio.retirados %}
+            <tr><td>{{ a.nome }}</td><td>{{ a.antes }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% elif relatorio.sem_turma_no_ficheiro %}
       <div class="alert alert-secondary mb-0">
         <strong>Diretores no portal que não constam no ficheiro ({{ relatorio.sem_turma_no_ficheiro|length }}).</strong>
         Ficaram como estavam:

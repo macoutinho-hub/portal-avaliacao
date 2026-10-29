@@ -236,6 +236,18 @@ def init_db():
     """)
     db.commit()
 
+    # Registo das turmas de cada diretor, por ano letivo
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS diretor_turma_ano (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ano_letivo  TEXT NOT NULL,
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            turma       TEXT NOT NULL,
+            UNIQUE(ano_letivo, user_id, turma)
+        );
+    """)
+    db.commit()
+
     # Valores por defeito das settings
     for key, val in [("ano_letivo_atual", "2025/2026"), ("semestre_atual", "2")]:
         db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, val))
@@ -3034,6 +3046,11 @@ def _norm_nome(s):
     s = "".join(c for c in s if not _u.combining(c))
     return " ".join(s.lower().split())
 
+def _ano_anterior(ano):
+    """'2026/2027' → '2025/2026' (None se o formato não for esse)."""
+    m = _re_global.match(r"^(\d{4})/(\d{4})$", str(ano or "").strip())
+    return f"{int(m.group(1)) - 1}/{int(m.group(2)) - 1}" if m else None
+
 @app.route("/admin/importar-diretores", methods=["GET", "POST"])
 @login_required
 @admin_required
@@ -3046,7 +3063,8 @@ def importar_diretores():
     if request.method == "POST":
         f = request.files.get("ficheiro")
         aplicar = request.form.get("modo") == "aplicar"
-        substituir = request.form.get("turmas_existentes") == "substituir"
+        substituir = request.form.get("turmas_existentes", "substituir") != "manter"
+        retirar_ausentes = request.form.get("retirar_ausentes") == "1"
         if not f or not f.filename.lower().endswith(".xlsx"):
             flash("Por favor carregue um ficheiro .xlsx.", "danger")
             return redirect(url_for("importar_diretores"))
@@ -3086,7 +3104,22 @@ def importar_diretores():
         for u in db.execute("SELECT id, nome, turma FROM users WHERE role='diretor'").fetchall():
             utilizadores.setdefault(_norm_nome(u["nome"]), []).append(u)
 
-        alterados, sem_alteracao, nao_encontrados, ambiguos = [], [], [], []
+        ano_ant = _ano_anterior(ano)
+
+        def _guardar_ano(uid, antes, depois):
+            """Regista as turmas do ano anterior (só da primeira vez) e as do ano atual."""
+            if ano_ant and antes and not db.execute(
+                    "SELECT 1 FROM diretor_turma_ano WHERE ano_letivo=? AND user_id=?",
+                    (ano_ant, uid)).fetchone():
+                for t in antes:
+                    db.execute("INSERT OR IGNORE INTO diretor_turma_ano (ano_letivo, user_id, turma) VALUES (?,?,?)",
+                               (ano_ant, uid, t))
+            db.execute("DELETE FROM diretor_turma_ano WHERE ano_letivo=? AND user_id=?", (ano, uid))
+            for t in depois:
+                db.execute("INSERT OR IGNORE INTO diretor_turma_ano (ano_letivo, user_id, turma) VALUES (?,?,?)",
+                           (ano, uid, t))
+
+        alterados, sem_alteracao, nao_encontrados, ambiguos, retirados = [], [], [], [], []
         for chave, g in grupos.items():
             cand = utilizadores.get(chave, [])
             if not cand:
@@ -3102,17 +3135,30 @@ def importar_diretores():
             else:
                 bases = {base_turma(t) for t in antes}
                 depois = antes + [t for t in g["turmas"] if base_turma(t) not in bases]
-            if [base_turma(t) for t in depois] == [base_turma(t) for t in antes]:
+            igual = [base_turma(t) for t in depois] == [base_turma(t) for t in antes]
+            if igual:
                 sem_alteracao.append(u["nome"])
-                continue
-            alterados.append({"nome": u["nome"], "antes": ", ".join(antes) or "—",
-                              "depois": ", ".join(depois)})
+            else:
+                alterados.append({"nome": u["nome"], "antes": ", ".join(antes) or "—",
+                                  "depois": ", ".join(depois)})
             if aplicar:
-                db.execute("UPDATE users SET turma=? WHERE id=?", (",".join(depois), u["id"]))
+                _guardar_ano(u["id"], antes, depois)
+                if not igual:
+                    db.execute("UPDATE users SET turma=? WHERE id=?", (",".join(depois), u["id"]))
 
-        em_ficheiro = set(grupos)
-        sem_turma_no_ficheiro = [u["nome"] for k, lst in utilizadores.items()
-                                 if k not in em_ficheiro for u in lst]
+        # Diretores do portal que não constam no ficheiro
+        sem_turma_no_ficheiro = []
+        for k, lst in utilizadores.items():
+            if k in grupos:
+                continue
+            for u in lst:
+                antes = [t.strip() for t in (u["turma"] or "").split(",") if t.strip()]
+                sem_turma_no_ficheiro.append(u["nome"])
+                if retirar_ausentes and antes:
+                    retirados.append({"nome": u["nome"], "antes": ", ".join(antes)})
+                    if aplicar:
+                        _guardar_ano(u["id"], antes, [])
+                        db.execute("UPDATE users SET turma=NULL WHERE id=?", (u["id"],))
 
         existentes = {base_turma(r["turma"]) for r in db.execute(
             "SELECT DISTINCT turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall()}
@@ -3121,9 +3167,10 @@ def importar_diretores():
 
         if aplicar:
             db.commit()
-            flash(f"{len(alterados)} diretor(es) atualizado(s).", "success")
+            flash(f"{len(alterados)} diretor(es) atualizado(s), {len(retirados)} sem turmas.", "success")
         relatorio = {
-            "aplicado": aplicar, "substituir": substituir, "ano": ano,
+            "aplicado": aplicar, "substituir": substituir, "ano": ano, "ano_ant": ano_ant,
+            "retirados": retirados, "retirar_ausentes": retirar_ausentes,
             "n_turmas": sum(len(g["turmas"]) for g in grupos.values()),
             "n_diretores": len(grupos),
             "alterados": alterados, "sem_alteracao": sem_alteracao,
@@ -3132,7 +3179,10 @@ def importar_diretores():
             "turmas_sem_alunos": turmas_sem_alunos,
         }
 
-    return render_template("importar_diretores.html", relatorio=relatorio, ano=ano)
+    registo = db.execute(
+        "SELECT ano_letivo, COUNT(DISTINCT user_id) AS n_dir, COUNT(*) AS n "
+        "FROM diretor_turma_ano GROUP BY ano_letivo ORDER BY ano_letivo").fetchall()
+    return render_template("importar_diretores.html", relatorio=relatorio, ano=ano, registo=registo)
 
 
 # ─── Importar notas de "Literacias" (11º ano, só 2º semestre) ─────────────────
