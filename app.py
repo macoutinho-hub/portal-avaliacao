@@ -1194,24 +1194,51 @@ def aluno(aluno_id):
     aluno_seguinte = ids_turma[idx_atual + 1] if idx_atual >= 0 and idx_atual < len(ids_turma) - 1 else None
 
     # Avaliação intercalar: uma linha por parâmetro, nas mesmas colunas das notas
-    interc_linhas, interc_cols = [], []
+    interc_linhas, interc_cols, interc_extras = [], [], []
     _rows_int = db.execute(
         "SELECT disciplina, semestre, desempenho, ritmo, envolvimento FROM avaliacao_intercalar "
         "WHERE aluno_id=? ORDER BY semestre, id", (aluno_id,)).fetchall()
     if _rows_int:
-        interc_cols = list(todas_disciplinas)
-        for r in _rows_int:
-            if r["disciplina"] not in interc_cols:
-                interc_cols.append(r["disciplina"])
+        # Mesmas colunas da tabela de notas; sem notas, usa as disciplinas da intercalar
+        if todas_disciplinas:
+            interc_cols = list(todas_disciplinas)
+        else:
+            for r in _rows_int:
+                if r["disciplina"] not in interc_cols:
+                    interc_cols.append(r["disciplina"])
+
+        def _coluna_interc(disc):
+            """Coluna das notas que corresponde à disciplina (mesmo nome ou mesma abreviatura,
+            ex.: 'Inglês' e 'Líng. Estrang. I - Inglês' → 'Ing')."""
+            if disc in interc_cols:
+                return disc
+            ab = ABREVIATURAS.get(disc)
+            if ab:
+                for c in interc_cols:
+                    if ABREVIATURAS.get(c) == ab:
+                        return c
+            return None
+
         for sem in sorted({r["semestre"] for r in _rows_int}):
+            do_sem = [r for r in _rows_int if r["semestre"] == sem]
             for chave, titulo in (("desempenho", "Desempenho"), ("ritmo", "Ritmo de trabalho"),
                                   ("envolvimento", "Envolvimento")):
-                interc_linhas.append({
-                    "sem": sem, "titulo": titulo, "primeira": chave == "desempenho",
-                    "vals": {r["disciplina"]: r[chave] for r in _rows_int if r["semestre"] == sem}})
+                vals = {}
+                for r in do_sem:
+                    col = _coluna_interc(r["disciplina"])
+                    if col is not None:
+                        vals[col] = r[chave]
+                interc_linhas.append({"sem": sem, "titulo": titulo,
+                                      "primeira": chave == "desempenho", "vals": vals})
+            for r in do_sem:   # disciplinas sem coluna nas notas
+                if _coluna_interc(r["disciplina"]) is None:
+                    interc_extras.append({"sem": sem, "disciplina": r["disciplina"],
+                                          "valores": [v for v in (r["desempenho"], r["ritmo"],
+                                                                  r["envolvimento"]) if v]})
 
     resp = make_response(render_template("aluno.html", aluno=a,
                            interc_linhas=interc_linhas, interc_cols=interc_cols,
+                           interc_extras=interc_extras,
                            todas_disciplinas=todas_disciplinas,
                            todas_disciplinas_possiveis=todas_disciplinas_possiveis,
                            abreviaturas=ABREVIATURAS,
@@ -2448,6 +2475,49 @@ def apresentacao(turma):
                 "media": round(sum(aa_vals_ap)/len(aa_vals_ap), 1) if aa_vals_ap else None,
             })
 
+        # ── Avaliação intercalar: uma linha por parâmetro, nas colunas das notas ─
+        todas_cols = list(todas)
+        interc_alertas = []
+        _ri = db.execute(
+            "SELECT disciplina, semestre, desempenho, ritmo, envolvimento FROM avaliacao_intercalar "
+            "WHERE aluno_id=? ORDER BY semestre, id", (a["id"],)).fetchall()
+        if _ri:
+            def _col_ap(disc):
+                if disc in todas_cols:
+                    return disc
+                ab = ABREVS.get(disc)
+                if ab:
+                    for c in todas_cols:
+                        if ABREVS.get(c) == ab:
+                            return c
+                todas_cols.append(disc)      # sem coluna nas notas: acrescenta
+                return disc
+            for sem in sorted({r["semestre"] for r in _ri}):
+                do_sem = [r for r in _ri if r["semestre"] == sem]
+                col_de = {id(r): _col_ap(r["disciplina"]) for r in do_sem}
+                for chave, titulo in (("desempenho", "Desempenho"), ("ritmo", "Ritmo de trabalho"),
+                                      ("envolvimento", "Envolvimento")):
+                    notas_i, niveis_i, titulos_i = {}, {}, {}
+                    for r in do_sem:
+                        v = r[chave]
+                        if v:
+                            c = col_de[id(r)]
+                            notas_i[c] = INTERCALAR_SIGLA[v]
+                            niveis_i[c] = INTERCALAR_NIVEL[v].replace("n-", "nc-")
+                            titulos_i[c] = v
+                    linhas.append({"label": (f"{sem}º Sem. · " if chave == "desempenho" else "") + titulo,
+                                   "tipo": "intercalar", "primeira": chave == "desempenho",
+                                   "atual": False, "notas": notas_i, "niveis": niveis_i,
+                                   "titulos": titulos_i, "media": None})
+            sem_ult = max(r["semestre"] for r in _ri)
+            for r in _ri:
+                if r["semestre"] == sem_ult and intercalar_alerta(r["desempenho"], r["ritmo"], r["envolvimento"]):
+                    interc_alertas.append({
+                        "disc": ABREVS.get(r["disciplina"], r["disciplina"]), "sem": sem_ult,
+                        "valores": [{"sigla": INTERCALAR_SIGLA[v], "titulo": v,
+                                     "nivel": INTERCALAR_NIVEL[v].replace("n-", "nc-")}
+                                    for v in (r["desempenho"], r["ritmo"], r["envolvimento"]) if v]})
+
         # Negativos última linha semestre
         ul = next((l for l in reversed(linhas) if l["tipo"]=="semestre" and l["atual"]), None)
         negas = []
@@ -2471,9 +2541,10 @@ def apresentacao(turma):
         alunos_json.append({
             "id": a["id"], "nome": a["nome"], "numero": a["numero"] or "",
             "turma": a["turma"], "foto_url": foto_url,
-            "disciplinas": todas, "abrevs": ABREVS,
+            "disciplinas": todas_cols, "abrevs": ABREVS,
             "separador_idx": sep_idx, "linhas": linhas,
             "notas_reuniao": notas_r, "negas": negas,
+            "interc_alertas": interc_alertas,
         })
 
     slides = db.execute(
@@ -3267,9 +3338,6 @@ def _canon_disc_intercalar(nome, conhecidas):
     base = canonizar_disciplina(nome)
     if base == str(nome).strip():
         base = _DISC_INTERCALAR.get(_norm_nome(nome), base)
-    if (base == "Inglês" and "Inglês" not in conhecidas
-            and "Líng. Estrang. I - Inglês" in conhecidas):
-        base = "Líng. Estrang. I - Inglês"
     return base
 
 def parse_intercalar_excel(ws):
@@ -3420,7 +3488,9 @@ def importar_intercalar():
             "ano_ficheiro": dados["ano"], "semestre_ficheiro": dados["semestre"],
             "n_alunos": len(dados["alunos"]), "n_encontrados": len(dados["alunos"]) - len(nao_encontrados),
             "nao_encontrados": nao_encontrados, "turmas": sorted(turmas),
-            "disciplinas": [(d, mapa[d], mapa[d] in conhecidas) for d in dados["disciplinas"]],
+            "disciplinas": [(d, mapa[d], mapa[d] in conhecidas
+                             or (mapa[d] == "Inglês" and "Líng. Estrang. I - Inglês" in conhecidas))
+                            for d in dados["disciplinas"]],
             "n_novos": n_novos, "n_atualizados": n_atual, "n_alertas": n_alertas,
             "invalidos": dados["invalidos"],
         }

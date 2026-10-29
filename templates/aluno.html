@@ -46,6 +46,8 @@
   .n-bom  { background: #22c55e; color: white; }
   .n-exc  { background: #3b82f6; color: white; }
   .n-mneg { background: #b91c1c; color: white; }
+  .tab-alinhada { table-layout: fixed; }
+  .tab-alinhada th.disc-header { max-width: none; }
   .interc-cell { cursor: default; font-size: .78rem; padding: 2px 5px; min-width: 30px; text-align: center; }
   .interc-cell:hover { opacity: 1; outline: none; }
   .n-nd   { color: #9ca3af; }
@@ -161,7 +163,12 @@
       <p class="text-muted text-center py-4">Sem notas registadas. Use o botão acima para adicionar.</p>
       {% else %}
       <div class="table-responsive">
-        <table class="tabela-perfil">
+        <table class="tabela-perfil tab-alinhada" style="min-width:{{ 210 + todas_disciplinas|length * 72 }}px">
+          <colgroup>
+            <col style="width:150px">
+            {% for disc in todas_disciplinas %}<col>{% endfor %}
+            <col style="width:80px">
+          </colgroup>
           <thead>
             <tr>
               <th style="text-align:left; min-width:110px">Ano / Semestre</th>
@@ -292,15 +299,21 @@
     </div>
     <div class="card-body">
       <div class="table-responsive">
-        <table class="tabela-perfil">
+        <table class="tabela-perfil tab-alinhada" style="min-width:{{ 210 + interc_cols|length * 72 }}px">
+          <colgroup>
+            <col style="width:150px">
+            {% for disc in interc_cols %}<col>{% endfor %}
+            <col style="width:80px">
+          </colgroup>
           <thead>
             <tr>
               <th style="text-align:left; min-width:110px">Semestre / Parâmetro</th>
               {% for disc in interc_cols %}
-              <th class="disc-header {% if loop.index0 == separador_idx %}separador-col{% endif %}" title="{{ disc }}">
+              <th class="disc-header {% if loop.index0 == separador_idx and todas_disciplinas %}separador-col{% endif %}" title="{{ disc }}">
                 {{ abreviaturas.get(disc, disc[:6]) }}
               </th>
               {% endfor %}
+              <th class="media-cell">&nbsp;</th>
             </tr>
           </thead>
           <tbody>
@@ -309,15 +322,25 @@
               <td class="row-label">{% if l.primeira %}<strong>{{ l.sem }}º Sem.</strong> · {% endif %}{{ l.titulo }}</td>
               {% for disc in interc_cols %}
               {% set v = l.vals.get(disc) %}
-              <td class="{% if loop.index0 == separador_idx %}separador-col{% endif %}">
+              <td class="{% if loop.index0 == separador_idx and todas_disciplinas %}separador-col{% endif %}">
                 {% if v %}<span class="nota-cell interc-cell {{ interc_nivel[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span>{% else %}<span class="n-nd">—</span>{% endif %}
               </td>
               {% endfor %}
+              <td class="media-cell"></td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
+      {% if interc_extras %}
+      <div class="small text-muted mt-2">
+        <i class="bi bi-info-circle me-1"></i>Sem coluna nas notas:
+        {% for x in interc_extras %}
+        <strong>{{ x.disciplina }}</strong> ({{ x.sem }}º sem.:
+        {% for v in x.valores %}<span class="nota-cell interc-cell {{ interc_nivel[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span> {% endfor %}){% if not loop.last %} · {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
       <div class="small text-muted mt-2">
         <strong>Desempenho:</strong> MB muito bom · B bom · S suficiente · I insuficiente · MI muito insuficiente &nbsp;|&nbsp;
         <strong>Ritmo:</strong> A adequado · NA não adequado &nbsp;|&nbsp;
@@ -382,7 +405,7 @@
 <!-- ── Síntese Global ─────────────────────────────────────────────────── -->
 {% set sintese_nr = notas_reuniao.get('sintese', {}) %}
 <div class="card border-0 shadow mb-4">
-  <div class="card-header py-3" style="background:#0c4a6e">
+  <div class="card-header py-3" style="background:#1a3c6e">
     <h5 class="mb-0 fw-semibold text-white">
       <i class="bi bi-text-paragraph me-2"></i>Síntese Global
       <small class="opacity-75 fw-normal" style="font-size:.8rem"> — texto livre para a reunião</small>

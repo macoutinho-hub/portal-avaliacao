@@ -326,6 +326,10 @@
     .nc-med { background: #d97706; }
     .nc-bom { background: #16a34a; }
     .nc-exc { background: #2563eb; }
+    .nc-mneg { background: #991b1b; }
+    .ap-table tr.interc-row td.label-col { font-size: .8rem; color: #cbd5e1; }
+    .ap-table tr.interc-row .nc { min-width: 36px; padding: 3px 7px; font-size: .85rem; }
+    .ap-table tr.interc-first td { border-top: 2px solid rgba(255,255,255,.35); }
     .nc-nd  { color: rgba(255,255,255,.22); }
     .nc-txt { background: #4b5563; font-size: .75rem; }
 
@@ -546,6 +550,17 @@ function mostrar(i) {
   } else {
     alertEl.innerHTML = '';
   }
+  // Alertas da avaliação intercalar (último semestre importado)
+  const ia = a.interc_alertas || [];
+  if (ia.length) {
+    let h = `<div class="ap-alerta" style="margin-top:.6rem"><div style="color:#fbbf24; font-weight:700; font-size:.9rem"><i class="bi bi-speedometer2 me-1"></i>Intercalar · ${ia[0].sem}º Sem.</div>`;
+    ia.forEach(x => {
+      h += `<div class="ap-alerta-item"><span style="font-size:.88rem; min-width:3.2rem; font-weight:700">${x.disc}</span>` +
+           x.valores.map(v => `<span class="nc ${v.nivel}" title="${v.titulo}" style="min-width:34px;padding:2px 6px;font-size:.8rem">${v.sigla}</span>`).join(' ') +
+           `</div>`;
+    });
+    alertEl.innerHTML += h + '</div>';
+  }
 
   // Abas de notas
   const cats = [
@@ -609,6 +624,18 @@ function mostrar(i) {
             return `<td${i===a.separador_idx?' class="sep-col"':''}>${v ? `<span style="border-radius:4px;padding:2px 6px;font-weight:800;font-size:.72rem;background:${bg};color:white;display:inline-block" title="${inscTitles[v]||v}">${v}</span>` : '<span style="opacity:.2">—</span>'}</td>`;
           }).join('')}
           <td class="media-col"></td>`;
+        return;
+      }
+      if (l.tipo === 'intercalar') {
+        html += `<tr class="interc-row${l.primeira ? ' interc-first' : ''}">
+          <td class="label-col">${l.label}</td>
+          ${discs.map((d,i) => {
+            const v = l.notas[d];
+            const cel = v ? `<span class="nc ${l.niveis[d]}" title="${l.titulos[d]}">${v}</span>` : '<span class="nc nc-nd">—</span>';
+            return `<td${i===a.separador_idx?' class="sep-col"':''}>${cel}</td>`;
+          }).join('')}
+          <td class="media-col"></td>
+        </tr>`;
         return;
       }
       const isSem2 = l.tipo==='semestre' && /2º\s*Sem\.?/i.test(l.label||'');
