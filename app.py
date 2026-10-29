@@ -240,8 +240,6 @@ def init_db():
     for key, val in [("ano_letivo_atual", "2025/2026"), ("semestre_atual", "2")]:
         db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, val))
     db.commit()
-    db.close()
-    db.commit()
     # Create default admin if not exists
     cur = db.execute("SELECT id FROM users WHERE role='admin'")
     if not cur.fetchone():
@@ -4535,4 +4533,4 @@ except Exception as _e:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host=os.environ.get("HOST", "127.0.0.1"), port=port, debug=False)
