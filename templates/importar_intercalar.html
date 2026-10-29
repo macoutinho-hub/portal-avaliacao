@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container py-4" style="max-width:820px">
-  <h4 class="mb-4"><i class="bi bi-speedometer2 me-2"></i>Importar Avaliação Intercalar</h4>
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <h4 class="mb-0"><i class="bi bi-speedometer2 me-2"></i>Importar Avaliação Intercalar{% if turma %} · Turma {{ turma }}{% endif %}</h4>
+    {% if turma %}
+    <a href="{{ url_for('intercalar_turma', turma=turma) }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Intercalar da turma
+    </a>
+    {% endif %}
+  </div>
 
   <div class="card shadow-sm">
     <div class="card-body">
@@ -16,10 +23,12 @@
           <input type="file" name="ficheiro" accept=".xlsx" class="form-control" required>
         </div>
         <div class="row g-3 mb-3">
+          {% if not turma %}
           <div class="col-md-4">
             <label class="form-label fw-semibold">Ano letivo</label>
             <input type="text" name="ano_letivo" class="form-control" placeholder="detetar no ficheiro">
           </div>
+          {% endif %}
           <div class="col-md-4">
             <label class="form-label fw-semibold">Semestre</label>
             <select name="semestre" class="form-select">
@@ -45,6 +54,7 @@
 
   <div class="mt-3 text-muted small">
     <i class="bi bi-info-circle me-1"></i>Ano letivo atual: {{ ano }} · {{ semestre }}.º semestre.
+    {% if turma %}Só são importados os alunos da turma {{ turma }}, para o ano letivo atual.{% endif %}
     Repetir a importação atualiza os registos do mesmo aluno, disciplina e semestre.
     O ficheiro não fica guardado no servidor.
   </div>
@@ -95,6 +105,14 @@
         <strong>N.º de processo sem aluno em {{ relatorio.ano }} ({{ relatorio.nao_encontrados|length }}):</strong>
         {{ relatorio.nao_encontrados|join(', ') }}.
         Confirme o ano letivo e se os alunos foram importados.
+      </div>
+      {% endif %}
+
+      {% if relatorio.fora_turma %}
+      <div class="alert alert-warning">
+        <strong>Alunos de outra turma ({{ relatorio.fora_turma|length }}), ignorados:</strong>
+        {{ relatorio.fora_turma|join(', ') }}.
+        Confirme que a pauta é da turma {{ turma }}.
       </div>
       {% endif %}
 

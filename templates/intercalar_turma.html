@@ -12,6 +12,7 @@
       {% for s in semestres %}
       <a href="?semestre={{ s }}" class="btn btn-sm {% if s == sem %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ s }}.º semestre</a>
       {% endfor %}
+      <a href="{{ url_for('importar_intercalar_turma', turma=turma) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-upload me-1"></i>Importar pauta</a>
       <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Turma</a>
     </div>
   </div>

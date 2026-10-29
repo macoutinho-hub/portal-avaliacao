@@ -3414,32 +3414,41 @@ def parse_intercalar_excel(ws):
     return {"ano": ano, "semestre": semestre, "disciplinas": list(disc_start.values()),
             "alunos": alunos, "invalidos": sorted(invalidos)}
 
-@app.route("/admin/importar-intercalar", methods=["GET", "POST"])
-@login_required
-@admin_required
-def importar_intercalar():
+def _tratar_intercalar(turma=None):
+    """Importação da pauta intercalar. Com `turma` (o PT), só aceita alunos dessa turma
+    e do ano letivo atual; sem `turma` (admin) aceita qualquer turma e ano."""
     import io as _io
     db = get_db()
     relatorio = None
+    destino = "importar_intercalar_turma" if turma else "importar_intercalar"
+    kw = {"turma": turma} if turma else {}
 
     if request.method == "POST":
         f = request.files.get("ficheiro")
         aplicar = request.form.get("modo") == "aplicar"
         if not f or not f.filename.lower().endswith(".xlsx"):
             flash("Por favor carregue um ficheiro .xlsx.", "danger")
-            return redirect(url_for("importar_intercalar"))
+            return redirect(url_for(destino, **kw))
         try:
             ws = openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True).active
             dados = parse_intercalar_excel(ws)
         except Exception as e:
             flash(f"Não foi possível ler o ficheiro: {e}", "danger")
-            return redirect(url_for("importar_intercalar"))
+            return redirect(url_for(destino, **kw))
         if not dados or not dados["alunos"]:
             flash("Formato não reconhecido (esperada a pauta de avaliação intercalar com "
                   "parâmetros: Desempenho, Ritmo de Trabalho, Envolvimento e colaboração).", "danger")
-            return redirect(url_for("importar_intercalar"))
+            return redirect(url_for(destino, **kw))
 
-        ano = (request.form.get("ano_letivo") or "").strip() or dados["ano"] or ano_letivo_atual(db)
+        ano_atual = ano_letivo_atual(db)
+        if turma:   # o PT só importa para o ano letivo atual
+            if dados["ano"] and dados["ano"] != ano_atual:
+                flash(f"A pauta é de {dados['ano']}, mas o ano letivo atual é {ano_atual}. "
+                      "Peça ao administrador para a importar.", "danger")
+                return redirect(url_for(destino, **kw))
+            ano = ano_atual
+        else:
+            ano = (request.form.get("ano_letivo") or "").strip() or dados["ano"] or ano_atual
         sem_form = request.form.get("semestre", "")
         semestre = int(sem_form) if sem_form in ("1", "2") else (dados["semestre"] or semestre_atual(db))
 
@@ -3450,11 +3459,15 @@ def importar_intercalar():
 
         agora = datetime.now().strftime("%Y-%m-%d %H:%M")
         nao_encontrados, turmas, n_novos, n_atual, n_alertas = [], set(), 0, 0, 0
+        fora_turma = []
         alunos_com_dados = 0
         for al in dados["alunos"]:
             row = alunos_ano.get(al["numero"])
             if not row:
                 nao_encontrados.append(al["numero"])
+                continue
+            if turma and base_turma(row["turma"]) != turma:
+                fora_turma.append(al["numero"])
                 continue
             turmas.add(base_turma(row["turma"]))
             if al["avals"]:
@@ -3486,8 +3499,9 @@ def importar_intercalar():
         relatorio = {
             "aplicado": aplicar, "ano": ano, "semestre": semestre,
             "ano_ficheiro": dados["ano"], "semestre_ficheiro": dados["semestre"],
-            "n_alunos": len(dados["alunos"]), "n_encontrados": len(dados["alunos"]) - len(nao_encontrados),
-            "nao_encontrados": nao_encontrados, "turmas": sorted(turmas),
+            "n_alunos": len(dados["alunos"]),
+            "n_encontrados": len(dados["alunos"]) - len(nao_encontrados) - len(fora_turma),
+            "nao_encontrados": nao_encontrados, "fora_turma": fora_turma, "turmas": sorted(turmas),
             "disciplinas": [(d, mapa[d], mapa[d] in conhecidas
                              or (mapa[d] == "Inglês" and "Líng. Estrang. I - Inglês" in conhecidas))
                             for d in dados["disciplinas"]],
@@ -3495,8 +3509,22 @@ def importar_intercalar():
             "invalidos": dados["invalidos"],
         }
 
-    return render_template("importar_intercalar.html", relatorio=relatorio,
+    return render_template("importar_intercalar.html", relatorio=relatorio, turma=turma,
                            ano=ano_letivo_atual(db), semestre=semestre_atual(db))
+
+@app.route("/admin/importar-intercalar", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_intercalar():
+    return _tratar_intercalar()
+
+@app.route("/turma/<path:turma>/importar-intercalar", methods=["GET", "POST"])
+@login_required
+def importar_intercalar_turma(turma):
+    if not _check_turma_perm(turma):
+        flash("Não tem permissão para esta turma.", "danger")
+        return redirect(url_for("dashboard"))
+    return _tratar_intercalar(base_turma(turma))
 
 @app.route("/turma/<path:turma>/intercalar")
 @login_required
