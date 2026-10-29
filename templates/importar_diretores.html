@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:820px">
+  <h4 class="mb-4"><i class="bi bi-person-badge me-2"></i>Importar Diretores de Turma</h4>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Carregue o ficheiro com as colunas <strong>Turma: Nome</strong> e
+        <strong>Turma: Diretor de Turma</strong>. Cada diretor é encontrado pelo nome
+        (sem distinguir maiúsculas nem acentos) e as turmas dele são atualizadas.
+        Não são criados utilizadores novos.
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro (.xlsx)</label>
+          <input type="file" name="ficheiro" accept=".xlsx" class="form-control" required>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Turmas já atribuídas</label>
+            <select name="turmas_existentes" class="form-select">
+              <option value="manter" selected>Manter e juntar as turmas do ficheiro</option>
+              <option value="substituir">Substituir pelas turmas do ficheiro</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Modo</label>
+            <select name="modo" class="form-select">
+              <option value="simular" selected>Simular (não altera nada)</option>
+              <option value="aplicar">Aplicar alterações</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-upload me-1"></i>Importar
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-3 text-muted small">
+    <i class="bi bi-info-circle me-1"></i>Ano letivo atual: {{ ano }}.
+    Os diretores só veem as novas turmas depois de terminarem a sessão e entrarem de novo.
+  </div>
+
+  {% if relatorio %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-header fw-semibold">
+      {% if relatorio.aplicado %}
+        <i class="bi bi-check-circle text-success me-1"></i>Alterações aplicadas
+      {% else %}
+        <i class="bi bi-eye text-primary me-1"></i>Simulação — nada foi alterado
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <p class="mb-3">
+        O ficheiro tem <strong>{{ relatorio.n_turmas }}</strong> turmas e
+        <strong>{{ relatorio.n_diretores }}</strong> diretores.
+        {{ relatorio.alterados|length }} {{ 'foram alterados' if relatorio.aplicado else 'seriam alterados' }},
+        {{ relatorio.sem_alteracao|length }} já estavam certos.
+      </p>
+
+      {% if relatorio.alterados %}
+      <h6>Turmas dos diretores</h6>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Diretor</th><th>Antes</th><th>Depois</th></tr></thead>
+          <tbody>
+            {% for a in relatorio.alterados %}
+            <tr><td>{{ a.nome }}</td><td>{{ a.antes }}</td><td>{{ a.depois }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if relatorio.nao_encontrados %}
+      <div class="alert alert-warning">
+        <strong>Não existem no portal ({{ relatorio.nao_encontrados|length }}).</strong>
+        Crie-os em Admin → Gerir Utilizadores:
+        <ul class="mb-0 mt-1">
+          {% for g in relatorio.nao_encontrados %}
+          <li>{{ g.nome }} — {{ g.turmas|join(', ') }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if relatorio.ambiguos %}
+      <div class="alert alert-warning">
+        <strong>Nome repetido no portal ({{ relatorio.ambiguos|length }}).</strong>
+        Não foram alterados, edite-os à mão:
+        <ul class="mb-0 mt-1">
+          {% for g in relatorio.ambiguos %}
+          <li>{{ g.nome }} — {{ g.turmas|join(', ') }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if relatorio.turmas_sem_alunos %}
+      <div class="alert alert-warning">
+        <strong>Turmas do ficheiro sem alunos em {{ relatorio.ano }}:</strong>
+        {{ relatorio.turmas_sem_alunos|join(', ') }}.
+        Confirme se estão bem escritas.
+      </div>
+      {% endif %}
+
+      {% if relatorio.sem_turma_no_ficheiro %}
+      <div class="alert alert-secondary mb-0">
+        <strong>Diretores no portal que não constam no ficheiro ({{ relatorio.sem_turma_no_ficheiro|length }}).</strong>
+        Ficaram como estavam:
+        {{ relatorio.sem_turma_no_ficheiro|join(', ') }}.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

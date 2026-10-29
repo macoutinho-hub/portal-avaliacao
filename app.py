@@ -3025,6 +3025,116 @@ def importar_bi():
     return render_template("importar_bi.html", n_com_bi=n)
 
 
+# ─── Importar diretores de turma ──────────────────────────────────────────────
+
+def _norm_nome(s):
+    """Minúsculas, sem acentos e com espaços normalizados (para comparar nomes)."""
+    import unicodedata as _u
+    s = _u.normalize("NFKD", str(s or ""))
+    s = "".join(c for c in s if not _u.combining(c))
+    return " ".join(s.lower().split())
+
+@app.route("/admin/importar-diretores", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_diretores():
+    import io as _io
+    db = get_db()
+    ano = ano_letivo_atual(db)
+    relatorio = None
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        aplicar = request.form.get("modo") == "aplicar"
+        substituir = request.form.get("turmas_existentes") == "substituir"
+        if not f or not f.filename.lower().endswith(".xlsx"):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_diretores"))
+        try:
+            ws = openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True).active
+        except Exception as e:
+            flash(f"Não foi possível abrir o ficheiro: {e}", "danger")
+            return redirect(url_for("importar_diretores"))
+
+        # Cabeçalho (nas primeiras 5 linhas): coluna da turma e do diretor
+        header_idx = idx_turma = idx_dir = None
+        for i, row in enumerate(ws.iter_rows(min_row=1, max_row=5, values_only=True)):
+            hs = [_norm_nome(v) for v in row]
+            d = next((k for k, h in enumerate(hs) if "diretor" in h or "director" in h), None)
+            t = next((k for k, h in enumerate(hs) if h in ("turma: nome", "turma")), None)
+            if t is None:
+                t = next((k for k, h in enumerate(hs) if "turma" in h and "nome" in h), None)
+            if d is not None and t is not None:
+                header_idx, idx_turma, idx_dir = i + 1, t, d
+                break
+        if header_idx is None:
+            flash("Cabeçalho não encontrado (esperado: 'Turma: Nome' e 'Turma: Diretor de Turma').", "danger")
+            return redirect(url_for("importar_diretores"))
+
+        # Turmas por diretor (nome normalizado → turmas na ordem do ficheiro)
+        grupos = {}
+        for row in ws.iter_rows(min_row=header_idx + 1, values_only=True):
+            turma = str(row[idx_turma] or "").strip().upper() if idx_turma < len(row) else ""
+            nome = str(row[idx_dir] or "").strip() if idx_dir < len(row) else ""
+            if not turma or not nome or nome == "None":
+                continue
+            g = grupos.setdefault(_norm_nome(nome), {"nome": nome, "turmas": []})
+            if turma not in g["turmas"]:
+                g["turmas"].append(turma)
+
+        utilizadores = {}
+        for u in db.execute("SELECT id, nome, turma FROM users WHERE role='diretor'").fetchall():
+            utilizadores.setdefault(_norm_nome(u["nome"]), []).append(u)
+
+        alterados, sem_alteracao, nao_encontrados, ambiguos = [], [], [], []
+        for chave, g in grupos.items():
+            cand = utilizadores.get(chave, [])
+            if not cand:
+                nao_encontrados.append(g)
+                continue
+            if len(cand) > 1:
+                ambiguos.append(g)
+                continue
+            u = cand[0]
+            antes = [t.strip() for t in (u["turma"] or "").split(",") if t.strip()]
+            if substituir:
+                depois = list(g["turmas"])
+            else:
+                bases = {base_turma(t) for t in antes}
+                depois = antes + [t for t in g["turmas"] if base_turma(t) not in bases]
+            if [base_turma(t) for t in depois] == [base_turma(t) for t in antes]:
+                sem_alteracao.append(u["nome"])
+                continue
+            alterados.append({"nome": u["nome"], "antes": ", ".join(antes) or "—",
+                              "depois": ", ".join(depois)})
+            if aplicar:
+                db.execute("UPDATE users SET turma=? WHERE id=?", (",".join(depois), u["id"]))
+
+        em_ficheiro = set(grupos)
+        sem_turma_no_ficheiro = [u["nome"] for k, lst in utilizadores.items()
+                                 if k not in em_ficheiro for u in lst]
+
+        existentes = {base_turma(r["turma"]) for r in db.execute(
+            "SELECT DISTINCT turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall()}
+        turmas_sem_alunos = sorted({t for g in grupos.values() for t in g["turmas"]
+                                    if base_turma(t) not in existentes})
+
+        if aplicar:
+            db.commit()
+            flash(f"{len(alterados)} diretor(es) atualizado(s).", "success")
+        relatorio = {
+            "aplicado": aplicar, "substituir": substituir, "ano": ano,
+            "n_turmas": sum(len(g["turmas"]) for g in grupos.values()),
+            "n_diretores": len(grupos),
+            "alterados": alterados, "sem_alteracao": sem_alteracao,
+            "nao_encontrados": nao_encontrados, "ambiguos": ambiguos,
+            "sem_turma_no_ficheiro": sem_turma_no_ficheiro,
+            "turmas_sem_alunos": turmas_sem_alunos,
+        }
+
+    return render_template("importar_diretores.html", relatorio=relatorio, ano=ano)
+
+
 # ─── Importar notas de "Literacias" (11º ano, só 2º semestre) ─────────────────
 
 @app.route("/admin/importar-literacias", methods=["GET", "POST"])
