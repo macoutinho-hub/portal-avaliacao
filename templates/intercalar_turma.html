@@ -23,19 +23,29 @@
     Em cada disciplina: <strong>Desempenho</strong> (MB, B, S, I, MI) · <strong>Ritmo</strong> (A, NA) ·
     <strong>Envolvimento</strong> (MS, S, NS). Passe o rato por cima para ver o texto completo.
   </div>
+  <style>
+    .interc-tab .badge { font-size: .72rem; }
+    .interc-tab th:first-child, .interc-tab td:first-child {
+      position: sticky; left: 0; z-index: 1; text-align: left;
+      background-color: var(--bs-body-bg, #fff); box-shadow: 1px 0 0 #dee2e6;
+    }
+    .interc-tab thead th:first-child { background-color: #f8f9fa; }
+    .interc-tab tr.table-warning td:first-child { background-color: #fff3cd; }
+  </style>
   <div class="table-responsive">
-    <table class="table table-sm align-middle text-center mb-0" style="white-space:nowrap">
+    <table class="table table-sm align-middle text-center mb-0 interc-tab" style="white-space:nowrap">
       <thead class="table-light">
         <tr>
-          <th class="text-start">Aluno</th>
-          {% for d in disciplinas %}<th>{{ d }}</th>{% endfor %}
+          <th>Aluno</th>
           <th>Alertas</th>
+          {% for d in disciplinas %}<th>{{ d }}</th>{% endfor %}
         </tr>
       </thead>
       <tbody>
         {% for a in alunos %}
         <tr class="{{ 'table-warning' if a.alertas }}">
-          <td class="text-start"><a href="{{ url_for('aluno', aluno_id=a.id) }}">{{ a.nome }}</a></td>
+          <td><a href="{{ url_for('aluno', aluno_id=a.id) }}">{{ a.nome }}</a></td>
+          <td>{% if a.alertas %}<span class="badge text-bg-danger">{{ a.alertas }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
           {% for d in disciplinas %}
           {% set r = a.cel.get(d) %}
           <td>
@@ -46,7 +56,6 @@
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           {% endfor %}
-          <td>{% if a.alertas %}<span class="badge text-bg-danger">{{ a.alertas }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
