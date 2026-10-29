@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Avaliação intercalar · {{ turma }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-3">
+    <div>
+      <h2 class="fw-bold mb-1"><i class="bi bi-speedometer2 me-2 text-primary"></i>Avaliação intercalar · Turma {{ turma }}</h2>
+      <p class="text-muted mb-0">{{ ano }} · {{ sem }}.º semestre ·
+        {{ total_alertas }} alerta{{ 's' if total_alertas != 1 }} (Insuficiente, Não adequado ou Insatisfatório)</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      {% for s in semestres %}
+      <a href="?semestre={{ s }}" class="btn btn-sm {% if s == sem %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ s }}.º semestre</a>
+      {% endfor %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Turma</a>
+    </div>
+  </div>
+
+  {% if not disciplinas %}
+  <div class="alert alert-info">Ainda não há avaliação intercalar importada para esta turma neste semestre.</div>
+  {% else %}
+  <div class="small text-muted mb-2">
+    Em cada disciplina: <strong>Desempenho</strong> (MB, B, S, I, MI) · <strong>Ritmo</strong> (A, NA) ·
+    <strong>Envolvimento</strong> (MS, S, NS). Passe o rato por cima para ver o texto completo.
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle text-center mb-0" style="white-space:nowrap">
+      <thead class="table-light">
+        <tr>
+          <th class="text-start">Aluno</th>
+          {% for d in disciplinas %}<th>{{ d }}</th>{% endfor %}
+          <th>Alertas</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in alunos %}
+        <tr class="{{ 'table-warning' if a.alertas }}">
+          <td class="text-start"><a href="{{ url_for('aluno', aluno_id=a.id) }}">{{ a.nome }}</a></td>
+          {% for d in disciplinas %}
+          {% set r = a.cel.get(d) %}
+          <td>
+            {% if r %}
+              {% for v in (r['desempenho'], r['ritmo'], r['envolvimento']) %}
+                {% if v %}<span class="badge text-bg-{{ interc_cor[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span>{% endif %}
+              {% endfor %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          {% endfor %}
+          <td>{% if a.alertas %}<span class="badge text-bg-danger">{{ a.alertas }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

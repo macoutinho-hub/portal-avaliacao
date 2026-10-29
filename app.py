@@ -236,6 +236,23 @@ def init_db():
     """)
     db.commit()
 
+    # Avaliação intercalar (por aluno, disciplina e semestre)
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS avaliacao_intercalar (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id      INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            disciplina    TEXT NOT NULL,
+            ano_letivo    TEXT NOT NULL,
+            semestre      INTEGER NOT NULL,
+            desempenho    TEXT,
+            ritmo         TEXT,
+            envolvimento  TEXT,
+            updated_at    TEXT,
+            UNIQUE(aluno_id, disciplina, ano_letivo, semestre)
+        );
+    """)
+    db.commit()
+
     # Registo das turmas de cada diretor, por ano letivo
     db.executescript("""
         CREATE TABLE IF NOT EXISTS diretor_turma_ano (
@@ -1176,7 +1193,13 @@ def aluno(aluno_id):
     aluno_anterior = ids_turma[idx_atual - 1] if idx_atual > 0 else None
     aluno_seguinte = ids_turma[idx_atual + 1] if idx_atual >= 0 and idx_atual < len(ids_turma) - 1 else None
 
-    resp = make_response(render_template("aluno.html", aluno=a,
+    intercalar = {}
+    for r in db.execute(
+            "SELECT disciplina, semestre, desempenho, ritmo, envolvimento FROM avaliacao_intercalar "
+            "WHERE aluno_id=? ORDER BY semestre DESC, id", (aluno_id,)).fetchall():
+        intercalar.setdefault(r["semestre"], []).append(r)
+
+    resp = make_response(render_template("aluno.html", aluno=a, intercalar=intercalar,
                            todas_disciplinas=todas_disciplinas,
                            todas_disciplinas_possiveis=todas_disciplinas_possiveis,
                            abreviaturas=ABREVIATURAS,
@@ -3183,6 +3206,247 @@ def importar_diretores():
         "SELECT ano_letivo, COUNT(DISTINCT user_id) AS n_dir, COUNT(*) AS n "
         "FROM diretor_turma_ano GROUP BY ano_letivo ORDER BY ano_letivo").fetchall()
     return render_template("importar_diretores.html", relatorio=relatorio, ano=ano, registo=registo)
+
+
+# ─── Avaliação intercalar ─────────────────────────────────────────────────────
+# Pauta de avaliação intercalar com parâmetros (exportada do eSchooling):
+# por disciplina, Desempenho / Ritmo de trabalho / Envolvimento e colaboração.
+
+INTERCALAR_COD = {
+    "desempenho":   {"MB": "Muito Bom", "B": "Bom", "S": "Suficiente",
+                     "I": "Insuficiente", "MI": "Muito Insuficiente"},
+    "ritmo":        {"A": "Adequado", "NA": "Não adequado"},
+    "envolvimento": {"MS": "Muito satisfatório", "S": "Satisfatório", "NS": "Insatisfatório"},
+}
+INTERCALAR_SIGLA = {v: k for d in INTERCALAR_COD.values() for k, v in d.items()}
+INTERCALAR_COR = {
+    "Muito Bom": "success", "Bom": "success", "Suficiente": "secondary",
+    "Insuficiente": "danger", "Muito Insuficiente": "danger",
+    "Adequado": "success", "Não adequado": "danger",
+    "Muito satisfatório": "success", "Satisfatório": "success", "Insatisfatório": "danger",
+}
+
+def intercalar_alerta(desempenho, ritmo, envolvimento):
+    return (desempenho in ("Insuficiente", "Muito Insuficiente")
+            or ritmo == "Não adequado" or envolvimento == "Insatisfatório")
+
+app.jinja_env.globals.update(interc_cor=INTERCALAR_COR, interc_sigla=INTERCALAR_SIGLA,
+                             interc_alerta=intercalar_alerta)
+
+# Abreviaturas da pauta que o importador de notas ainda não conhece
+# (chaves já sem acentos e em minúsculas, ver _norm_nome)
+_DISC_INTERCALAR = {
+    "filo.": "Filosofia", "ed.fisica": "Educação Física", "le i-ing.": "Inglês",
+    "mat. g (a)": "Matemática Geral", "fis.quim.a": "Física e Química A",
+    "geo.desc.a": "Geometria Descritiva A", "geog.a": "Geografia A",
+    "religiao": "Religião", "lit.": "Literacias", "bio.": "Biologia",
+    "fis.": "Física", "quim.": "Química",
+}
+
+def _canon_disc_intercalar(nome, conhecidas):
+    base = canonizar_disciplina(nome)
+    if base == str(nome).strip():
+        base = _DISC_INTERCALAR.get(_norm_nome(nome), base)
+    if (base == "Inglês" and "Inglês" not in conhecidas
+            and "Líng. Estrang. I - Inglês" in conhecidas):
+        base = "Líng. Estrang. I - Inglês"
+    return base
+
+def parse_intercalar_excel(ws):
+    """Lê a pauta intercalar. Devolve None se o formato não for reconhecido, ou
+    {ano, semestre, disciplinas: [nomes], alunos: [{numero, avals}], invalidos}.
+    avals = {disciplina: {desempenho, ritmo, envolvimento}} (só o que foi avaliado)."""
+    import re as _r
+    rows = list(ws.iter_rows(values_only=True))
+    t = _norm_nome
+
+    r_par = next((i for i, row in enumerate(rows)
+                  if any(t(v).startswith("desempenho") for v in row)), None)
+    if r_par is None:
+        return None
+    kinds = {}
+    for c, v in enumerate(rows[r_par]):
+        for k in ("desempenho", "ritmo", "envolvimento"):
+            if t(v).startswith(k):
+                kinds[c] = k
+    n_desemp = sum(1 for k in kinds.values() if k == "desempenho")
+
+    # Nome da disciplina: está na primeira coluna do seu bloco (células unidas)
+    disc_start = {}
+    for off in (1, 2, 3):
+        if r_par - off < 0:
+            break
+        cand = {c: str(v).strip() for c, v in enumerate(rows[r_par - off])
+                if v not in (None, "") and not t(v).startswith("aval")}
+        if len(cand) >= max(1, n_desemp):
+            disc_start = cand
+            break
+    if not disc_start:
+        return None
+
+    ano = semestre = None
+    for row in rows[:r_par]:
+        for v in row:
+            if v in (None, ""):
+                continue
+            s = str(v)
+            m = _r.search(r"(\d{4})\s*/\s*(\d{4})", s)
+            if m and not ano:
+                ano = f"{m.group(1)}/{m.group(2)}"
+            m = _r.search(r"Sec\.?\s*(\d)\s*S", s) or _r.search(r"(\d)\s*[ºo°]\s*sem", s, _r.I)
+            if m and not semestre:
+                semestre = int(m.group(1))
+
+    hdr = rows[r_par + 1] if r_par + 1 < len(rows) else []
+    c_num = next((c for c, v in enumerate(hdr) if "processo" in t(v)), None)
+    if c_num is None:
+        return None
+
+    alunos, invalidos = [], set()
+    for row in rows[r_par + 2:]:
+        v = row[c_num] if c_num < len(row) else None
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        numero = str(v or "").strip()
+        if not numero.isdigit():
+            continue
+        avals = {}
+        for c, k in kinds.items():
+            cod = str(row[c] if c < len(row) and row[c] is not None else "").strip().upper()
+            if cod in ("", "-"):
+                continue
+            valor = INTERCALAR_COD[k].get(cod)
+            if valor is None:
+                invalidos.add(f"{k}: {cod}")
+                continue
+            ds = max((s for s in disc_start if s <= c), default=None)
+            if ds is not None:
+                avals.setdefault(disc_start[ds], {})[k] = valor
+        alunos.append({"numero": numero, "avals": avals})
+    return {"ano": ano, "semestre": semestre, "disciplinas": list(disc_start.values()),
+            "alunos": alunos, "invalidos": sorted(invalidos)}
+
+@app.route("/admin/importar-intercalar", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_intercalar():
+    import io as _io
+    db = get_db()
+    relatorio = None
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        aplicar = request.form.get("modo") == "aplicar"
+        if not f or not f.filename.lower().endswith(".xlsx"):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_intercalar"))
+        try:
+            ws = openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True).active
+            dados = parse_intercalar_excel(ws)
+        except Exception as e:
+            flash(f"Não foi possível ler o ficheiro: {e}", "danger")
+            return redirect(url_for("importar_intercalar"))
+        if not dados or not dados["alunos"]:
+            flash("Formato não reconhecido (esperada a pauta de avaliação intercalar com "
+                  "parâmetros: Desempenho, Ritmo de Trabalho, Envolvimento e colaboração).", "danger")
+            return redirect(url_for("importar_intercalar"))
+
+        ano = (request.form.get("ano_letivo") or "").strip() or dados["ano"] or ano_letivo_atual(db)
+        sem_form = request.form.get("semestre", "")
+        semestre = int(sem_form) if sem_form in ("1", "2") else (dados["semestre"] or semestre_atual(db))
+
+        alunos_ano = {r["numero"]: r for r in db.execute(
+            "SELECT id, numero, turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall()}
+        conhecidas = {r[0] for r in db.execute("SELECT DISTINCT disciplina FROM notas").fetchall()}
+        mapa = {d: _canon_disc_intercalar(d, conhecidas) for d in dados["disciplinas"]}
+
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M")
+        nao_encontrados, turmas, n_novos, n_atual, n_alertas = [], set(), 0, 0, 0
+        alunos_com_dados = 0
+        for al in dados["alunos"]:
+            row = alunos_ano.get(al["numero"])
+            if not row:
+                nao_encontrados.append(al["numero"])
+                continue
+            turmas.add(base_turma(row["turma"]))
+            if al["avals"]:
+                alunos_com_dados += 1
+            for disc_orig, v in al["avals"].items():
+                disc = mapa.get(disc_orig, disc_orig)
+                d, r, e = v.get("desempenho"), v.get("ritmo"), v.get("envolvimento")
+                existe = db.execute(
+                    "SELECT 1 FROM avaliacao_intercalar WHERE aluno_id=? AND disciplina=? "
+                    "AND ano_letivo=? AND semestre=?", (row["id"], disc, ano, semestre)).fetchone()
+                if existe:
+                    n_atual += 1
+                else:
+                    n_novos += 1
+                if intercalar_alerta(d, r, e):
+                    n_alertas += 1
+                if aplicar:
+                    db.execute(
+                        """INSERT INTO avaliacao_intercalar
+                           (aluno_id, disciplina, ano_letivo, semestre, desempenho, ritmo, envolvimento, updated_at)
+                           VALUES (?,?,?,?,?,?,?,?)
+                           ON CONFLICT(aluno_id, disciplina, ano_letivo, semestre)
+                           DO UPDATE SET desempenho=excluded.desempenho, ritmo=excluded.ritmo,
+                                         envolvimento=excluded.envolvimento, updated_at=excluded.updated_at""",
+                        (row["id"], disc, ano, semestre, d, r, e, agora))
+        if aplicar:
+            db.commit()
+            flash(f"Avaliação intercalar importada: {n_novos + n_atual} registo(s).", "success")
+        relatorio = {
+            "aplicado": aplicar, "ano": ano, "semestre": semestre,
+            "ano_ficheiro": dados["ano"], "semestre_ficheiro": dados["semestre"],
+            "n_alunos": len(dados["alunos"]), "n_encontrados": len(dados["alunos"]) - len(nao_encontrados),
+            "nao_encontrados": nao_encontrados, "turmas": sorted(turmas),
+            "disciplinas": [(d, mapa[d], mapa[d] in conhecidas) for d in dados["disciplinas"]],
+            "n_novos": n_novos, "n_atualizados": n_atual, "n_alertas": n_alertas,
+            "invalidos": dados["invalidos"],
+        }
+
+    return render_template("importar_intercalar.html", relatorio=relatorio,
+                           ano=ano_letivo_atual(db), semestre=semestre_atual(db))
+
+@app.route("/turma/<path:turma>/intercalar")
+@login_required
+def intercalar_turma(turma):
+    db = get_db()
+    if not _check_turma_perm(turma):
+        flash("Não tem permissão para ver esta turma.", "danger")
+        return redirect(url_for("dashboard"))
+    tb = base_turma(turma)
+    ano = ano_letivo_atual(db)
+    turmas_reais = turmas_base_para_sql(tb, db, ano) or [turma]
+    ph = ",".join("?" * len(turmas_reais))
+    rows = db.execute(
+        f"""SELECT a.id AS aluno_id, a.numero, a.nome, i.disciplina, i.semestre,
+                   i.desempenho, i.ritmo, i.envolvimento
+            FROM alunos a LEFT JOIN avaliacao_intercalar i ON i.aluno_id = a.id
+            WHERE a.turma IN ({ph}) AND a.ano_letivo=? ORDER BY a.nome, i.id""",
+        turmas_reais + [ano]).fetchall()
+
+    semestres = sorted({r["semestre"] for r in rows if r["semestre"]})
+    sem = request.args.get("semestre", type=int)
+    if sem not in semestres:
+        sem = semestres[-1] if semestres else semestre_atual(db)
+
+    disciplinas, alunos, por_aluno = [], [], {}
+    for r in rows:
+        al = por_aluno.get(r["aluno_id"])
+        if al is None:
+            al = por_aluno[r["aluno_id"]] = {"id": r["aluno_id"], "numero": r["numero"],
+                                              "nome": r["nome"], "cel": {}, "alertas": 0}
+            alunos.append(al)
+        if r["semestre"] == sem and r["disciplina"]:
+            if r["disciplina"] not in disciplinas:
+                disciplinas.append(r["disciplina"])
+            al["cel"][r["disciplina"]] = r
+            if intercalar_alerta(r["desempenho"], r["ritmo"], r["envolvimento"]):
+                al["alertas"] += 1
+    return render_template("intercalar_turma.html", turma=tb, ano=ano, sem=sem,
+                           semestres=semestres, disciplinas=disciplinas, alunos=alunos,
+                           total_alertas=sum(a["alertas"] for a in alunos))
 
 
 # ─── Importar notas de "Literacias" (11º ano, só 2º semestre) ─────────────────

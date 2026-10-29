@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:820px">
+  <h4 class="mb-4"><i class="bi bi-speedometer2 me-2"></i>Importar Avaliação Intercalar</h4>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Carregue a <strong>Pauta de Avaliação Periódica-Intermédia com Parâmetros</strong>
+        exportada do eSchooling (uma turma por ficheiro). Os alunos são identificados pelo
+        <strong>N.º Processo</strong>. Os campos por avaliar (<code>-</code>) são ignorados.
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro (.xlsx)</label>
+          <input type="file" name="ficheiro" accept=".xlsx" class="form-control" required>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Ano letivo</label>
+            <input type="text" name="ano_letivo" class="form-control" placeholder="detetar no ficheiro">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Semestre</label>
+            <select name="semestre" class="form-select">
+              <option value="" selected>Detetar no ficheiro</option>
+              <option value="1">1.º semestre</option>
+              <option value="2">2.º semestre</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Modo</label>
+            <select name="modo" class="form-select">
+              <option value="simular" selected>Simular (não altera nada)</option>
+              <option value="aplicar">Aplicar alterações</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-upload me-1"></i>Importar
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-3 text-muted small">
+    <i class="bi bi-info-circle me-1"></i>Ano letivo atual: {{ ano }} · {{ semestre }}.º semestre.
+    Repetir a importação atualiza os registos do mesmo aluno, disciplina e semestre.
+    O ficheiro não fica guardado no servidor.
+  </div>
+
+  {% if relatorio %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-header fw-semibold">
+      {% if relatorio.aplicado %}
+        <i class="bi bi-check-circle text-success me-1"></i>Importação aplicada
+      {% else %}
+        <i class="bi bi-eye text-primary me-1"></i>Simulação — nada foi alterado
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <p class="mb-2">
+        Ano letivo <strong>{{ relatorio.ano }}</strong>, <strong>{{ relatorio.semestre }}.º semestre</strong>
+        {% if not relatorio.ano_ficheiro %}<span class="text-muted">(o ano não consta no ficheiro)</span>{% endif %}
+      </p>
+      <p class="mb-3">
+        O ficheiro tem <strong>{{ relatorio.n_alunos }}</strong> alunos;
+        <strong>{{ relatorio.n_encontrados }}</strong> existem no portal
+        {% if relatorio.turmas %}(turma {{ relatorio.turmas|join(', ') }}){% endif %}.
+        {{ 'Foram' if relatorio.aplicado else 'Seriam' }} gravados
+        <strong>{{ relatorio.n_novos }}</strong> registos novos e
+        <strong>{{ relatorio.n_atualizados }}</strong> atualizados, dos quais
+        <strong>{{ relatorio.n_alertas }}</strong> com alerta
+        (Insuficiente, Não adequado ou Insatisfatório).
+      </p>
+
+      <h6>Disciplinas do ficheiro</h6>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>No ficheiro</th><th>No portal</th><th></th></tr></thead>
+          <tbody>
+            {% for orig, canon, ok in relatorio.disciplinas %}
+            <tr>
+              <td>{{ orig }}</td><td>{{ canon }}</td>
+              <td>{% if ok %}<span class="badge text-bg-success">conhecida</span>
+                  {% else %}<span class="badge text-bg-warning">não encontrada nas notas</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if relatorio.nao_encontrados %}
+      <div class="alert alert-warning">
+        <strong>N.º de processo sem aluno em {{ relatorio.ano }} ({{ relatorio.nao_encontrados|length }}):</strong>
+        {{ relatorio.nao_encontrados|join(', ') }}.
+        Confirme o ano letivo e se os alunos foram importados.
+      </div>
+      {% endif %}
+
+      {% if relatorio.invalidos %}
+      <div class="alert alert-warning mb-0">
+        <strong>Valores não reconhecidos (ignorados):</strong> {{ relatorio.invalidos|join('; ') }}.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
