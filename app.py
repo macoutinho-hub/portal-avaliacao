@@ -1193,13 +1193,25 @@ def aluno(aluno_id):
     aluno_anterior = ids_turma[idx_atual - 1] if idx_atual > 0 else None
     aluno_seguinte = ids_turma[idx_atual + 1] if idx_atual >= 0 and idx_atual < len(ids_turma) - 1 else None
 
-    intercalar = {}
-    for r in db.execute(
-            "SELECT disciplina, semestre, desempenho, ritmo, envolvimento FROM avaliacao_intercalar "
-            "WHERE aluno_id=? ORDER BY semestre DESC, id", (aluno_id,)).fetchall():
-        intercalar.setdefault(r["semestre"], []).append(r)
+    # Avaliação intercalar: uma linha por parâmetro, nas mesmas colunas das notas
+    interc_linhas, interc_cols = [], []
+    _rows_int = db.execute(
+        "SELECT disciplina, semestre, desempenho, ritmo, envolvimento FROM avaliacao_intercalar "
+        "WHERE aluno_id=? ORDER BY semestre, id", (aluno_id,)).fetchall()
+    if _rows_int:
+        interc_cols = list(todas_disciplinas)
+        for r in _rows_int:
+            if r["disciplina"] not in interc_cols:
+                interc_cols.append(r["disciplina"])
+        for sem in sorted({r["semestre"] for r in _rows_int}):
+            for chave, titulo in (("desempenho", "Desempenho"), ("ritmo", "Ritmo de trabalho"),
+                                  ("envolvimento", "Envolvimento")):
+                interc_linhas.append({
+                    "sem": sem, "titulo": titulo, "primeira": chave == "desempenho",
+                    "vals": {r["disciplina"]: r[chave] for r in _rows_int if r["semestre"] == sem}})
 
-    resp = make_response(render_template("aluno.html", aluno=a, intercalar=intercalar,
+    resp = make_response(render_template("aluno.html", aluno=a,
+                           interc_linhas=interc_linhas, interc_cols=interc_cols,
                            todas_disciplinas=todas_disciplinas,
                            todas_disciplinas_possiveis=todas_disciplinas_possiveis,
                            abreviaturas=ABREVIATURAS,

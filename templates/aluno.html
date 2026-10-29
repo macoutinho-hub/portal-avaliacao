@@ -279,7 +279,7 @@
     </div>
   </div>
 
-  {% if intercalar %}
+  {% if interc_linhas %}
   <!-- ── AVALIAÇÃO INTERCALAR ─────────────────────────────────────────── -->
   <div class="card border-0 shadow mb-4">
     <div class="card-header py-3" style="background:#1a3c6e">
@@ -288,26 +288,38 @@
       </h5>
     </div>
     <div class="card-body">
-      {% for sem, regs in intercalar.items() %}
-      <h6 class="fw-semibold mb-2">{{ sem }}º Semestre</h6>
-      <div class="table-responsive {% if not loop.last %}mb-4{% endif %}">
-        <table class="table table-sm align-middle mb-0">
+      <div class="table-responsive">
+        <table class="tabela-perfil">
           <thead>
-            <tr><th>Disciplina</th><th>Desempenho</th><th>Ritmo de trabalho</th><th>Envolvimento e colaboração</th></tr>
+            <tr>
+              <th style="text-align:left; min-width:110px">Semestre / Parâmetro</th>
+              {% for disc in interc_cols %}
+              <th class="disc-header {% if loop.index0 == separador_idx %}separador-col{% endif %}" title="{{ disc }}">
+                {{ abreviaturas.get(disc, disc[:6]) }}
+              </th>
+              {% endfor %}
+            </tr>
           </thead>
           <tbody>
-            {% for r in regs %}
-            <tr class="{{ 'table-warning' if interc_alerta(r['desempenho'], r['ritmo'], r['envolvimento']) }}">
-              <td>{{ r['disciplina'] }}</td>
-              {% for v in (r['desempenho'], r['ritmo'], r['envolvimento']) %}
-              <td>{% if v %}<span class="badge text-bg-{{ interc_cor[v] }}">{{ v }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            {% for l in interc_linhas %}
+            <tr {% if l.primeira %}style="border-top:2px solid #94a3b8"{% endif %}>
+              <td class="row-label">{% if l.primeira %}<strong>{{ l.sem }}º Sem.</strong> · {% endif %}{{ l.titulo }}</td>
+              {% for disc in interc_cols %}
+              {% set v = l.vals.get(disc) %}
+              <td class="{% if loop.index0 == separador_idx %}separador-col{% endif %}">
+                {% if v %}<span class="badge text-bg-{{ interc_cor[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span>{% else %}<span class="n-nd">—</span>{% endif %}
+              </td>
               {% endfor %}
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-      {% endfor %}
+      <div class="small text-muted mt-2">
+        <strong>Desempenho:</strong> MB muito bom · B bom · S suficiente · I insuficiente · MI muito insuficiente &nbsp;|&nbsp;
+        <strong>Ritmo:</strong> A adequado · NA não adequado &nbsp;|&nbsp;
+        <strong>Envolvimento:</strong> MS muito satisfatório · S satisfatório · NS insatisfatório
+      </div>
     </div>
   </div>
   {% endif %}
