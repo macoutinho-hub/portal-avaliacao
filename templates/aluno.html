@@ -45,6 +45,9 @@
   .n-med  { background: #f59e0b; color: white; }
   .n-bom  { background: #22c55e; color: white; }
   .n-exc  { background: #3b82f6; color: white; }
+  .n-mneg { background: #b91c1c; color: white; }
+  .interc-cell { cursor: default; font-size: .78rem; padding: 2px 5px; min-width: 30px; text-align: center; }
+  .interc-cell:hover { opacity: 1; outline: none; }
   .n-nd   { color: #9ca3af; }
   .media-cell { background: #f8f9fb; font-weight: 700; border-left: 2px solid #cbd5e1 !important; }
   .separador-col { border-left: 2px solid #22c55e !important; }
@@ -307,7 +310,7 @@
               {% for disc in interc_cols %}
               {% set v = l.vals.get(disc) %}
               <td class="{% if loop.index0 == separador_idx %}separador-col{% endif %}">
-                {% if v %}<span class="badge text-bg-{{ interc_cor[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span>{% else %}<span class="n-nd">—</span>{% endif %}
+                {% if v %}<span class="nota-cell interc-cell {{ interc_nivel[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span>{% else %}<span class="n-nd">—</span>{% endif %}
               </td>
               {% endfor %}
             </tr>

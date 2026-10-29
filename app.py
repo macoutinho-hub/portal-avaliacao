@@ -3238,12 +3238,20 @@ INTERCALAR_COR = {
     "Muito satisfatório": "success", "Satisfatório": "success", "Insatisfatório": "danger",
 }
 
+# Mesma gradação de cores das notas: vermelho < laranja < verde < azul
+INTERCALAR_NIVEL = {
+    "Muito Bom": "n-exc", "Bom": "n-bom", "Suficiente": "n-med",
+    "Insuficiente": "n-neg", "Muito Insuficiente": "n-mneg",
+    "Adequado": "n-bom", "Não adequado": "n-neg",
+    "Muito satisfatório": "n-exc", "Satisfatório": "n-bom", "Insatisfatório": "n-neg",
+}
+
 def intercalar_alerta(desempenho, ritmo, envolvimento):
     return (desempenho in ("Insuficiente", "Muito Insuficiente")
             or ritmo == "Não adequado" or envolvimento == "Insatisfatório")
 
 app.jinja_env.globals.update(interc_cor=INTERCALAR_COR, interc_sigla=INTERCALAR_SIGLA,
-                             interc_alerta=intercalar_alerta)
+                             interc_nivel=INTERCALAR_NIVEL, interc_alerta=intercalar_alerta)
 
 # Abreviaturas da pauta que o importador de notas ainda não conhece
 # (chaves já sem acentos e em minúsculas, ver _norm_nome)
