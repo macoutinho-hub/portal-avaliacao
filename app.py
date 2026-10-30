@@ -4037,7 +4037,9 @@ def ct_avaliar():
     obs = {r["aluno_id"]: r["texto"] for r in db.execute(
         "SELECT aluno_id, texto FROM ct_obs WHERE ano_letivo=? AND momento=? AND professor_id=? "
         "AND disciplina=?", (ano, mom["id"], uid, disc))}
+    tem_opc = any(not ct_cfg.CT_POR_ID[ct]["basica"] for por_ct in exist.values() for ct in por_ct)
     return render_template("ct_avaliar.html", turma=turma, disc=disc, mom=mom, alunos=alunos,
+                           tem_opc=tem_opc,
                            filtrado=filtrado, cts=[ct_cfg.CT_POR_ID[c] for c in mom["cts"]],
                            exist=exist, obs=obs, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
                            maxd=ct_cfg.MAX_DESCRITORES, readonly=readonly, ano=ano)
@@ -4099,9 +4101,12 @@ def ct_turma(turma):
     if mid not in ct_cfg.MOMENTOS_POR_ID:
         mid = _ct_momento_ativo(db)
     mom, linhas = _ct_quadro(db, tb, ano, mid)
+    # As 3 básicas aparecem sempre; as 4 complexas só quando há avaliações ou decisão na turma
+    com_dados = {ct for l in linhas for ct, cel in l["cel"].items() if cel["aval"] or cel["dec"]}
+    cts_mostrar = [c for c in mom["cts"] if ct_cfg.CT_POR_ID[c]["basica"] or c in com_dados]
     return render_template("ct_turma.html", turma=tb, ano=ano, mom=mom, momentos=ct_cfg.MOMENTOS,
                            ativo=_ct_momento_ativo(db), linhas=linhas,
-                           cts=[ct_cfg.CT_POR_ID[c] for c in mom["cts"]],
+                           cts=[ct_cfg.CT_POR_ID[c] for c in cts_mostrar],
                            niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL, descritores=ct_cfg.DESCRITORES,
                            readonly=bool(session.get("original_role")))
 
@@ -4128,6 +4133,8 @@ def ct_decidir(turma):
     agora, n = _ct_agora(), 0
     for aid in ids:
         for ct in mom["cts"]:
+            if f"dec_{aid}_{ct}" not in request.form:   # coluna não apresentada: não mexer
+                continue
             v = request.form.get(f"dec_{aid}_{ct}", "")
             if v in ("1", "2", "3", "4", "5"):
                 db.execute(

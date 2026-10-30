@@ -84,14 +84,15 @@ for _c in CT:   # códigos dos descritores: AUTN1, AUTN2, ...
 DESCRITORES = {cod: txt for c in CT for cod, txt in c["descritores"]}
 
 # ── Momentos de avaliação ──────────────────────────────────────────────────────
-# O intercalar do 1.º semestre avalia só as 3 CT básicas; os finais avaliam as 7 (as 4 complexas são
-# opcionais, só quando a disciplina realizou uma tarefa). Os descritores a melhorar só nos dois primeiros.
+# As 3 CT básicas (AUTN, RESP, COOP) são avaliadas por todas as disciplinas em todos os momentos. As 4
+# complexas (CCRT, RSPL, COMN, CRIA) são sempre opcionais (só quando a disciplina realizou uma tarefa
+# que as trabalhe), mesmo no intercalar do 1.º semestre. Os descritores a melhorar só nos dois primeiros.
 BASICAS = [c["id"] for c in CT if c["basica"]]
 TODAS = [c["id"] for c in CT]
 MOMENTOS = [
-    {"id": "intercalar_1s", "nome": "Intercalar do 1.º semestre", "cts": BASICAS, "descritores": True},
-    {"id": "final_1s",      "nome": "Final do 1.º semestre",      "cts": TODAS,   "descritores": True},
-    {"id": "final_2s",      "nome": "Final do 2.º semestre",      "cts": TODAS,   "descritores": False},
+    {"id": "intercalar_1s", "nome": "Intercalar do 1.º semestre", "cts": TODAS, "descritores": True},
+    {"id": "final_1s",      "nome": "Final do 1.º semestre",      "cts": TODAS, "descritores": True},
+    {"id": "final_2s",      "nome": "Final do 2.º semestre",      "cts": TODAS, "descritores": False},
 ]
 MOMENTOS_POR_ID = {m["id"]: m for m in MOMENTOS}
 MAX_DESCRITORES = 2

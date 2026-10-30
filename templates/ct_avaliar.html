@@ -6,6 +6,8 @@
   .ct-tab th:first-child, .ct-tab td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; min-width: 190px; box-shadow: 1px 0 0 #dee2e6; }
   .ct-tab thead th:first-child { background: #f8f9fa; }
   .ct-sel { min-width: 150px; font-weight: 600; }
+  .ct-tab .opc { display: none; }
+  .ct-tab.mostra-opc .opc { display: table-cell; background: #fafcff; }
   .dsc { position: relative; margin-top: 4px; }
   .dsc > summary { font-size: .78rem; color: #0E4D7D; cursor: pointer; list-style: none; }
   .dsc > summary::before { content: '＋ '; }
@@ -44,16 +46,17 @@
   {% endif %}
   <p class="text-muted small mb-2">Os campos em branco ficam por avaliar.
     {% if mom.descritores %}<strong>Opcional:</strong> em «Descritores a melhorar» pode assinalar até {{ maxd }} por aluno e competência.{% endif %}
-    {% if mom.cts|length > 3 %}As competências CCRT, RSPL, COMN e CRIA só se avaliam se a disciplina realizou uma tarefa que as trabalhe.{% endif %}</p>
+    <strong>AUTN, RESP e COOP</strong> são avaliadas por todas as disciplinas. <strong>CCRT, RSPL, COMN e CRIA são opcionais</strong>: só se a disciplina realizou uma tarefa que as trabalhe.</p>
+  <button type="button" id="toggle-opc" class="btn btn-sm btn-outline-secondary mb-2"></button>
 
   <form method="post" id="form-ct">
     <input type="hidden" name="turma" value="{{ turma }}"><input type="hidden" name="disc" value="{{ disc }}">
     <div class="table-responsive">
-      <table class="table table-sm ct-tab align-top mb-0">
+      <table class="table table-sm ct-tab align-top mb-0 {% if tem_opc %}mostra-opc{% endif %}" id="tabela-ct">
         <thead class="table-light">
           <tr>
             <th>Aluno</th>
-            {% for c in cts %}<th title="{{ c.def }}">{{ c.id }}<div class="fw-normal small text-muted">{{ c.nome }}{% if not c.basica %} <em>(opcional)</em>{% endif %}</div></th>{% endfor %}
+            {% for c in cts %}<th title="{{ c.def }}" class="{{ 'opc' if not c.basica }}">{{ c.id }}<div class="fw-normal small text-muted">{{ c.nome }}{% if not c.basica %} <em>(opcional)</em>{% endif %}</div></th>{% endfor %}
             <th style="min-width:230px">Observação (opcional)</th>
           </tr>
         </thead>
@@ -64,7 +67,7 @@
             <td><strong>{{ a.nome }}</strong><div class="small text-muted">Nº {{ a.numero }}</div></td>
             {% for c in cts %}
             {% set e = ex.get(c.id) %}
-            <td>
+            <td class="{{ 'opc' if not c.basica }}">
               <select name="n_{{ a.id }}_{{ c.id }}" class="form-select form-select-sm ct-sel" {% if readonly %}disabled{% endif %}>
                 <option value="">—</option>
                 {% for n, (rot, txt) in niveis.items() %}
@@ -103,6 +106,11 @@
 {% endblock %}
 {% block extra_js %}
 <script>
+const tabela = document.getElementById('tabela-ct'), btnOpc = document.getElementById('toggle-opc');
+function rotuloOpc() { btnOpc.innerHTML = tabela.classList.contains('mostra-opc')
+  ? '<i class="bi bi-eye-slash me-1"></i>Esconder as outras 4 competências (opcionais)'
+  : '<i class="bi bi-eye me-1"></i>Avaliar também as outras 4 competências (opcional)'; }
+if (btnOpc) { rotuloOpc(); btnOpc.addEventListener('click', () => { tabela.classList.toggle('mostra-opc'); rotuloOpc(); }); }
 const COR = {{ cor|tojson }};
 function pintar(sel) { const c = COR[sel.value]; sel.style.background = c || ''; sel.style.color = c ? '#fff' : ''; }
 document.querySelectorAll('.ct-sel').forEach(s => { pintar(s); s.addEventListener('change', () => pintar(s)); });
