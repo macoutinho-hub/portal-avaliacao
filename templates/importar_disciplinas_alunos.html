@@ -89,9 +89,13 @@
 
       {% if relatorio.sem_professor %}
       <div class="alert alert-secondary mb-0">
-        <strong>Disciplinas com turmas sem professor atribuído</strong> (em «Professores por Disciplina»):
+        <strong>Disciplinas com turmas sem professor atribuído</strong> (em «Professores por Disciplina»).
+        Pode atribuí-los em <a href="{{ url_for('atribuicoes') }}">Admin → Atribuições de professores</a>.
         <ul class="mb-0 mt-1">
-          {% for d, n in relatorio.sem_professor %}<li>{{ d }} — {{ n }} turma{{ 's' if n != 1 }}</li>{% endfor %}
+          {% for d, turmas in relatorio.sem_professor %}
+          <li>{{ d }} — {{ turmas|length }} turma{{ 's' if turmas|length != 1 }}:
+            {{ turmas[:14]|join(', ') }}{% if turmas|length > 14 %} …{% endif %}</li>
+          {% endfor %}
         </ul>
       </div>
       {% endif %}

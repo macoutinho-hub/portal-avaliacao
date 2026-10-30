@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Atribuições de professores{% endblock %}
+{% block content %}
+<div class="container py-3" style="max-width:1000px">
+  <h3 class="fw-bold mb-1"><i class="bi bi-person-lines-fill me-2 text-primary"></i>Atribuições de professores</h3>
+  <p class="text-muted">{{ ano }} · {{ total }} atribuições (professor, turma e disciplina). É com estas atribuições que cada professor vê as suas disciplinas nas Competências Transversais.</p>
+
+  <datalist id="lista-profs">{% for p in professores %}<option value="{{ p }}">{% endfor %}</datalist>
+  <datalist id="lista-discs">{% for d in disciplinas %}<option value="{{ d }}">{% endfor %}</datalist>
+  <datalist id="lista-turmas">{% for t in turmas %}<option value="{{ t }}">{% endfor %}</datalist>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header fw-semibold">Atribuir à mão</div>
+    <div class="card-body">
+      <form method="post" class="row g-2 align-items-end">
+        <input type="hidden" name="acao" value="adicionar"><input type="hidden" name="turma" value="{{ filtro }}">
+        <div class="col-md-4"><label class="form-label small mb-1">Professor</label>
+          <input name="professor" list="lista-profs" class="form-control form-control-sm" required placeholder="escolha da lista"></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Turma</label>
+          <input name="turma_nova" list="lista-turmas" class="form-control form-control-sm" required value="{{ filtro }}"></div>
+        <div class="col-md-4"><label class="form-label small mb-1">Disciplina</label>
+          <input name="disciplina" list="lista-discs" class="form-control form-control-sm" required></div>
+        <div class="col-md-2"><button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Atribuir</button></div>
+      </form>
+      <div class="form-text">O professor tem de ter conta no portal (professor ou diretor de turma).</div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-semibold">Turmas e disciplinas com alunos e sem professor ({{ lacunas|length }})</span>
+      {% if hora_pt %}
+      <form method="post" class="m-0">
+        <input type="hidden" name="acao" value="hora_pt">
+        <button class="btn btn-sm btn-outline-primary" title="Atribui a «Hora de PT» de cada turma ao seu PT"><i class="bi bi-magic me-1"></i>Hora de PT → PT da turma ({{ hora_pt }})</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if lacunas %}
+    <div class="table-responsive" style="max-height:420px;overflow:auto">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>Disciplina</th><th>Turma</th><th class="text-end">Alunos</th><th style="min-width:300px">Atribuir a</th></tr></thead>
+        <tbody>
+          {% for d, t, n in lacunas %}
+          <tr>
+            <td>{{ d }}</td><td>{{ t }}</td><td class="text-end">{{ n }}</td>
+            <td>
+              <form method="post" class="d-flex gap-1 m-0">
+                <input type="hidden" name="acao" value="adicionar"><input type="hidden" name="turma" value="{{ filtro }}">
+                <input type="hidden" name="turma_nova" value="{{ t }}"><input type="hidden" name="disciplina" value="{{ d }}">
+                <input name="professor" list="lista-profs" class="form-control form-control-sm" required placeholder="professor">
+                <button class="btn btn-sm btn-outline-primary">Atribuir</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body text-muted">Não há lacunas: todas as disciplinas com alunos têm professor. (Só aparece depois de importar as disciplinas dos alunos.)</div>
+    {% endif %}
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-semibold">Atribuições atuais ({{ lista|length }}{% if filtro %} na turma {{ filtro }}{% endif %})</span>
+      <form method="get" class="d-flex gap-1 m-0">
+        <input name="turma" list="lista-turmas" value="{{ filtro }}" class="form-control form-control-sm" placeholder="filtrar por turma" style="width:170px">
+        <button class="btn btn-sm btn-outline-secondary">Filtrar</button>
+        {% if filtro %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('atribuicoes') }}">Limpar</a>{% endif %}
+      </form>
+    </div>
+    <div class="table-responsive" style="max-height:480px;overflow:auto">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>Turma</th><th>Disciplina</th><th>Professor</th><th></th></tr></thead>
+        <tbody>
+          {% for r in lista %}
+          <tr>
+            <td>{{ r.turma }}</td><td>{{ r.disciplina }}</td><td>{{ r.professor }}</td>
+            <td class="text-end">
+              <form method="post" class="m-0" onsubmit="return confirm('Remover esta atribuição?')">
+                <input type="hidden" name="acao" value="remover"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="turma" value="{{ filtro }}">
+                <button class="btn btn-sm btn-link text-danger p-0" title="Remover"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

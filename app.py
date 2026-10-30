@@ -2015,7 +2015,9 @@ def importar_disciplinas_alunos():
         if aplicar:
             db.commit()
             flash(f"Disciplinas importadas: {total} registo(s).", "success")
-        sem_prof_disc = Counter(d for _, d in sem_prof)
+        sem_prof_disc = {}
+        for t, d in sorted(sem_prof):
+            sem_prof_disc.setdefault(d, []).append(t)
         relatorio = {
             "aplicado": aplicar, "ano": ano, "n_linhas": n_linhas, "excluidas": excluidas,
             "n_alunos": len(por_aluno), "n_encontrados": len(por_aluno) - len(nao_enc),
@@ -2023,10 +2025,93 @@ def importar_disciplinas_alunos():
             "disciplinas": sorted(((o, mapa[o], alunos_por_disc.get(mapa[o], 0),
                                     mapa[o] in conhecidas or mapa[o] in prof_discs) for o in mapa),
                                   key=lambda x: x[1]),
-            "sem_professor": sorted(sem_prof_disc.items()),
+            "sem_professor": sorted(sem_prof_disc.items()),   # [(disciplina, [turmas])]
         }
 
     return render_template("importar_disciplinas_alunos.html", relatorio=relatorio, ano=ano_letivo_atual(db))
+
+
+def _lacunas_atribuicao(db, ano):
+    """[(disciplina, turma, nº de alunos)] com alunos mas sem professor atribuído em prof_disc."""
+    pares = {(base_turma(r["turma"]), _chave_disc(r["disciplina"])) for r in db.execute(
+        "SELECT turma, disciplina FROM prof_disc WHERE ano_letivo=?", (ano,)).fetchall()}
+    agg = {}
+    for r in db.execute("SELECT a.turma, d.disciplina, COUNT(*) AS n FROM aluno_disciplina d "
+                        "JOIN alunos a ON a.id=d.aluno_id WHERE d.ano_letivo=? "
+                        "GROUP BY a.turma, d.disciplina", (ano,)).fetchall():
+        k = (base_turma(r["turma"]), r["disciplina"])
+        agg[k] = agg.get(k, 0) + r["n"]
+    return sorted((d, t, n) for (t, d), n in agg.items() if (t, _chave_disc(d)) not in pares)
+
+@app.route("/admin/atribuicoes", methods=["GET", "POST"])
+@login_required
+@admin_required
+def atribuicoes():
+    """Atribuição de professores a turmas e disciplinas (prof_disc): à mão, ou «Hora de PT» ao PT."""
+    db = get_db()
+    ano = ano_letivo_atual(db)
+    filtro = base_turma(request.values.get("turma", ""))
+
+    if request.method == "POST":
+        acao = request.form.get("acao")
+        if acao == "adicionar":
+            prof = (request.form.get("professor") or "").strip()
+            turma = base_turma(request.form.get("turma_nova", ""))
+            disc = (request.form.get("disciplina") or "").strip()
+            nomes = {_norm_nome(r["nome"]): r["nome"] for r in db.execute(
+                "SELECT nome FROM users WHERE role IN ('professor','diretor')").fetchall()}
+            turmas_ano = {base_turma(r["turma"]) for r in db.execute(
+                "SELECT DISTINCT turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall()}
+            if _norm_nome(prof) not in nomes:
+                flash("Professor não encontrado: escolha um nome da lista (tem de ter conta no portal).", "danger")
+            elif turma not in turmas_ano or not disc:
+                flash("Turma ou disciplina inválida.", "danger")
+            else:
+                db.execute("INSERT OR IGNORE INTO prof_disc (professor, turma, disciplina, ano_letivo) "
+                           "VALUES (?,?,?,?)", (nomes[_norm_nome(prof)], turma, disc, ano))
+                db.commit()
+                flash(f"Atribuído: {nomes[_norm_nome(prof)]} — {turma} — {disc}.", "success")
+        elif acao == "remover":
+            db.execute("DELETE FROM prof_disc WHERE id=? AND ano_letivo=?",
+                       (int(request.form.get("id") or 0), ano))
+            db.commit()
+            flash("Atribuição removida.", "success")
+        elif acao == "hora_pt":
+            por_turma = {}
+            for u in db.execute("SELECT nome, turma FROM users WHERE role='diretor' "
+                                "AND turma IS NOT NULL AND turma != ''").fetchall():
+                for t in u["turma"].split(","):
+                    if t.strip():
+                        por_turma.setdefault(base_turma(t), set()).add(u["nome"])
+            n = 0
+            for d, t, _ in _lacunas_atribuicao(db, ano):
+                if _chave_disc(d) == _chave_disc("Hora de PT"):
+                    for nome in sorted(por_turma.get(t, ())):
+                        db.execute("INSERT OR IGNORE INTO prof_disc (professor, turma, disciplina, ano_letivo) "
+                                   "VALUES (?,?,?,?)", (nome, t, d, ano))
+                        n += 1
+            db.commit()
+            flash(f"«Hora de PT» atribuída ao PT de cada turma: {n} atribuição(ões).", "success")
+        return redirect(url_for("atribuicoes", turma=filtro))
+
+    sql = "SELECT id, professor, turma, disciplina FROM prof_disc WHERE ano_letivo=?"
+    args = [ano]
+    if filtro:
+        sql += " AND turma=?"
+        args.append(filtro)
+    lista = db.execute(sql + " ORDER BY turma, disciplina, professor", args).fetchall()
+    lacunas = _lacunas_atribuicao(db, ano)
+    return render_template(
+        "atribuicoes.html", ano=ano, filtro=filtro, lista=lista, lacunas=lacunas,
+        professores=[r["nome"] for r in db.execute(
+            "SELECT nome FROM users WHERE role IN ('professor','diretor') ORDER BY nome")],
+        turmas=sorted({base_turma(r["turma"]) for r in db.execute(
+            "SELECT DISTINCT turma FROM alunos WHERE ano_letivo=?", (ano,))}),
+        disciplinas=sorted({r[0] for r in db.execute(
+            "SELECT DISTINCT disciplina FROM aluno_disciplina WHERE ano_letivo=? UNION "
+            "SELECT DISTINCT disciplina FROM prof_disc WHERE ano_letivo=?", (ano, ano))}),
+        total=db.execute("SELECT COUNT(*) FROM prof_disc WHERE ano_letivo=?", (ano,)).fetchone()[0],
+        hora_pt=sum(1 for d, _, _ in lacunas if _chave_disc(d) == _chave_disc("Hora de PT")))
 
 
 @app.route("/admin/importar-contas-professores", methods=["GET", "POST"])
