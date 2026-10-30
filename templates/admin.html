@@ -28,6 +28,7 @@
           <label class="form-label fw-semibold">Perfil</label>
           <select name="role" class="form-select">
             <option value="diretor">Diretor de Turma</option>
+            <option value="professor">Professor</option>
             <option value="admin">Administrador</option>
           </select>
         </div>
@@ -74,6 +75,8 @@
               <td>
                 {% if u.role == 'admin' %}
                 <span class="badge bg-danger">Admin</span>
+                {% elif u.role == 'professor' %}
+                <span class="badge bg-info text-dark">Professor</span>
                 {% else %}
                 <span class="badge bg-secondary">Diretor</span>
                 {% endif %}
@@ -123,6 +126,7 @@
                         <label class="form-label fw-semibold">Perfil</label>
                         <select name="role" class="form-select">
                           <option value="diretor" {% if u.role=='diretor' %}selected{% endif %}>Diretor de Turma</option>
+                          <option value="professor" {% if u.role=='professor' %}selected{% endif %}>Professor</option>
                           <option value="admin" {% if u.role=='admin' %}selected{% endif %}>Administrador</option>
                         </select>
                       </div>

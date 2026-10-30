@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Portal dos CT{% endblock %}
+{% block content %}
+<div class="container py-5" style="max-width:640px">
+  <div class="card shadow-sm">
+    <div class="card-body p-4">
+      <h4 class="mb-3"><i class="bi bi-person-check-fill me-2 text-primary"></i>Olá, {{ session.nome.split()[0] }}</h4>
+      <p class="mb-2">A sua conta de professor está ativa.</p>
+      <p class="text-muted mb-0">A área de avaliação das competências transversais ainda não está disponível.
+        Quando estiver, aparecerá aqui. Entretanto, pode mudar a sua palavra-passe no menu com o seu nome.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

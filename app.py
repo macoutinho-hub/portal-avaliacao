@@ -696,6 +696,8 @@ def calcular_stats_turma(db, turma, periodo_sel=None):
 @login_required
 def dashboard():
     db = get_db()
+    if session["role"] == "professor":
+        return render_template("dashboard_professor.html")
     if session["role"] == "admin":
         ano = ano_letivo_atual(db)
         # Agrupar por turma base (ex: 12A1 CT + AV + SE → 12A1)
@@ -1867,6 +1869,83 @@ def importar_pts():
         credenciais = criados
 
     return render_template("importar_pts.html", credenciais=credenciais)
+
+
+@app.route("/admin/importar-contas-professores", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_contas_professores():
+    """Cria contas (perfil 'professor') para os docentes de um ficheiro como o
+    «Dados Prof Disciplinas» (Docente: Nome, Docente: Email). Quem já tem conta
+    (mesmo email ou mesmo nome, por ex. os PT) é ignorado."""
+    import io as _io, string
+    relatorio, credenciais = None, None
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        aplicar = request.form.get("modo") == "aplicar"
+        if not f or not f.filename.lower().endswith(".xlsx"):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_contas_professores"))
+        try:
+            ws = openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True).active
+        except Exception as e:
+            flash(f"Não foi possível ler o ficheiro: {e}", "danger")
+            return redirect(url_for("importar_contas_professores"))
+
+        headers = [_norm_nome(c.value) for c in ws[1]]
+        def col(*testes):
+            for t in testes:
+                i = next((k for k, h in enumerate(headers) if t(h)), None)
+                if i is not None:
+                    return i
+            return None
+        i_nome = col(lambda h: "docente" in h and "nome" in h, lambda h: "professor" in h,
+                     lambda h: h in ("nome", "nome completo"))
+        i_email = col(lambda h: "email" in h)
+        if i_nome is None or i_email is None:
+            flash("Colunas do docente não encontradas (esperado: «Docente: Nome» e «Docente: Email», "
+                  "ou «Nome» e «Email»).", "danger")
+            return redirect(url_for("importar_contas_professores"))
+
+        # Um docente por email (o ficheiro tem uma linha por turma e disciplina)
+        docentes, sem_email = {}, {}
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            nome = str(row[i_nome] or "").strip() if i_nome < len(row) else ""
+            email = str(row[i_email] or "").strip().lower() if i_email < len(row) else ""
+            if not nome:
+                continue
+            if "@" not in email or " " in email:
+                sem_email[_norm_nome(nome)] = nome
+                continue
+            docentes.setdefault(email, nome)
+        com_email_nomes = {_norm_nome(n) for n in docentes.values()}
+        sem_email = [n for k, n in sem_email.items() if k not in com_email_nomes]
+
+        db = get_db()
+        existentes_email = {r["email"].lower() for r in db.execute("SELECT email FROM users").fetchall()}
+        existentes_nome = {_norm_nome(r["nome"]) for r in db.execute("SELECT nome FROM users").fetchall()}
+        a_criar, ja_existem = [], []
+        for email, nome in sorted(docentes.items(), key=lambda x: _norm_nome(x[1])):
+            if email in existentes_email or _norm_nome(nome) in existentes_nome:
+                ja_existem.append(nome)
+            else:
+                a_criar.append((email, nome))
+
+        if aplicar:
+            alfabeto = string.ascii_letters + string.digits
+            credenciais = []
+            for email, nome in a_criar:
+                pwd = "".join(secrets.choice(alfabeto) for _ in range(10))
+                db.execute("INSERT INTO users (email, password, nome, turma, role) VALUES (?,?,?,?,?)",
+                           (email, generate_password_hash(pwd), nome, None, "professor"))
+                credenciais.append({"nome": nome, "email": email, "password": pwd})
+            db.commit()
+            flash(f"{len(credenciais)} conta(s) de professor criada(s).", "success")
+        relatorio = {"aplicado": aplicar, "n_ficheiro": len(docentes), "a_criar": [n for _, n in a_criar],
+                     "ja_existem": ja_existem, "sem_email": sem_email}
+
+    return render_template("importar_contas_professores.html", relatorio=relatorio, credenciais=credenciais)
 
 
 @app.route("/admin/criar_utilizador", methods=["POST"])

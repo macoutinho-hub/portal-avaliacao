@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Contas de professores{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:860px">
+  <h4 class="mb-4"><i class="bi bi-person-plus-fill me-2"></i>Criar contas de professores</h4>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Carregue o ficheiro com os docentes (por exemplo <strong>Dados Prof Disciplinas</strong>, com as colunas
+        <strong>Docente: Nome</strong> e <strong>Docente: Email</strong>). É criada uma conta por email, com o perfil
+        <strong>professor</strong> e uma palavra-passe aleatória. Quem já tem conta (mesmo email ou mesmo nome, como os PT)
+        é ignorado.
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro (.xlsx)</label>
+          <input type="file" name="ficheiro" accept=".xlsx" class="form-control" required>
+        </div>
+        <div class="mb-3" style="max-width:320px">
+          <label class="form-label fw-semibold">Modo</label>
+          <select name="modo" class="form-select">
+            <option value="simular" selected>Simular (não cria nada)</option>
+            <option value="aplicar">Criar as contas</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>Importar</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-3 text-muted small">
+    <i class="bi bi-info-circle me-1"></i>Por agora estas contas só entram no portal e podem mudar a palavra-passe;
+    não veem dados de alunos.
+  </div>
+
+  {% if relatorio %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-header fw-semibold">
+      {% if relatorio.aplicado %}<i class="bi bi-check-circle text-success me-1"></i>Contas criadas
+      {% else %}<i class="bi bi-eye text-primary me-1"></i>Simulação — nada foi criado{% endif %}
+    </div>
+    <div class="card-body">
+      <p class="mb-2">
+        O ficheiro tem <strong>{{ relatorio.n_ficheiro }}</strong> docentes com email.
+        {{ 'Foram criadas' if relatorio.aplicado else 'Seriam criadas' }}
+        <strong>{{ relatorio.a_criar|length }}</strong> contas; <strong>{{ relatorio.ja_existem|length }}</strong>
+        já tinham conta.
+      </p>
+      {% if not relatorio.aplicado and relatorio.a_criar %}
+      <h6 class="mt-3">Contas a criar</h6>
+      <p class="small">{{ relatorio.a_criar|join(' · ') }}</p>
+      {% endif %}
+      {% if relatorio.ja_existem %}
+      <h6 class="mt-3">Já têm conta (ignorados)</h6>
+      <p class="small text-muted">{{ relatorio.ja_existem|join(' · ') }}</p>
+      {% endif %}
+      {% if relatorio.sem_email %}
+      <div class="alert alert-warning mb-0">
+        <strong>Sem email válido no ficheiro ({{ relatorio.sem_email|length }}):</strong>
+        {{ relatorio.sem_email|join(', ') }}. Não é possível criar a conta; crie-a em Gerir Utilizadores.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if credenciais %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-semibold text-success"><i class="bi bi-key-fill me-1"></i>{{ credenciais|length }} credencial(ais)</span>
+      <span class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="copiarTudo()"><i class="bi bi-clipboard me-1"></i>Copiar tudo</button>
+        <button class="btn btn-sm btn-outline-primary" onclick="descarregarCsv()"><i class="bi bi-download me-1"></i>Descarregar .csv</button>
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0" id="tabela-cred">
+        <thead class="table-light"><tr><th class="ps-3">Nome</th><th>Email</th><th>Palavra-passe</th></tr></thead>
+        <tbody>
+          {% for c in credenciais %}
+          <tr><td class="ps-3">{{ c.nome }}</td><td>{{ c.email }}</td><td><code>{{ c.password }}</code></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="text-muted small mt-2"><i class="bi bi-exclamation-triangle me-1"></i>
+    Guarde estas credenciais agora: as palavras-passe não voltam a ser mostradas.</p>
+  <script>
+  function linhas() {
+    return [...document.querySelectorAll('#tabela-cred tbody tr')].map(tr =>
+      [...tr.querySelectorAll('td')].map(td => td.textContent.trim()));
+  }
+  function copiarTudo() {
+    const txt = linhas().map(l => `Nome: ${l[0]}\nEmail: ${l[1]}\nPassword: ${l[2]}`).join('\n\n');
+    navigator.clipboard.writeText(txt);
+  }
+  function descarregarCsv() {
+    const csv = 'Nome;Email;Password\n' + linhas().map(l => l.join(';')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], {type: 'text/csv;charset=utf-8'}));
+    a.download = 'credenciais_professores.csv';
+    a.click();
+  }
+  </script>
+  {% endif %}
+</div>
+{% endblock %}
