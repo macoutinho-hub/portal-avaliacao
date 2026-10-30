@@ -253,6 +253,18 @@ def init_db():
     """)
     db.commit()
 
+    # Disciplinas de cada aluno (exportação «alunos por disciplina» do eSchooling)
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS aluno_disciplina (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id    INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            disciplina  TEXT NOT NULL,
+            ano_letivo  TEXT NOT NULL,
+            UNIQUE(aluno_id, disciplina, ano_letivo)
+        );
+    """)
+    db.commit()
+
     # Registo das turmas de cada diretor, por ano letivo
     db.executescript("""
         CREATE TABLE IF NOT EXISTS diretor_turma_ano (
@@ -1869,6 +1881,110 @@ def importar_pts():
         credenciais = criados
 
     return render_template("importar_pts.html", credenciais=credenciais)
+
+
+@app.route("/admin/importar-disciplinas-alunos", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_disciplinas_alunos():
+    """Disciplinas de cada aluno, a partir da exportação «alunos por disciplina» do eSchooling
+    (Ano, Turma, Nº Interno, Aluno, Disciplina, Situação Inicial, Situação Final).
+    Os alunos são ligados pelo Nº Interno; as matrículas anuladas ou transferidas ficam de fora."""
+    import io as _io
+    from collections import Counter
+    db = get_db()
+    relatorio = None
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        aplicar = request.form.get("modo") == "aplicar"
+        if not f or not f.filename.lower().endswith(".xlsx"):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_disciplinas_alunos"))
+        try:
+            rows = list(openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True).active.iter_rows(values_only=True))
+        except Exception as e:
+            flash(f"Não foi possível ler o ficheiro: {e}", "danger")
+            return redirect(url_for("importar_disciplinas_alunos"))
+
+        h_idx = c_num = c_disc = None
+        for i, row in enumerate(rows[:5]):
+            hs = [_norm_nome(v) for v in row]
+            n = next((k for k, h in enumerate(hs) if "interno" in h), None)
+            d = next((k for k, h in enumerate(hs) if "disciplina" in h), None)
+            if n is not None and d is not None:
+                h_idx, c_num, c_disc = i, n, d
+                hs_ok = hs
+                break
+        if h_idx is None:
+            flash("Cabeçalho não encontrado (esperadas as colunas «Nº Interno» e «Disciplina»).", "danger")
+            return redirect(url_for("importar_disciplinas_alunos"))
+        c_turma = next((k for k, h in enumerate(hs_ok) if "turma" in h and "ano" not in h), None)
+        c_sfin = next((k for k, h in enumerate(hs_ok) if "final" in h), None)
+
+        ano = (request.form.get("ano_letivo") or "").strip() or ano_letivo_atual(db)
+        alunos_ano = {r["numero"]: r for r in db.execute(
+            "SELECT id, numero, turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall()}
+        conhecidas = {r[0] for r in db.execute("SELECT DISTINCT disciplina FROM notas").fetchall()}
+        prof_pairs = {(base_turma(r["turma"]), r["disciplina"]) for r in db.execute(
+            "SELECT turma, disciplina FROM prof_disc WHERE ano_letivo=?", (ano,)).fetchall()}
+        prof_discs = {d for _, d in prof_pairs}
+
+        por_aluno, mapa, excluidas, n_linhas = {}, {}, 0, 0
+        for row in rows[h_idx + 1:]:
+            v = row[c_num] if c_num < len(row) else None
+            if isinstance(v, float) and v.is_integer():
+                v = int(v)
+            num = str(v or "").strip()
+            disc_o = str(row[c_disc] or "").strip() if c_disc < len(row) else ""
+            if not num.isdigit() or not disc_o:
+                continue
+            n_linhas += 1
+            sit = _norm_nome(row[c_sfin]) if c_sfin is not None and c_sfin < len(row) else ""
+            if "anul" in sit or "transfer" in sit:
+                excluidas += 1
+                continue
+            canon = mapa.setdefault(disc_o, _canon_disc_intercalar(disc_o, conhecidas))
+            info = por_aluno.setdefault(num, {"turma": "", "discs": set()})
+            if c_turma is not None and c_turma < len(row):
+                info["turma"] = str(row[c_turma] or "").strip()
+            info["discs"].add(canon)
+
+        nao_enc, mudou_turma, total, sem_prof = [], 0, 0, set()
+        alunos_por_disc = Counter()
+        for num, info in por_aluno.items():
+            al = alunos_ano.get(num)
+            if not al:
+                nao_enc.append(num)
+                continue
+            tb = base_turma(al["turma"])
+            if info["turma"] and base_turma(info["turma"]) != tb:
+                mudou_turma += 1
+            if aplicar:   # o ficheiro é a lista completa: substitui as disciplinas deste aluno
+                db.execute("DELETE FROM aluno_disciplina WHERE aluno_id=? AND ano_letivo=?", (al["id"], ano))
+            for d in sorted(info["discs"]):
+                total += 1
+                alunos_por_disc[d] += 1
+                if prof_pairs and (tb, d) not in prof_pairs:
+                    sem_prof.add((tb, d))
+                if aplicar:
+                    db.execute("INSERT OR IGNORE INTO aluno_disciplina (aluno_id, disciplina, ano_letivo) VALUES (?,?,?)",
+                               (al["id"], d, ano))
+        if aplicar:
+            db.commit()
+            flash(f"Disciplinas importadas: {total} registo(s).", "success")
+        sem_prof_disc = Counter(d for _, d in sem_prof)
+        relatorio = {
+            "aplicado": aplicar, "ano": ano, "n_linhas": n_linhas, "excluidas": excluidas,
+            "n_alunos": len(por_aluno), "n_encontrados": len(por_aluno) - len(nao_enc),
+            "nao_encontrados": nao_enc, "total": total, "mudou_turma": mudou_turma,
+            "disciplinas": sorted(((o, mapa[o], alunos_por_disc.get(mapa[o], 0),
+                                    mapa[o] in conhecidas or mapa[o] in prof_discs) for o in mapa),
+                                  key=lambda x: x[1]),
+            "sem_professor": sorted(sem_prof_disc.items()),
+        }
+
+    return render_template("importar_disciplinas_alunos.html", relatorio=relatorio, ano=ano_letivo_atual(db))
 
 
 @app.route("/admin/importar-contas-professores", methods=["GET", "POST"])

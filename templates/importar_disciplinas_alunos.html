@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Disciplinas dos alunos{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:860px">
+  <h4 class="mb-4"><i class="bi bi-diagram-3 me-2"></i>Importar disciplinas dos alunos</h4>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Carregue a exportação <strong>«alunos por disciplina»</strong> do eSchooling, com as colunas
+        <strong>Turma</strong>, <strong>Nº Interno</strong>, <strong>Disciplina</strong> e <strong>Situação Final</strong>.
+        Os alunos são ligados pelo Nº Interno, e as matrículas <em>anuladas</em> ou <em>transferidas</em> ficam de fora.
+        O ficheiro é a lista completa: ao aplicar, substitui as disciplinas de cada aluno que nele consta.
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro (.xlsx)</label>
+          <input type="file" name="ficheiro" accept=".xlsx" class="form-control" required>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Ano letivo</label>
+            <input type="text" name="ano_letivo" class="form-control" placeholder="{{ ano }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Modo</label>
+            <select name="modo" class="form-select">
+              <option value="simular" selected>Simular (não altera nada)</option>
+              <option value="aplicar">Aplicar alterações</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>Importar</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-3 text-muted small">
+    <i class="bi bi-info-circle me-1"></i>Ano letivo atual: {{ ano }}. Deixe o campo do ano vazio para usar o ano atual.
+    O ficheiro não fica guardado no servidor.
+  </div>
+
+  {% if relatorio %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-header fw-semibold">
+      {% if relatorio.aplicado %}<i class="bi bi-check-circle text-success me-1"></i>Importação aplicada
+      {% else %}<i class="bi bi-eye text-primary me-1"></i>Simulação — nada foi alterado{% endif %}
+    </div>
+    <div class="card-body">
+      <p class="mb-2">Ano letivo <strong>{{ relatorio.ano }}</strong>.</p>
+      <p class="mb-3">
+        O ficheiro tem <strong>{{ relatorio.n_linhas }}</strong> linhas
+        ({{ relatorio.excluidas }} de matrículas anuladas ou transferidas, ignoradas) e
+        <strong>{{ relatorio.n_alunos }}</strong> alunos; <strong>{{ relatorio.n_encontrados }}</strong>
+        existem no portal. {{ 'Foram gravadas' if relatorio.aplicado else 'Seriam gravadas' }}
+        <strong>{{ relatorio.total }}</strong> disciplinas de alunos.
+      </p>
+
+      <h6>Disciplinas</h6>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>No ficheiro</th><th>No portal</th><th class="text-end">Alunos</th><th></th></tr></thead>
+          <tbody>
+            {% for orig, canon, n, ok in relatorio.disciplinas %}
+            <tr>
+              <td>{{ orig }}</td><td>{{ canon }}</td><td class="text-end">{{ n }}</td>
+              <td>{% if ok %}<span class="badge text-bg-success">conhecida</span>
+                  {% else %}<span class="badge text-bg-warning">sem notas nem professor</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if relatorio.nao_encontrados %}
+      <div class="alert alert-warning">
+        <strong>Nº Interno sem aluno em {{ relatorio.ano }} ({{ relatorio.nao_encontrados|length }}):</strong>
+        {{ relatorio.nao_encontrados[:40]|join(', ') }}{% if relatorio.nao_encontrados|length > 40 %} …{% endif %}.
+        Confirme o ano letivo e se os alunos foram importados.
+      </div>
+      {% endif %}
+
+      {% if relatorio.mudou_turma %}
+      <div class="alert alert-info">
+        <strong>{{ relatorio.mudou_turma }}</strong> aluno(s) estão noutra turma no ficheiro do que no portal.
+        Vale a turma do portal.
+      </div>
+      {% endif %}
+
+      {% if relatorio.sem_professor %}
+      <div class="alert alert-secondary mb-0">
+        <strong>Disciplinas com turmas sem professor atribuído</strong> (em «Professores por Disciplina»):
+        <ul class="mb-0 mt-1">
+          {% for d, n in relatorio.sem_professor %}<li>{{ d }} — {{ n }} turma{{ 's' if n != 1 }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
