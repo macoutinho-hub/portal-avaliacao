@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Competências Transversais{% endblock %}
+{% block content %}
+<div class="container py-3" style="max-width:980px">
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="fw-bold mb-1"><i class="bi bi-stars me-2 text-primary"></i>Competências Transversais</h3>
+      <p class="text-muted mb-0">{{ ano }} · Momento aberto: <strong>{{ mom.nome }}</strong>
+        {% if mom.id == 'intercalar_1s' %}(AUTN, RESP e COOP){% else %}(as 7 CT; as 4 últimas só se a disciplina realizou uma tarefa){% endif %}</p>
+    </div>
+    {% if session.role == 'admin' %}
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('configuracoes') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-gear me-1"></i>Mudar momento</a>
+      <a href="{{ url_for('ct_exportar') }}" class="btn btn-sm btn-primary"><i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <details class="card shadow-sm mb-4">
+    <summary class="card-body py-2 fw-semibold" style="cursor:pointer"><i class="bi bi-rulers me-1"></i>Escala de 1 a 5</summary>
+    <div class="px-3 pb-3">
+      {% for n, (rot, txt) in niveis.items() %}
+      <div class="d-flex gap-2 align-items-start mb-1">
+        <span class="badge" style="background:{{ cor[n] }};min-width:2rem">{{ n }}</span>
+        <span><strong>{{ rot }}.</strong> {{ txt }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+
+  {% if session.role in ('professor', 'diretor') %}
+  <h5 class="fw-semibold mb-2">As minhas disciplinas</h5>
+  {% if cartoes %}
+  <div class="row g-3 mb-4">
+    {% for c in cartoes %}
+    <div class="col-md-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div><div class="fw-bold">{{ c.disciplina }}</div><div class="text-muted">Turma {{ c.turma }}</div></div>
+            <a class="btn btn-sm btn-primary" href="{{ url_for('ct_avaliar', turma=c.turma, disc=c.disciplina) }}">
+              {{ 'Continuar' if c.feitos else 'Avaliar' }}</a>
+          </div>
+          <div class="progress mt-3" style="height:8px"><div class="progress-bar bg-success" style="width:{{ (100 * c.feitos / c.n) if c.n else 0 }}%"></div></div>
+          <div class="small text-muted mt-1">{{ c.feitos }} de {{ c.n }} alunos avaliados neste momento</div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% elif session.role == 'professor' or not turmas_pt %}
+  <div class="alert alert-info">Não tem turmas e disciplinas atribuídas neste ano letivo. Se devia ter, o nome da sua conta pode não coincidir com o do ficheiro dos docentes: fale com o administrador.</div>
+  {% endif %}
+  {% endif %}
+
+  {% if turmas_pt %}
+  <h5 class="fw-semibold mb-2">Como PT: quadro-resumo da turma</h5>
+  <div class="d-flex gap-2 flex-wrap mb-4">
+    {% for t in turmas_pt %}<a class="btn btn-outline-primary" href="{{ url_for('ct_turma', turma=t) }}"><i class="bi bi-table me-1"></i>Turma {{ t }}</a>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if session.role == 'admin' %}
+  <h5 class="fw-semibold mb-2">Visão geral das turmas</h5>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead class="table-light"><tr><th>Turma</th><th class="text-end">Alunos</th><th class="text-end">Com avaliações</th><th class="text-end">Com decisão do PT</th><th></th></tr></thead>
+      <tbody>
+        {% for v in visao %}
+        <tr><td>{{ v.turma }}</td><td class="text-end">{{ v.alunos }}</td><td class="text-end">{{ v.avaliados }}</td><td class="text-end">{{ v.decididos }}</td>
+          <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('ct_turma', turma=v.turma) }}">Quadro</a></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

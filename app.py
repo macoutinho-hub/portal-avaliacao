@@ -14,6 +14,7 @@ import openpyxl
 import analytics
 import analytics_projeto
 import importar_projeto_consolidado as projeto_import
+import competencias as ct_cfg
 from importar_notas import canonizar_disciplina, DISCIPLINAS_ALIAS
 
 app = Flask(__name__)
@@ -265,6 +266,46 @@ def init_db():
     """)
     db.commit()
 
+    # Competências Transversais: avaliação dos professores, observações e decisão do PT
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS ct_avaliacao (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id      INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            disciplina    TEXT NOT NULL,
+            ano_letivo    TEXT NOT NULL,
+            momento       TEXT NOT NULL,
+            ct            TEXT NOT NULL,
+            nivel         INTEGER NOT NULL,
+            descritores   TEXT,
+            professor_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            updated_at    TEXT,
+            UNIQUE(aluno_id, disciplina, ano_letivo, momento, ct, professor_id)
+        );
+        CREATE TABLE IF NOT EXISTS ct_obs (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id      INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            disciplina    TEXT NOT NULL,
+            ano_letivo    TEXT NOT NULL,
+            momento       TEXT NOT NULL,
+            texto         TEXT NOT NULL,
+            professor_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            updated_at    TEXT,
+            UNIQUE(aluno_id, disciplina, ano_letivo, momento, professor_id)
+        );
+        CREATE TABLE IF NOT EXISTS ct_decisao (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id      INTEGER NOT NULL REFERENCES alunos(id) ON DELETE CASCADE,
+            ano_letivo    TEXT NOT NULL,
+            momento       TEXT NOT NULL,
+            ct            TEXT NOT NULL,
+            nivel         INTEGER NOT NULL,
+            decidido_por  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            updated_at    TEXT,
+            UNIQUE(aluno_id, ano_letivo, momento, ct)
+        );
+    """)
+    db.commit()
+
     # Registo das turmas de cada diretor, por ano letivo
     db.executescript("""
         CREATE TABLE IF NOT EXISTS diretor_turma_ano (
@@ -278,7 +319,8 @@ def init_db():
     db.commit()
 
     # Valores por defeito das settings
-    for key, val in [("ano_letivo_atual", "2025/2026"), ("semestre_atual", "2")]:
+    for key, val in [("ano_letivo_atual", "2025/2026"), ("semestre_atual", "2"),
+                     ("ct_momento_ativo", "intercalar_1s")]:
         db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)", (key, val))
     db.commit()
     # Create default admin if not exists
@@ -709,7 +751,7 @@ def calcular_stats_turma(db, turma, periodo_sel=None):
 def dashboard():
     db = get_db()
     if session["role"] == "professor":
-        return render_template("dashboard_professor.html")
+        return redirect(url_for("ct_home"))
     if session["role"] == "admin":
         ano = ano_letivo_atual(db)
         # Agrupar por turma base (ex: 12A1 CT + AV + SE → 12A1)
@@ -3023,12 +3065,16 @@ def configuracoes():
             db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('ano_letivo_atual',?)", (ano,))
         if sem in ("1", "2"):
             db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('semestre_atual',?)", (sem,))
+        ctm = request.form.get("ct_momento", "")
+        if ctm in ct_cfg.MOMENTOS_POR_ID:
+            db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('ct_momento_ativo',?)", (ctm,))
         db.commit()
         flash("Configurações guardadas.", "success")
         return redirect(url_for("configuracoes"))
     ano = get_setting(db, "ano_letivo_atual", "2025/2026")
     sem = get_setting(db, "semestre_atual", "2")
-    return render_template("configuracoes.html", ano_letivo=ano, semestre=sem)
+    return render_template("configuracoes.html", ano_letivo=ano, semestre=sem,
+                           ct_momento=_ct_momento_ativo(db), momentos=ct_cfg.MOMENTOS)
 
 
 # ─── Importar Pauta (PT / admin) ──────────────────────────────────────────────
@@ -3760,6 +3806,311 @@ def intercalar_turma(turma):
     return render_template("intercalar_turma.html", turma=tb, ano=ano, sem=sem,
                            semestres=semestres, disciplinas=disciplinas, alunos=alunos,
                            total_alertas=sum(a["alertas"] for a in alunos))
+
+
+# ─── Competências Transversais (CT) ───────────────────────────────────────────
+# Cada professor avalia, por aluno e disciplina, as CT do momento ativo (nível 1 a 5, e até 2
+# descritores a melhorar, opcionais). O PT vê o quadro-resumo, a proposta de média e decide o nível final.
+
+def _ct_momento_ativo(db):
+    m = get_setting(db, "ct_momento_ativo")
+    return m if m in ct_cfg.MOMENTOS_POR_ID else ct_cfg.MOMENTOS[0]["id"]
+
+def _chave_disc(d):
+    return _norm_nome(canonizar_disciplina(d))
+
+def _ct_atribuicoes(db, nome, ano):
+    """[(turma base, disciplina)] atribuídas ao docente (ligação pelo nome) em prof_disc."""
+    alvo = _norm_nome(nome)
+    out = []
+    for r in db.execute("SELECT professor, turma, disciplina FROM prof_disc WHERE ano_letivo=? "
+                        "ORDER BY turma, disciplina", (ano,)).fetchall():
+        if _norm_nome(r["professor"]) == alvo:
+            par = (base_turma(r["turma"]), r["disciplina"])
+            if par not in out:
+                out.append(par)
+    return out
+
+def _ct_alunos(db, turma, disciplina, ano):
+    """Alunos da turma que têm a disciplina (se houver dados de «alunos por disciplina»,
+    senão todos). Devolve (lista, filtrado)."""
+    turmas_reais = turmas_base_para_sql(turma, db, ano) or [turma]
+    ph = ",".join("?" * len(turmas_reais))
+    alunos = db.execute(f"SELECT id, numero, nome FROM alunos WHERE turma IN ({ph}) AND ano_letivo=? "
+                        "ORDER BY nome", turmas_reais + [ano]).fetchall()
+    matr = {}
+    if alunos:
+        ph2 = ",".join("?" * len(alunos))
+        for r in db.execute(f"SELECT aluno_id, disciplina FROM aluno_disciplina WHERE ano_letivo=? "
+                            f"AND aluno_id IN ({ph2})", [ano] + [a["id"] for a in alunos]).fetchall():
+            matr.setdefault(r["aluno_id"], set()).add(_chave_disc(r["disciplina"]))
+    if not matr:
+        return list(alunos), False
+    k = _chave_disc(disciplina)
+    return [a for a in alunos if a["id"] not in matr or k in matr[a["id"]]], True
+
+def _ct_agora():
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+@app.route("/ct")
+@login_required
+def ct_home():
+    db = get_db()
+    ano = ano_letivo_atual(db)
+    mom = ct_cfg.MOMENTOS_POR_ID[_ct_momento_ativo(db)]
+    role = session["role"]
+    cartoes, turmas_pt, visao = [], [], []
+    if role in ("professor", "diretor"):
+        for turma, disc in _ct_atribuicoes(db, session["nome"], ano):
+            ids = {a["id"] for a in _ct_alunos(db, turma, disc, ano)[0]}
+            feitos = {r["aluno_id"] for r in db.execute(
+                "SELECT DISTINCT aluno_id FROM ct_avaliacao WHERE ano_letivo=? AND momento=? "
+                "AND professor_id=? AND disciplina=?", (ano, mom["id"], session["user_id"], disc)).fetchall()} & ids
+            cartoes.append({"turma": turma, "disciplina": disc, "n": len(ids), "feitos": len(feitos)})
+    if role == "diretor":
+        turmas_pt = sorted({base_turma(t) for t in (session.get("turma") or "").split(",") if t.strip()})
+    if role == "admin":
+        tot, aval, dec = {}, {}, {}
+        for r in db.execute("SELECT turma, COUNT(*) n FROM alunos WHERE ano_letivo=? GROUP BY turma", (ano,)):
+            tot[base_turma(r["turma"])] = tot.get(base_turma(r["turma"]), 0) + r["n"]
+        for r in db.execute("SELECT a.turma, COUNT(DISTINCT c.aluno_id) n FROM ct_avaliacao c JOIN alunos a "
+                            "ON a.id=c.aluno_id WHERE c.ano_letivo=? AND c.momento=? GROUP BY a.turma",
+                            (ano, mom["id"])):
+            aval[base_turma(r["turma"])] = aval.get(base_turma(r["turma"]), 0) + r["n"]
+        for r in db.execute("SELECT a.turma, COUNT(DISTINCT d.aluno_id) n FROM ct_decisao d JOIN alunos a "
+                            "ON a.id=d.aluno_id WHERE d.ano_letivo=? AND d.momento=? GROUP BY a.turma",
+                            (ano, mom["id"])):
+            dec[base_turma(r["turma"])] = dec.get(base_turma(r["turma"]), 0) + r["n"]
+        visao = [{"turma": t, "alunos": n, "avaliados": aval.get(t, 0), "decididos": dec.get(t, 0)}
+                 for t, n in sorted(tot.items())]
+    return render_template("ct_home.html", mom=mom, ano=ano, cartoes=cartoes, turmas_pt=turmas_pt,
+                           visao=visao, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
+                           momentos=ct_cfg.MOMENTOS)
+
+@app.route("/ct/avaliar", methods=["GET", "POST"])
+@login_required
+def ct_avaliar():
+    db = get_db()
+    ano = ano_letivo_atual(db)
+    mom = ct_cfg.MOMENTOS_POR_ID[_ct_momento_ativo(db)]
+    turma = base_turma(request.values.get("turma", ""))
+    disc = (request.values.get("disc") or "").strip()
+    if (turma, disc) not in _ct_atribuicoes(db, session["nome"], ano):
+        flash("Não tem esta disciplina atribuída nesta turma.", "danger")
+        return redirect(url_for("ct_home"))
+    alunos, filtrado = _ct_alunos(db, turma, disc, ano)
+    uid = session["user_id"]
+    readonly = bool(session.get("original_role"))   # personificação: só consulta
+
+    if request.method == "POST":
+        if readonly:
+            flash("Em modo de personificação só pode consultar.", "warning")
+            return redirect(url_for("ct_avaliar", turma=turma, disc=disc))
+        agora = _ct_agora()
+        guardados = 0
+        for a in alunos:
+            for ct in mom["cts"]:
+                n = request.form.get(f"n_{a['id']}_{ct}", "")
+                if n in ("1", "2", "3", "4", "5"):
+                    cods = []
+                    if mom["descritores"]:
+                        validos = {c for c, _ in ct_cfg.CT_POR_ID[ct]["descritores"]}
+                        cods = [c for c in request.form.getlist(f"d_{a['id']}_{ct}")
+                                if c in validos][:ct_cfg.MAX_DESCRITORES]
+                    db.execute(
+                        """INSERT INTO ct_avaliacao (aluno_id, disciplina, ano_letivo, momento, ct, nivel,
+                               descritores, professor_id, updated_at) VALUES (?,?,?,?,?,?,?,?,?)
+                           ON CONFLICT(aluno_id, disciplina, ano_letivo, momento, ct, professor_id)
+                           DO UPDATE SET nivel=excluded.nivel, descritores=excluded.descritores,
+                                         updated_at=excluded.updated_at""",
+                        (a["id"], disc, ano, mom["id"], ct, int(n), ",".join(cods), uid, agora))
+                    guardados += 1
+                else:
+                    db.execute("DELETE FROM ct_avaliacao WHERE aluno_id=? AND disciplina=? AND ano_letivo=? "
+                               "AND momento=? AND ct=? AND professor_id=?",
+                               (a["id"], disc, ano, mom["id"], ct, uid))
+            obs = (request.form.get(f"o_{a['id']}") or "").strip()[:500]
+            if obs:
+                db.execute(
+                    """INSERT INTO ct_obs (aluno_id, disciplina, ano_letivo, momento, texto, professor_id, updated_at)
+                       VALUES (?,?,?,?,?,?,?)
+                       ON CONFLICT(aluno_id, disciplina, ano_letivo, momento, professor_id)
+                       DO UPDATE SET texto=excluded.texto, updated_at=excluded.updated_at""",
+                    (a["id"], disc, ano, mom["id"], obs, uid, agora))
+            else:
+                db.execute("DELETE FROM ct_obs WHERE aluno_id=? AND disciplina=? AND ano_letivo=? "
+                           "AND momento=? AND professor_id=?", (a["id"], disc, ano, mom["id"], uid))
+        db.commit()
+        flash(f"Avaliação guardada ({guardados} nível(is) atribuído(s)).", "success")
+        return redirect(url_for("ct_avaliar", turma=turma, disc=disc))
+
+    exist = {}
+    for r in db.execute("SELECT aluno_id, ct, nivel, descritores FROM ct_avaliacao WHERE ano_letivo=? "
+                        "AND momento=? AND professor_id=? AND disciplina=?", (ano, mom["id"], uid, disc)):
+        exist.setdefault(r["aluno_id"], {})[r["ct"]] = {
+            "nivel": r["nivel"], "desc": [d for d in (r["descritores"] or "").split(",") if d]}
+    obs = {r["aluno_id"]: r["texto"] for r in db.execute(
+        "SELECT aluno_id, texto FROM ct_obs WHERE ano_letivo=? AND momento=? AND professor_id=? "
+        "AND disciplina=?", (ano, mom["id"], uid, disc))}
+    return render_template("ct_avaliar.html", turma=turma, disc=disc, mom=mom, alunos=alunos,
+                           filtrado=filtrado, cts=[ct_cfg.CT_POR_ID[c] for c in mom["cts"]],
+                           exist=exist, obs=obs, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
+                           maxd=ct_cfg.MAX_DESCRITORES, readonly=readonly, ano=ano)
+
+def _ct_quadro(db, tb, ano, mid):
+    """Dados do quadro-resumo de uma turma para um momento."""
+    mom = ct_cfg.MOMENTOS_POR_ID[mid]
+    turmas_reais = turmas_base_para_sql(tb, db, ano) or [tb]
+    ph = ",".join("?" * len(turmas_reais))
+    alunos = db.execute(f"SELECT id, numero, nome FROM alunos WHERE turma IN ({ph}) AND ano_letivo=? "
+                        "ORDER BY nome", turmas_reais + [ano]).fetchall()
+    ids = [a["id"] for a in alunos]
+    avals, decisao, obs = {}, {}, {}
+    if ids:
+        ph2 = ",".join("?" * len(ids))
+        for r in db.execute(
+                f"SELECT c.aluno_id, c.ct, c.nivel, c.descritores, c.disciplina, u.nome AS prof "
+                f"FROM ct_avaliacao c JOIN users u ON u.id=c.professor_id "
+                f"WHERE c.ano_letivo=? AND c.momento=? AND c.aluno_id IN ({ph2}) "
+                f"ORDER BY c.disciplina, u.nome", [ano, mid] + ids):
+            avals.setdefault(r["aluno_id"], {}).setdefault(r["ct"], []).append({
+                "disc": r["disciplina"], "abrev": ct_cfg.abrev_disc(r["disciplina"]), "prof": r["prof"],
+                "nivel": r["nivel"], "desc": [d for d in (r["descritores"] or "").split(",") if d]})
+        for r in db.execute(f"SELECT aluno_id, ct, nivel FROM ct_decisao WHERE ano_letivo=? AND momento=? "
+                            f"AND aluno_id IN ({ph2})", [ano, mid] + ids):
+            decisao[(r["aluno_id"], r["ct"])] = r["nivel"]
+        for r in db.execute(
+                f"SELECT o.aluno_id, o.disciplina, o.texto, u.nome AS prof FROM ct_obs o "
+                f"JOIN users u ON u.id=o.professor_id WHERE o.ano_letivo=? AND o.momento=? "
+                f"AND o.aluno_id IN ({ph2}) ORDER BY o.disciplina", [ano, mid] + ids):
+            obs.setdefault(r["aluno_id"], []).append(
+                {"abrev": ct_cfg.abrev_disc(r["disciplina"]), "prof": r["prof"], "texto": r["texto"]})
+    linhas = []
+    for a in alunos:
+        cel = {}
+        for ct in mom["cts"]:
+            lst = avals.get(a["id"], {}).get(ct, [])
+            media, sug = ct_cfg.proposta([x["nivel"] for x in lst])
+            cont = {}
+            for x in lst:
+                for d in x["desc"]:
+                    cont[d] = cont.get(d, 0) + 1
+            cel[ct] = {"aval": lst, "media": media, "sug": sug, "dec": decisao.get((a["id"], ct)),
+                       "desc": sorted(cont.items(), key=lambda kv: (-kv[1], kv[0]))}
+        linhas.append({"id": a["id"], "numero": a["numero"], "nome": a["nome"], "cel": cel,
+                       "obs": obs.get(a["id"], [])})
+    return mom, linhas
+
+@app.route("/ct/turma/<path:turma>")
+@login_required
+def ct_turma(turma):
+    db = get_db()
+    if not _check_turma_perm(turma):
+        flash("Não tem permissão para ver esta turma.", "danger")
+        return redirect(url_for("dashboard"))
+    tb = base_turma(turma)
+    ano = ano_letivo_atual(db)
+    mid = request.args.get("momento")
+    if mid not in ct_cfg.MOMENTOS_POR_ID:
+        mid = _ct_momento_ativo(db)
+    mom, linhas = _ct_quadro(db, tb, ano, mid)
+    return render_template("ct_turma.html", turma=tb, ano=ano, mom=mom, momentos=ct_cfg.MOMENTOS,
+                           ativo=_ct_momento_ativo(db), linhas=linhas,
+                           cts=[ct_cfg.CT_POR_ID[c] for c in mom["cts"]],
+                           niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL, descritores=ct_cfg.DESCRITORES,
+                           readonly=bool(session.get("original_role")))
+
+@app.route("/ct/turma/<path:turma>/decidir", methods=["POST"])
+@login_required
+def ct_decidir(turma):
+    db = get_db()
+    if not _check_turma_perm(turma):
+        flash("Não tem permissão para esta turma.", "danger")
+        return redirect(url_for("dashboard"))
+    tb = base_turma(turma)
+    ano = ano_letivo_atual(db)
+    mid = request.form.get("momento")
+    if mid not in ct_cfg.MOMENTOS_POR_ID:
+        return redirect(url_for("ct_turma", turma=tb))
+    if session.get("original_role"):
+        flash("Em modo de personificação só pode consultar.", "warning")
+        return redirect(url_for("ct_turma", turma=tb, momento=mid))
+    mom = ct_cfg.MOMENTOS_POR_ID[mid]
+    turmas_reais = turmas_base_para_sql(tb, db, ano) or [tb]
+    ph = ",".join("?" * len(turmas_reais))
+    ids = [r["id"] for r in db.execute(f"SELECT id FROM alunos WHERE turma IN ({ph}) AND ano_letivo=?",
+                                       turmas_reais + [ano]).fetchall()]
+    agora, n = _ct_agora(), 0
+    for aid in ids:
+        for ct in mom["cts"]:
+            v = request.form.get(f"dec_{aid}_{ct}", "")
+            if v in ("1", "2", "3", "4", "5"):
+                db.execute(
+                    """INSERT INTO ct_decisao (aluno_id, ano_letivo, momento, ct, nivel, decidido_por, updated_at)
+                       VALUES (?,?,?,?,?,?,?)
+                       ON CONFLICT(aluno_id, ano_letivo, momento, ct)
+                       DO UPDATE SET nivel=excluded.nivel, decidido_por=excluded.decidido_por,
+                                     updated_at=excluded.updated_at""",
+                    (aid, ano, mid, ct, int(v), session["user_id"], agora))
+                n += 1
+            else:
+                db.execute("DELETE FROM ct_decisao WHERE aluno_id=? AND ano_letivo=? AND momento=? AND ct=?",
+                           (aid, ano, mid, ct))
+    db.commit()
+    flash(f"Decisão guardada ({n} nível(is) atribuído(s)).", "success")
+    return redirect(url_for("ct_turma", turma=tb, momento=mid))
+
+@app.route("/admin/ct/exportar")
+@login_required
+@admin_required
+def ct_exportar():
+    """Excel com as avaliações dos professores e a decisão do PT (para o Power BI)."""
+    import io as _io
+    from flask import send_file
+    db = get_db()
+    ano = request.args.get("ano") or ano_letivo_atual(db)
+    nomes_m = {m["id"]: m["nome"] for m in ct_cfg.MOMENTOS}
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Avaliações"
+    ws.append(["Ano letivo", "Momento", "Turma", "Nº Interno", "Aluno", "Disciplina", "Professor", "CT",
+               "Nível", "Descritores a melhorar", "Observação da disciplina"])
+    for r in db.execute(
+            """SELECT c.momento, a.turma, a.numero, a.nome AS aluno, c.disciplina, u.nome AS prof, c.ct,
+                      c.nivel, c.descritores,
+                      (SELECT o.texto FROM ct_obs o WHERE o.aluno_id=c.aluno_id AND o.disciplina=c.disciplina
+                         AND o.ano_letivo=c.ano_letivo AND o.momento=c.momento
+                         AND o.professor_id=c.professor_id) AS obs
+               FROM ct_avaliacao c JOIN alunos a ON a.id=c.aluno_id JOIN users u ON u.id=c.professor_id
+               WHERE c.ano_letivo=? ORDER BY c.momento, a.turma, a.nome, c.disciplina, c.ct""", (ano,)):
+        ws.append([ano, nomes_m.get(r["momento"], r["momento"]), r["turma"], r["numero"], r["aluno"],
+                   r["disciplina"], r["prof"], r["ct"], r["nivel"], r["descritores"] or "", r["obs"] or ""])
+    ws2 = wb.create_sheet("Resumo PT")
+    ws2.append(["Ano letivo", "Momento", "Turma", "Nº Interno", "Aluno", "CT", "Nº de avaliações",
+                "Média proposta", "Nível proposto", "Nível decidido pelo PT"])
+    rows = db.execute(
+        """SELECT c.momento, a.id AS aid, a.turma, a.numero, a.nome AS aluno, c.ct, COUNT(*) AS n,
+                  AVG(c.nivel) AS media
+           FROM ct_avaliacao c JOIN alunos a ON a.id=c.aluno_id WHERE c.ano_letivo=?
+           GROUP BY c.momento, a.id, c.ct ORDER BY c.momento, a.turma, a.nome, c.ct""", (ano,)).fetchall()
+    dec = {(r["aluno_id"], r["momento"], r["ct"]): r["nivel"] for r in db.execute(
+        "SELECT aluno_id, momento, ct, nivel FROM ct_decisao WHERE ano_letivo=?", (ano,))}
+    for r in rows:
+        media, sug = ct_cfg.proposta([r["media"]])
+        ws2.append([ano, nomes_m.get(r["momento"], r["momento"]), r["turma"], r["numero"], r["aluno"], r["ct"],
+                    r["n"], round(r["media"], 1), int(r["media"] + 0.5),
+                    dec.get((r["aid"], r["momento"], r["ct"]), "")])
+    ws3 = wb.create_sheet("Escala")
+    ws3.append(["Nível", "Rótulo", "Descritor"])
+    for n, (rot, txt) in ct_cfg.NIVEIS.items():
+        ws3.append([n, rot, txt])
+    for w in (ws, ws2, ws3):
+        w.freeze_panes = "A2"
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=f"competencias_transversais_{ano.replace('/', '-')}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 # ─── Importar notas de "Literacias" (11º ano, só 2º semestre) ─────────────────

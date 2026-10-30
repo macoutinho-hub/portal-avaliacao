@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}CT · {{ disc }} · {{ turma }}{% endblock %}
+{% block extra_head %}
+<style>
+  .ct-tab th, .ct-tab td { vertical-align: top; }
+  .ct-tab th:first-child, .ct-tab td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; min-width: 190px; box-shadow: 1px 0 0 #dee2e6; }
+  .ct-tab thead th:first-child { background: #f8f9fa; }
+  .ct-sel { min-width: 150px; font-weight: 600; }
+  .dsc { position: relative; margin-top: 4px; }
+  .dsc > summary { font-size: .78rem; color: #0E4D7D; cursor: pointer; list-style: none; }
+  .dsc > summary::before { content: '＋ '; }
+  .dsc[open] > summary::before { content: '－ '; }
+  .dsc-body { position: absolute; z-index: 20; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
+              box-shadow: 0 6px 18px rgba(0,0,0,.15); padding: 8px 10px; width: 330px; max-width: 80vw; font-size: .8rem; }
+  .dsc-body label { display: flex; gap: 6px; margin: 3px 0; cursor: pointer; }
+  .dsc-chip { display: inline-block; font-size: .7rem; background: #e0f2fe; color: #075985; border-radius: 4px; padding: 0 5px; margin: 2px 2px 0 0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="px-3">
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="fw-bold mb-1"><i class="bi bi-stars me-2 text-primary"></i>{{ disc }} · Turma {{ turma }}</h3>
+      <p class="text-muted mb-0">{{ ano }} · {{ mom.nome }}</p>
+    </div>
+    <a href="{{ url_for('ct_home') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>As minhas disciplinas</a>
+  </div>
+
+  <details class="card shadow-sm mb-3">
+    <summary class="card-body py-2 fw-semibold" style="cursor:pointer"><i class="bi bi-rulers me-1"></i>Escala de 1 a 5 e competências</summary>
+    <div class="px-3 pb-3">
+      {% for n, (rot, txt) in niveis.items() %}
+      <div class="d-flex gap-2 align-items-start mb-1">
+        <span class="badge" style="background:{{ cor[n] }};min-width:2rem">{{ n }}</span><span><strong>{{ rot }}.</strong> {{ txt }}</span>
+      </div>
+      {% endfor %}
+      <hr class="my-2">
+      {% for c in cts %}<div class="small mb-1"><strong>{{ c.id }} · {{ c.nome }}:</strong> {{ c.def }}</div>{% endfor %}
+    </div>
+  </details>
+
+  {% if not filtrado %}
+  <div class="alert alert-warning py-2">Ainda não há a lista de alunos por disciplina: aparecem todos os alunos da turma. Deixe em branco quem não tem esta disciplina.</div>
+  {% endif %}
+  <p class="text-muted small mb-2">Os campos em branco ficam por avaliar.
+    {% if mom.descritores %}<strong>Opcional:</strong> em «Descritores a melhorar» pode assinalar até {{ maxd }} por aluno e competência.{% endif %}
+    {% if mom.cts|length > 3 %}As competências CCRT, RSPL, COMN e CRIA só se avaliam se a disciplina realizou uma tarefa que as trabalhe.{% endif %}</p>
+
+  <form method="post" id="form-ct">
+    <input type="hidden" name="turma" value="{{ turma }}"><input type="hidden" name="disc" value="{{ disc }}">
+    <div class="table-responsive">
+      <table class="table table-sm ct-tab align-top mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Aluno</th>
+            {% for c in cts %}<th title="{{ c.def }}">{{ c.id }}<div class="fw-normal small text-muted">{{ c.nome }}{% if not c.basica %} <em>(opcional)</em>{% endif %}</div></th>{% endfor %}
+            <th style="min-width:230px">Observação (opcional)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in alunos %}
+          {% set ex = exist.get(a.id, {}) %}
+          <tr>
+            <td><strong>{{ a.nome }}</strong><div class="small text-muted">Nº {{ a.numero }}</div></td>
+            {% for c in cts %}
+            {% set e = ex.get(c.id) %}
+            <td>
+              <select name="n_{{ a.id }}_{{ c.id }}" class="form-select form-select-sm ct-sel" {% if readonly %}disabled{% endif %}>
+                <option value="">—</option>
+                {% for n, (rot, txt) in niveis.items() %}
+                <option value="{{ n }}" {% if e and e.nivel == n %}selected{% endif %} title="{{ txt }}">{{ n }} · {{ rot }}</option>
+                {% endfor %}
+              </select>
+              {% if mom.descritores %}
+              <details class="dsc">
+                <summary>Descritores a melhorar <span class="cnt">({{ e.desc|length if e else 0 }})</span></summary>
+                <div class="dsc-body" data-max="{{ maxd }}">
+                  {% for cod, txt in c.descritores %}
+                  <label><input type="checkbox" name="d_{{ a.id }}_{{ c.id }}" value="{{ cod }}" {% if e and cod in e.desc %}checked{% endif %} {% if readonly %}disabled{% endif %}><span><strong>{{ cod }}</strong> {{ txt }}</span></label>
+                  {% endfor %}
+                </div>
+              </details>
+              {% endif %}
+            </td>
+            {% endfor %}
+            <td><textarea name="o_{{ a.id }}" rows="2" maxlength="500" class="form-control form-control-sm" {% if readonly %}disabled{% endif %}>{{ obs.get(a.id, '') }}</textarea></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not alunos %}<div class="alert alert-info mt-3">Esta turma não tem alunos no ano letivo atual.</div>{% endif %}
+    {% if readonly %}
+    <div class="alert alert-warning mt-3">Está em modo de personificação: só pode consultar.</div>
+    {% elif alunos %}
+    <div class="position-sticky bottom-0 bg-white border-top py-2 mt-2 d-flex gap-2 align-items-center">
+      <button class="btn btn-primary"><i class="bi bi-save me-1"></i>Guardar avaliação</button>
+      <span class="text-muted small">Pode guardar várias vezes; as alterações substituem as anteriores.</span>
+    </div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const COR = {{ cor|tojson }};
+function pintar(sel) { const c = COR[sel.value]; sel.style.background = c || ''; sel.style.color = c ? '#fff' : ''; }
+document.querySelectorAll('.ct-sel').forEach(s => { pintar(s); s.addEventListener('change', () => pintar(s)); });
+document.querySelectorAll('.dsc-body').forEach(box => {
+  const max = parseInt(box.dataset.max, 10), cnt = box.closest('.dsc').querySelector('.cnt');
+  box.addEventListener('change', ev => {
+    const marcados = box.querySelectorAll('input:checked');
+    if (marcados.length > max) { ev.target.checked = false; alert('Pode assinalar no máximo ' + max + ' descritores.'); }
+    cnt.textContent = '(' + box.querySelectorAll('input:checked').length + ')';
+  });
+});
+</script>
+{% endblock %}

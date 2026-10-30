@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}CT · Turma {{ turma }}{% endblock %}
+{% block extra_head %}
+<style>
+  .ct-res th, .ct-res td { vertical-align: top; }
+  .ct-res th:first-child, .ct-res td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; min-width: 190px; box-shadow: 1px 0 0 #dee2e6; }
+  .ct-res thead th:first-child { background: #f8f9fa; }
+  .ct-res td.cel { min-width: 170px; }
+  .chip { display: inline-block; color: #fff; font-weight: 700; font-size: .72rem; border-radius: 4px; padding: 1px 6px; margin: 0 3px 3px 0; cursor: help; }
+  .prop { font-size: .78rem; color: #475569; margin: 2px 0 4px; }
+  .dsc-res { font-size: .7rem; margin-top: 3px; }
+  .dsc-res span { display: inline-block; background: #e0f2fe; color: #075985; border-radius: 4px; padding: 0 5px; margin: 0 3px 2px 0; cursor: help; }
+  .obs-res { font-size: .78rem; max-width: 260px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="px-3">
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="fw-bold mb-1"><i class="bi bi-stars me-2 text-primary"></i>Competências Transversais · Turma {{ turma }}</h3>
+      <p class="text-muted mb-0">{{ ano }} · {{ mom.nome }}{% if mom.id != ativo %} <span class="badge text-bg-secondary">momento já fechado</span>{% endif %}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      {% for m in momentos %}
+      <a href="?momento={{ m.id }}" class="btn btn-sm {% if m.id == mom.id %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ m.nome }}</a>
+      {% endfor %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Turma</a>
+    </div>
+  </div>
+
+  <p class="text-muted small">Em cada competência vê o nível dado por cada professor (disciplina e nível), a <strong>proposta</strong> (média, e o nível a que corresponde)
+    e o campo onde <strong>decide</strong> o nível do aluno. Passe o rato por cima de um nível para ver a disciplina, o professor e o rótulo.</p>
+
+  <form method="post" action="{{ url_for('ct_decidir', turma=turma) }}">
+    <input type="hidden" name="momento" value="{{ mom.id }}">
+    <div class="d-flex gap-2 mb-2 flex-wrap">
+      {% if not readonly %}
+      <button type="button" class="btn btn-sm btn-outline-primary" id="aceitar"><i class="bi bi-magic me-1"></i>Preencher com as propostas (onde estiver em branco)</button>
+      <button class="btn btn-sm btn-primary"><i class="bi bi-save me-1"></i>Guardar decisão</button>
+      {% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm ct-res mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Aluno</th>
+            {% for c in cts %}<th title="{{ c.def }}">{{ c.id }}<div class="fw-normal small text-muted">{{ c.nome }}</div></th>{% endfor %}
+            <th>Observações dos professores</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+          <tr>
+            <td><a href="{{ url_for('aluno', aluno_id=l.id) }}" class="fw-semibold text-decoration-none">{{ l.nome }}</a><div class="small text-muted">Nº {{ l.numero }}</div></td>
+            {% for c in cts %}
+            {% set cel = l.cel[c.id] %}
+            <td class="cel">
+              {% for x in cel.aval %}
+              <span class="chip" style="background:{{ cor[x.nivel] }}" title="{{ x.disc }} · {{ x.prof }} · {{ x.nivel }} ({{ niveis[x.nivel][0] }})">{{ x.abrev }} {{ x.nivel }}</span>
+              {% else %}<span class="text-muted small">sem avaliações</span>{% endfor %}
+              {% if cel.media %}<div class="prop">Média {{ ('%.1f'|format(cel.media))|replace('.', ',') }} → proposta <strong>{{ cel.sug }}</strong> ({{ niveis[cel.sug][0] }})</div>{% endif %}
+              <select name="dec_{{ l.id }}_{{ c.id }}" class="form-select form-select-sm dec" data-prop="{{ cel.sug or '' }}" {% if readonly %}disabled{% endif %}>
+                <option value="">— decisão do PT —</option>
+                {% for n, (rot, txt) in niveis.items() %}
+                <option value="{{ n }}" {% if cel.dec == n %}selected{% endif %}>{{ n }} · {{ rot }}</option>
+                {% endfor %}
+              </select>
+              {% if cel.desc %}
+              <div class="dsc-res">A melhorar:
+                {% for cod, n in cel.desc %}<span title="{{ descritores[cod] }}">{{ cod }}{% if n > 1 %}×{{ n }}{% endif %}</span>{% endfor %}
+              </div>
+              {% endif %}
+            </td>
+            {% endfor %}
+            <td class="obs-res">
+              {% for o in l.obs %}<div title="{{ o.prof }}"><strong>{{ o.abrev }}:</strong> {{ o.texto }}</div>{% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not linhas %}<div class="alert alert-info mt-3">Esta turma não tem alunos no ano letivo atual.</div>{% endif %}
+  </form>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const COR = {{ cor|tojson }};
+function pintar(sel) { const c = COR[sel.value]; sel.style.background = c || ''; sel.style.color = c ? '#fff' : ''; sel.style.fontWeight = c ? '600' : ''; }
+const decs = document.querySelectorAll('select.dec');
+decs.forEach(s => { pintar(s); s.addEventListener('change', () => pintar(s)); });
+const btn = document.getElementById('aceitar');
+if (btn) btn.addEventListener('click', () => decs.forEach(s => { if (!s.value && s.dataset.prop) { s.value = s.dataset.prop; pintar(s); } }));
+</script>
+{% endblock %}
