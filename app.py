@@ -4068,6 +4068,7 @@ def _ct_turma_ativa(db, turma):
     return _nivel_turma(turma) in _ct_niveis(db)
 
 app.jinja_env.globals["ct_turma_ativa"] = lambda t: _ct_turma_ativa(get_db(), t)
+app.jinja_env.globals["ano_letivo_cab"] = lambda: ano_letivo_atual(get_db())
 
 def _ct_atribuicoes(db, nome, ano):
     """[(turma base, disciplina)] atribuídas ao docente (ligação pelo nome) em prof_disc,

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}CPA{% endblock %} · Portal dos CT</title>
+  <title>{% block title %}CPA{% endblock %} · Portal de Avaliação</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
@@ -19,21 +19,29 @@
     }
     body { background: #f4f8fb; font-family: 'Segoe UI', system-ui, sans-serif; }
 
-    /* Navbar */
+    /* Cabeçalho */
     .navbar {
-      background: var(--azul-escuro) !important;
-      border-bottom: 3px solid var(--azul-medio);
+      background: #1c3a6e !important;
+      padding: 0 !important;
+      min-height: 76px;
     }
+    .navbar > .container-fluid { padding: .9rem 1.5rem; gap: 1rem; }
     .navbar-brand {
-      font-weight: 800; letter-spacing: .3px; font-size: 1rem;
-      display: flex; align-items: center; gap: .6rem;
+      display: flex; align-items: center; gap: 1rem; margin: 0; padding: 0; color: #fff;
     }
-    .navbar-brand .logo-img { height: 32px; width: auto; }
-    .navbar-brand .brand-nome {
-      display: flex; flex-direction: column; line-height: 1.1;
+    .navbar-brand .logo-img { height: 38px; width: auto; }
+    .navbar-brand .brand-nome { display: flex; flex-direction: column; line-height: 1.15; }
+    .navbar-brand .brand-titulo { font-size: 1.3rem; font-weight: 700; color: #fff; letter-spacing: .1px; }
+    .navbar-brand .brand-sub { font-size: .85rem; font-weight: 400; color: #c9d6ef; }
+    .navbar .nav-link { color: #e6edfa !important; font-weight: 500; }
+    .navbar .nav-link:hover { color: #fff !important; }
+    .navbar .nav-link.ativo { color: #fff !important; box-shadow: inset 0 -2px 0 #f2a33a; }
+    .navbar .user-nome { color: #fff; font-weight: 500; }
+    .btn-sair {
+      background: #fff; color: #1c3a6e; font-weight: 600; border: 0;
+      padding: .35rem 1rem; border-radius: 6px;
     }
-    .navbar-brand .brand-cpa  { font-size: 1.1rem; font-weight: 900; color: white; }
-    .navbar-brand .brand-sub  { font-size: .65rem; font-weight: 400; color: var(--azul-claro); letter-spacing: 1px; text-transform: uppercase; }
+    .btn-sair:hover { background: #e6edfa; color: #1c3a6e; }
 
     /* Notas — não mexer */
     .nota-badge {
@@ -87,8 +95,8 @@
     <a class="navbar-brand" href="{{ url_for('dashboard') }}">
       <img src="{{ url_for('static', filename='logo.svg') }}" class="logo-img" alt="CPA">
       <div class="brand-nome">
-        <span class="brand-cpa">CPA</span>
-        <span class="brand-sub">Portal dos CT</span>
+        <span class="brand-titulo">Portal de Avaliação · CPA SEC</span>
+        <span class="brand-sub">Colégio Pedro Arrupe — Ano letivo {{ ano_letivo_cab() }}</span>
       </div>
     </a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
@@ -170,13 +178,13 @@
         </li>
         {% endif %}
         <li class="nav-item">
-          <a class="nav-link text-light opacity-90" href="{{ url_for('ct_home') }}">
-            <i class="bi bi-stars me-1"></i>Competências
+          <a class="nav-link {% if request.endpoint and request.endpoint.startswith('ct_') %}ativo{% endif %}" href="{{ url_for('ct_home') }}">
+            <i class="bi bi-mortarboard me-1"></i>Competências Transversais
           </a>
         </li>
         <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle text-light opacity-90" href="#" data-bs-toggle="dropdown">
-            <i class="bi bi-person-circle me-1"></i>{{ session.nome }}
+          <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+            <span class="user-nome">{{ session.nome }}</span>
             {% if session.turma %}
               <span class="badge-turma ms-1" style="background:var(--azul-medio)">{{ session.turma.split(',')[0] }}</span>
             {% endif %}
@@ -185,11 +193,10 @@
             <li><a class="dropdown-item" href="{{ url_for('alterar_password') }}">
               <i class="bi bi-key me-2"></i>Alterar Password
             </a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
-              <i class="bi bi-box-arrow-right me-2"></i>Sair
-            </a></li>
           </ul>
+        </li>
+        <li class="nav-item">
+          <a class="btn btn-sair btn-sm" href="{{ url_for('logout') }}">Sair</a>
         </li>
       </ul>
     </div>
