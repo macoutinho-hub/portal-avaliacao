@@ -25,9 +25,11 @@
     <a href="{{ url_for('intercalar_turma', turma=turma) }}" class="btn btn-outline-primary btn-sm">
       <i class="bi bi-speedometer2 me-1"></i>Intercalar
     </a>
+    {% if ct_turma_ativa(turma) %}
     <a href="{{ url_for('ct_turma', turma=turma) }}" class="btn btn-outline-primary btn-sm">
       <i class="bi bi-stars me-1"></i>Competências
     </a>
+    {% endif %}
     <a href="{{ url_for('gerir_slides', turma=turma) }}" class="btn btn-outline-primary btn-sm">
       <i class="bi bi-collection-play me-1"></i>Slides
     </a>

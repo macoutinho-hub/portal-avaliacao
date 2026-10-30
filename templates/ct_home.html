@@ -53,8 +53,9 @@
       <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start">
-            <div><div class="fw-bold">{{ c.disciplina }}</div><div class="text-muted">Turma {{ c.turma }}</div></div>
-            <a class="btn btn-sm btn-primary" href="{{ url_for('ct_avaliar', turma=c.turma, disc=c.disciplina) }}">
+            <div><div class="fw-bold">{{ c.disciplina }}</div><div class="text-muted">{{ c.sub }}</div>
+              {% if c.tema %}<div class="small text-muted fst-italic">{{ c.tema }}</div>{% endif %}</div>
+            <a class="btn btn-sm btn-primary" href="{{ url_for('ct_avaliar', grupo=c.grupo) if c.grupo else url_for('ct_avaliar', turma=c.turma, disc=c.disciplina) }}">
               {{ 'Continuar' if c.feitos else 'Avaliar' }}</a>
           </div>
           <div class="progress mt-3" style="height:8px"><div class="progress-bar bg-success" style="width:{{ (100 * c.feitos / c.n) if c.n else 0 }}%"></div></div>
@@ -64,9 +65,13 @@
     </div>
     {% endfor %}
   </div>
-  {% elif session.role == 'professor' or not turmas_pt %}
+  {% elif session.role == 'professor' or (not turmas_pt and not sem_ct_12) %}
   <div class="alert alert-info">Não tem turmas e disciplinas atribuídas neste ano letivo. Se devia ter, o nome da sua conta pode não coincidir com o do ficheiro dos docentes: fale com o administrador.</div>
   {% endif %}
+  {% endif %}
+
+  {% if sem_ct_12 %}
+  <div class="alert alert-secondary">Neste ano letivo só há avaliação das Competências Transversais no {{ niveis_ct|join('.º e ') }}.º ano. As suas turmas não estão incluídas.</div>
   {% endif %}
 
   {% if turmas_pt %}

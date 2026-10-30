@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Grupos de projeto{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:900px">
+  <h4 class="mb-4"><i class="bi bi-people me-2"></i>Importar grupos de projeto</h4>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Carregue a listagem dos grupos, <strong>uma linha por aluno</strong>, com as colunas
+        <strong>Professor orientador</strong>, <strong>Grupo</strong> e <strong>Nº interno</strong> do aluno
+        e, se existirem, <strong>Nível</strong>, <strong>Sala</strong> e <strong>Tema</strong>.
+        Cada grupo tem um orientador, que é quem avalia as Competências Transversais dos alunos do grupo.
+        Os orientadores são ligados às contas do portal pelo nome (completo ou abreviado).
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ficheiro (.xlsx)</label>
+          <input type="file" name="ficheiro" accept=".xlsx" class="form-control" required>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Ano letivo</label>
+            <input type="text" name="ano_letivo" class="form-control" placeholder="{{ ano }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Modo</label>
+            <select name="modo" class="form-select">
+              <option value="simular" selected>Simular (não altera nada)</option>
+              <option value="aplicar">Aplicar alterações</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>Importar</button>
+      </form>
+    </div>
+  </div>
+  <div class="mt-3 text-muted small">
+    <i class="bi bi-info-circle me-1"></i>Ao aplicar, os grupos do mesmo ano letivo e nível que já existiam são <strong>substituídos</strong>
+    pelos do ficheiro. Os de outros anos não são tocados. O ficheiro não fica guardado no servidor.
+  </div>
+
+  {% if relatorio %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-header fw-semibold">
+      {% if relatorio.aplicado %}<i class="bi bi-check-circle text-success me-1"></i>Importação aplicada
+      {% else %}<i class="bi bi-eye text-primary me-1"></i>Simulação — nada foi alterado{% endif %}
+    </div>
+    <div class="card-body">
+      <p class="mb-2">Ano letivo <strong>{{ relatorio.ano }}</strong>:
+        <strong>{{ relatorio.n_grupos }}</strong> grupos
+        ({% for n, q in relatorio.por_nivel %}{{ n or '?' }}.º ano: {{ q }}{% if not loop.last %}; {% endif %}{% endfor %}),
+        com <strong>{{ relatorio.n_alunos }}</strong> alunos.</p>
+
+      <h6 class="mt-3">Orientadores (grupos por orientador)</h6>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle">
+          <thead class="table-light"><tr><th>Orientador (conta no portal)</th><th class="text-end">Grupos</th></tr></thead>
+          <tbody>{% for nome, q in relatorio.orientadores %}<tr><td>{{ nome }}</td><td class="text-end">{{ q }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+
+      {% if relatorio.nao_ligados %}
+      <div class="alert alert-danger">
+        <strong>Grupos cujo orientador não foi ligado a uma conta ({{ relatorio.nao_ligados|length }}):</strong>
+        <ul class="mb-0 mt-1">
+          {% for nv, gr, txt, motivo in relatorio.nao_ligados %}<li>{{ nv or '?' }}.º ano, grupo {{ gr }}: «{{ txt }}» — {{ motivo }}</li>{% endfor %}
+        </ul>
+        Estes grupos ficam sem quem os avalie até o orientador ter conta (Criar contas de professores).
+      </div>
+      {% endif %}
+      {% if relatorio.conflitos %}
+      <div class="alert alert-warning">
+        <strong>Grupos com mais do que um orientador no ficheiro:</strong> ficou o mais frequente.
+        <ul class="mb-0 mt-1">{% for nv, gr, txt in relatorio.conflitos %}<li>{{ nv or '?' }}.º ano, grupo {{ gr }}: {{ txt }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+      {% if relatorio.nao_encontrados %}
+      <div class="alert alert-warning">
+        <strong>Nº interno sem aluno em {{ relatorio.ano }} ({{ relatorio.nao_encontrados|length }}):</strong>
+        {{ relatorio.nao_encontrados[:40]|join(', ') }}{% if relatorio.nao_encontrados|length > 40 %} …{% endif %}.
+      </div>
+      {% endif %}
+      {% if relatorio.repetidos %}
+      <div class="alert alert-warning"><strong>{{ relatorio.repetidos }}</strong> aluno(s) aparecem em mais do que um grupo.</div>
+      {% endif %}
+      {% if relatorio.sem_orientador %}
+      <div class="alert alert-warning"><strong>{{ relatorio.sem_orientador }}</strong> linha(s) sem orientador.</div>
+      {% endif %}
+      {% if relatorio.fora %}
+      <div class="alert alert-secondary mb-0">
+        Grupos fora do 10.º e 11.º ano (não entram nas CT neste ano letivo):
+        {% for nv, gr in relatorio.fora %}{{ nv or '?' }}.º/{{ gr }}{% if not loop.last %}, {% endif %}{% endfor %}.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

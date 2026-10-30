@@ -28,6 +28,19 @@
           </select>
           <div class="form-text">Momento em que os professores estão a avaliar as CT. Os dos momentos anteriores ficam guardados.</div>
         </div>
+        <div class="mb-4">
+          <label class="form-label fw-semibold">Anos com avaliação das Competências Transversais</label>
+          <input type="hidden" name="ct_niveis_form" value="1">
+          <div class="d-flex gap-3">
+            {% for n in (10, 11, 12) %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="ct_niveis" value="{{ n }}" id="ctn{{ n }}" {% if n in ct_niveis %}checked{% endif %}>
+              <label class="form-check-label" for="ctn{{ n }}">{{ n }}.º ano</label>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="form-text">Nas turmas dos anos não marcados, a área das CT fica bloqueada (professores e PT).</div>
+        </div>
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-save me-1"></i>Guardar
         </button>

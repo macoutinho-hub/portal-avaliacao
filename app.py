@@ -2114,6 +2114,152 @@ def atribuicoes():
         hora_pt=sum(1 for d, _, _ in lacunas if _chave_disc(d) == _chave_disc("Hora de PT")))
 
 
+def _resolver_conta(texto, contas):
+    """Liga um nome (completo ou abreviado) a uma conta. Devolve (nome da conta, motivo se falhar)."""
+    alvo = _norm_nome(texto)
+    exatos = [n for n in contas if _norm_nome(n) == alvo]
+    if len(exatos) == 1:
+        return exatos[0], None
+    toks = alvo.split()
+    cand = []
+    for n in contas:
+        i = 0
+        for t in _norm_nome(n).split():
+            if i < len(toks) and t == toks[i]:
+                i += 1
+        if toks and i == len(toks):
+            cand.append(n)
+    if len(cand) == 1:
+        return cand[0], None
+    return None, ("mais de uma conta: " + ", ".join(cand[:3])) if cand else "sem conta no portal"
+
+@app.route("/admin/importar-grupos-projeto", methods=["GET", "POST"])
+@login_required
+@admin_required
+def importar_grupos_projeto():
+    """Grupos de projeto (um orientador por grupo) e respetivos alunos: uma linha por aluno.
+    Colunas lidas pelo nome: orientador, grupo, Nº interno do aluno, e (opcionais) nível, sala, tema."""
+    import io as _io
+    from collections import Counter
+    db = get_db()
+    relatorio = None
+
+    if request.method == "POST":
+        f = request.files.get("ficheiro")
+        aplicar = request.form.get("modo") == "aplicar"
+        if not f or not f.filename.lower().endswith(".xlsx"):
+            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+            return redirect(url_for("importar_grupos_projeto"))
+        try:
+            rows = list(openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True).active.iter_rows(values_only=True))
+        except Exception as e:
+            flash(f"Não foi possível ler o ficheiro: {e}", "danger")
+            return redirect(url_for("importar_grupos_projeto"))
+
+        h_idx = col = None
+        for i, row in enumerate(rows[:5]):
+            hs = [_norm_nome(v) for v in row]
+            def acha(*testes):
+                for t in testes:
+                    k = next((k for k, h in enumerate(hs) if t(h)), None)
+                    if k is not None:
+                        return k
+                return None
+            c_or = acha(lambda h: "orientador" in h)
+            c_gr = acha(lambda h: "grupo" in h and "orientador" not in h)
+            c_nu = acha(lambda h: "interno" in h,
+                        lambda h: "aluno" in h and ("numero" in h or "n." in h or h.startswith("no ")),
+                        lambda h: "processo" in h)
+            if None not in (c_or, c_gr, c_nu):
+                h_idx = i
+                col = dict(or_=c_or, gr=c_gr, nu=c_nu,
+                           nivel=acha(lambda h: "nivel" in h), sala=acha(lambda h: "sala" in h),
+                           tema=acha(lambda h: "tema" in h))
+                break
+        if h_idx is None:
+            flash("Cabeçalho não encontrado (esperadas as colunas do orientador, do grupo e do Nº interno do aluno).", "danger")
+            return redirect(url_for("importar_grupos_projeto"))
+
+        ano = (request.form.get("ano_letivo") or "").strip() or ano_letivo_atual(db)
+        alunos_ano = {r["numero"]: r for r in db.execute(
+            "SELECT id, numero, turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall()}
+        contas = [r["nome"] for r in db.execute("SELECT nome FROM users WHERE role IN ('professor','diretor')")]
+
+        def val(row, k):
+            v = row[k] if k is not None and k < len(row) else None
+            if isinstance(v, float) and v.is_integer():
+                v = int(v)
+            return "" if v is None else str(v).strip()
+
+        grupos, nao_enc, sem_orientador = {}, [], 0
+        for row in rows[h_idx + 1:]:
+            num, gr, ori = val(row, col["nu"]), val(row, col["gr"]), val(row, col["or_"])
+            if not num.isdigit() or not gr:
+                continue
+            al = alunos_ano.get(num)
+            if not al:
+                nao_enc.append(num)
+                continue
+            nv = _nivel_turma(val(row, col["nivel"])) if col["nivel"] is not None else None
+            nv = nv or _nivel_turma(al["turma"])
+            chave = (nv, val(row, col["sala"]), gr)
+            g = grupos.setdefault(chave, {"tema": "", "orient": Counter(), "alunos": []})
+            g["tema"] = g["tema"] or val(row, col["tema"])
+            if ori:
+                g["orient"][ori] += 1
+            else:
+                sem_orientador += 1
+            if al["id"] not in [a["id"] for a in g["alunos"]]:
+                g["alunos"].append(al)
+
+        # orientador de cada grupo (um só): o mais frequente; avisa se houver mais do que um
+        lista, conflitos, nao_ligados, por_orientador, em_varios = [], [], [], Counter(), Counter()
+        for (nv, sala, gr), g in sorted(grupos.items(), key=lambda kv: (kv[0][0] or 0, str(kv[0][2]))):
+            ori_txt = g["orient"].most_common(1)[0][0] if g["orient"] else ""
+            if len(g["orient"]) > 1:
+                conflitos.append((nv, gr, ", ".join(g["orient"])))
+            conta, motivo = _resolver_conta(ori_txt, contas) if ori_txt else (None, "sem orientador no ficheiro")
+            if not conta:
+                nao_ligados.append((nv, gr, ori_txt or "—", motivo))
+            else:
+                por_orientador[conta] += 1
+            for a in g["alunos"]:
+                em_varios[a["id"]] += 1
+            lista.append({"nivel": nv, "sala": sala, "numero": gr, "tema": g["tema"],
+                          "orientador": conta or ori_txt, "ligado": bool(conta), "alunos": g["alunos"]})
+        repetidos = sum(1 for n in em_varios.values() if n > 1)
+        niveis = sorted({g["nivel"] for g in lista if g["nivel"]})
+        fora = [g for g in lista if g["nivel"] not in (10, 11)]
+
+        if aplicar:
+            for nv in niveis:
+                nome_nv = f"{nv}º ano"
+                db.execute("DELETE FROM projeto_grupo_membros WHERE grupo_id IN "
+                           "(SELECT id FROM projeto_grupos WHERE ano_letivo=? AND nivel=?)", (ano, nome_nv))
+                db.execute("DELETE FROM projeto_grupos WHERE ano_letivo=? AND nivel=?", (ano, nome_nv))
+            for g in lista:
+                if not g["nivel"]:
+                    continue
+                cur = db.execute(
+                    "INSERT INTO projeto_grupos (ano_letivo, nivel, sala, numero, tema, professor_orientador) "
+                    "VALUES (?,?,?,?,?,?)", (ano, f"{g['nivel']}º ano", g["sala"], g["numero"], g["tema"], g["orientador"]))
+                for a in g["alunos"]:
+                    db.execute("INSERT OR IGNORE INTO projeto_grupo_membros (grupo_id, aluno_id) VALUES (?,?)",
+                               (cur.lastrowid, a["id"]))
+            db.commit()
+            flash(f"{len(lista)} grupo(s) de projeto importado(s).", "success")
+        relatorio = {
+            "aplicado": aplicar, "ano": ano, "n_grupos": len(lista), "niveis": niveis,
+            "n_alunos": sum(len(g["alunos"]) for g in lista), "nao_encontrados": sorted(set(nao_enc)),
+            "orientadores": sorted(por_orientador.items()), "nao_ligados": nao_ligados,
+            "conflitos": conflitos, "repetidos": repetidos, "sem_orientador": sem_orientador,
+            "fora": [(g["nivel"], g["numero"]) for g in fora],
+            "por_nivel": sorted(Counter(g["nivel"] for g in lista).items(), key=lambda kv: kv[0] or 0),
+        }
+
+    return render_template("importar_grupos_projeto.html", relatorio=relatorio, ano=ano_letivo_atual(db))
+
+
 @app.route("/admin/importar-contas-professores", methods=["GET", "POST"])
 @login_required
 @admin_required
@@ -3153,13 +3299,17 @@ def configuracoes():
         ctm = request.form.get("ct_momento", "")
         if ctm in ct_cfg.MOMENTOS_POR_ID:
             db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('ct_momento_ativo',?)", (ctm,))
+        if request.form.get("ct_niveis_form"):
+            sel = [x for x in request.form.getlist("ct_niveis") if x in ("10", "11", "12")]
+            db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('ct_niveis_ativos',?)", (",".join(sel),))
         db.commit()
         flash("Configurações guardadas.", "success")
         return redirect(url_for("configuracoes"))
     ano = get_setting(db, "ano_letivo_atual", "2025/2026")
     sem = get_setting(db, "semestre_atual", "2")
     return render_template("configuracoes.html", ano_letivo=ano, semestre=sem,
-                           ct_momento=_ct_momento_ativo(db), momentos=ct_cfg.MOMENTOS)
+                           ct_momento=_ct_momento_ativo(db), momentos=ct_cfg.MOMENTOS,
+                           ct_niveis=_ct_niveis(db))
 
 
 # ─── Importar Pauta (PT / admin) ──────────────────────────────────────────────
@@ -3904,16 +4054,48 @@ def _ct_momento_ativo(db):
 def _chave_disc(d):
     return _norm_nome(canonizar_disciplina(d))
 
+def _ct_niveis(db):
+    """Anos de escolaridade em que há avaliação das CT (por defeito 10.º e 11.º)."""
+    v = get_setting(db, "ct_niveis_ativos")
+    v = "10,11" if v is None else v
+    return {int(x) for x in str(v).split(",") if x.strip().isdigit()}
+
+def _nivel_turma(turma):
+    m = _re_global.match(r"\s*(\d+)", str(turma or ""))
+    return int(m.group(1)) if m else None
+
+def _ct_turma_ativa(db, turma):
+    return _nivel_turma(turma) in _ct_niveis(db)
+
+app.jinja_env.globals["ct_turma_ativa"] = lambda t: _ct_turma_ativa(get_db(), t)
+
 def _ct_atribuicoes(db, nome, ano):
-    """[(turma base, disciplina)] atribuídas ao docente (ligação pelo nome) em prof_disc."""
+    """[(turma base, disciplina)] atribuídas ao docente (ligação pelo nome) em prof_disc,
+    só nas turmas dos anos em que há avaliação das CT."""
     alvo = _norm_nome(nome)
+    niveis = _ct_niveis(db)
     out = []
     for r in db.execute("SELECT professor, turma, disciplina FROM prof_disc WHERE ano_letivo=? "
                         "ORDER BY turma, disciplina", (ano,)).fetchall():
-        if _norm_nome(r["professor"]) == alvo:
+        if _norm_nome(r["professor"]) == alvo and _nivel_turma(r["turma"]) in niveis:
             par = (base_turma(r["turma"]), r["disciplina"])
             if par not in out:
                 out.append(par)
+    return out
+
+def _ct_grupos_orientador(db, nome, ano):
+    """Grupos de projeto (com os alunos) em que o docente é o orientador."""
+    alvo = _norm_nome(nome)
+    niveis = _ct_niveis(db)
+    out = []
+    for g in db.execute("SELECT id, nivel, sala, numero, tema, professor_orientador FROM projeto_grupos "
+                        "WHERE ano_letivo=? ORDER BY nivel, numero", (ano,)).fetchall():
+        if _norm_nome(g["professor_orientador"]) != alvo or _nivel_turma(g["nivel"]) not in niveis:
+            continue
+        alunos = db.execute("SELECT a.id, a.numero, a.nome, a.turma FROM projeto_grupo_membros m "
+                            "JOIN alunos a ON a.id=m.aluno_id WHERE m.grupo_id=? ORDER BY a.nome",
+                            (g["id"],)).fetchall()
+        out.append({**dict(g), "alunos": alunos})
     return out
 
 def _ct_alunos(db, turma, disciplina, ano):
@@ -3923,6 +4105,12 @@ def _ct_alunos(db, turma, disciplina, ano):
     ph = ",".join("?" * len(turmas_reais))
     alunos = db.execute(f"SELECT id, numero, nome FROM alunos WHERE turma IN ({ph}) AND ano_letivo=? "
                         "ORDER BY nome", turmas_reais + [ano]).fetchall()
+    if _chave_disc(disciplina) == "projeto":
+        # quem está num grupo de projeto é avaliado pelo orientador do grupo, não pelo professor da turma
+        em_grupo = {r[0] for r in db.execute(
+            "SELECT m.aluno_id FROM projeto_grupo_membros m JOIN projeto_grupos g ON g.id=m.grupo_id "
+            "WHERE g.ano_letivo=?", (ano,)).fetchall()}
+        alunos = [a for a in alunos if a["id"] not in em_grupo]
     matr = {}
     if alunos:
         ph2 = ",".join("?" * len(alunos))
@@ -3951,9 +4139,20 @@ def ct_home():
             feitos = {r["aluno_id"] for r in db.execute(
                 "SELECT DISTINCT aluno_id FROM ct_avaliacao WHERE ano_letivo=? AND momento=? "
                 "AND professor_id=? AND disciplina=?", (ano, mom["id"], session["user_id"], disc)).fetchall()} & ids
-            cartoes.append({"turma": turma, "disciplina": disc, "n": len(ids), "feitos": len(feitos)})
+            if ids:
+                cartoes.append({"turma": turma, "disciplina": disc, "n": len(ids), "feitos": len(feitos),
+                                "grupo": None, "sub": f"Turma {turma}"})
+        for g in _ct_grupos_orientador(db, session["nome"], ano):
+            ids = {a["id"] for a in g["alunos"]}
+            feitos = {r["aluno_id"] for r in db.execute(
+                "SELECT DISTINCT aluno_id FROM ct_avaliacao WHERE ano_letivo=? AND momento=? "
+                "AND professor_id=? AND disciplina='Projeto'", (ano, mom["id"], session["user_id"])).fetchall()} & ids
+            sub = g["nivel"] + (f" · sala {g['sala']}" if g["sala"] else "")
+            cartoes.append({"turma": None, "disciplina": f"Projeto · Grupo {g['numero']}", "n": len(ids),
+                            "feitos": len(feitos), "grupo": g["id"], "sub": sub, "tema": g["tema"]})
     if role == "diretor":
-        turmas_pt = sorted({base_turma(t) for t in (session.get("turma") or "").split(",") if t.strip()})
+        turmas_pt = sorted({base_turma(t) for t in (session.get("turma") or "").split(",")
+                            if t.strip() and _ct_turma_ativa(db, t)})
     if role == "admin":
         tot, aval, dec = {}, {}, {}
         for r in db.execute("SELECT turma, COUNT(*) n FROM alunos WHERE ano_letivo=? GROUP BY turma", (ano,)):
@@ -3967,8 +4166,10 @@ def ct_home():
                             (ano, mom["id"])):
             dec[base_turma(r["turma"])] = dec.get(base_turma(r["turma"]), 0) + r["n"]
         visao = [{"turma": t, "alunos": n, "avaliados": aval.get(t, 0), "decididos": dec.get(t, 0)}
-                 for t, n in sorted(tot.items())]
+                 for t, n in sorted(tot.items()) if _ct_turma_ativa(db, t)]
+    sem_ct_12 = role == "diretor" and not turmas_pt and bool((session.get("turma") or "").strip())
     return render_template("ct_home.html", mom=mom, ano=ano, cartoes=cartoes, turmas_pt=turmas_pt,
+                           sem_ct_12=sem_ct_12, niveis_ct=sorted(_ct_niveis(db)),
                            visao=visao, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
                            momentos=ct_cfg.MOMENTOS)
 
@@ -3978,19 +4179,30 @@ def ct_avaliar():
     db = get_db()
     ano = ano_letivo_atual(db)
     mom = ct_cfg.MOMENTOS_POR_ID[_ct_momento_ativo(db)]
-    turma = base_turma(request.values.get("turma", ""))
-    disc = (request.values.get("disc") or "").strip()
-    if (turma, disc) not in _ct_atribuicoes(db, session["nome"], ano):
-        flash("Não tem esta disciplina atribuída nesta turma.", "danger")
-        return redirect(url_for("ct_home"))
-    alunos, filtrado = _ct_alunos(db, turma, disc, ano)
+    gid = request.values.get("grupo", type=int)
+    grupo = None
+    if gid:   # Projeto: o orientador avalia os alunos do seu grupo
+        grupo = next((g for g in _ct_grupos_orientador(db, session["nome"], ano) if g["id"] == gid), None)
+        if not grupo:
+            flash("Não é o orientador deste grupo de projeto.", "danger")
+            return redirect(url_for("ct_home"))
+        turma, disc = "", "Projeto"
+        alunos, filtrado = list(grupo["alunos"]), True
+    else:
+        turma = base_turma(request.values.get("turma", ""))
+        disc = (request.values.get("disc") or "").strip()
+        if (turma, disc) not in _ct_atribuicoes(db, session["nome"], ano):
+            flash("Não tem esta disciplina atribuída nesta turma (ou esta turma não tem avaliação das CT).", "danger")
+            return redirect(url_for("ct_home"))
+        alunos, filtrado = _ct_alunos(db, turma, disc, ano)
+    voltar = dict(grupo=gid) if gid else dict(turma=turma, disc=disc)
     uid = session["user_id"]
     readonly = bool(session.get("original_role"))   # personificação: só consulta
 
     if request.method == "POST":
         if readonly:
             flash("Em modo de personificação só pode consultar.", "warning")
-            return redirect(url_for("ct_avaliar", turma=turma, disc=disc))
+            return redirect(url_for("ct_avaliar", **voltar))
         agora = _ct_agora()
         guardados = 0
         for a in alunos:
@@ -4027,7 +4239,7 @@ def ct_avaliar():
                            "AND momento=? AND professor_id=?", (a["id"], disc, ano, mom["id"], uid))
         db.commit()
         flash(f"Avaliação guardada ({guardados} nível(is) atribuído(s)).", "success")
-        return redirect(url_for("ct_avaliar", turma=turma, disc=disc))
+        return redirect(url_for("ct_avaliar", **voltar))
 
     exist = {}
     for r in db.execute("SELECT aluno_id, ct, nivel, descritores FROM ct_avaliacao WHERE ano_letivo=? "
@@ -4039,7 +4251,7 @@ def ct_avaliar():
         "AND disciplina=?", (ano, mom["id"], uid, disc))}
     tem_opc = any(not ct_cfg.CT_POR_ID[ct]["basica"] for por_ct in exist.values() for ct in por_ct)
     return render_template("ct_avaliar.html", turma=turma, disc=disc, mom=mom, alunos=alunos,
-                           tem_opc=tem_opc,
+                           grupo=grupo, tem_opc=tem_opc,
                            filtrado=filtrado, cts=[ct_cfg.CT_POR_ID[c] for c in mom["cts"]],
                            exist=exist, obs=obs, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
                            maxd=ct_cfg.MAX_DESCRITORES, readonly=readonly, ano=ano)
@@ -4097,6 +4309,9 @@ def ct_turma(turma):
         return redirect(url_for("dashboard"))
     tb = base_turma(turma)
     ano = ano_letivo_atual(db)
+    if not _ct_turma_ativa(db, tb):
+        flash(f"Este ano letivo não há avaliação das Competências Transversais no {_nivel_turma(tb)}.º ano.", "info")
+        return redirect(url_for("dashboard"))
     mid = request.args.get("momento")
     if mid not in ct_cfg.MOMENTOS_POR_ID:
         mid = _ct_momento_ativo(db)
@@ -4119,6 +4334,9 @@ def ct_decidir(turma):
         return redirect(url_for("dashboard"))
     tb = base_turma(turma)
     ano = ano_letivo_atual(db)
+    if not _ct_turma_ativa(db, tb):
+        flash("Esta turma não tem avaliação das Competências Transversais neste ano letivo.", "info")
+        return redirect(url_for("dashboard"))
     mid = request.form.get("momento")
     if mid not in ct_cfg.MOMENTOS_POR_ID:
         return redirect(url_for("ct_turma", turma=tb))
