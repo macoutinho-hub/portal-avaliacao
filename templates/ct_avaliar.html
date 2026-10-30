@@ -6,6 +6,18 @@
   .ct-tab th:first-child, .ct-tab td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; min-width: 190px; box-shadow: 1px 0 0 #dee2e6; }
   .ct-tab thead th:first-child { background: #f8f9fa; }
   .ct-sel { min-width: 150px; font-weight: 600; }
+  .escala-sum { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+                gap: 12px; padding: 12px 16px; background: #eaf3fa; border: 1px solid #9cc3df; border-radius: .375rem; }
+  .escala-sum::-webkit-details-marker { display: none; }
+  .escala-sum:hover { background: #dcecf8; }
+  .escala-chev { white-space: nowrap; color: #0E4D7D; font-weight: 600; }
+  .escala-chev i { display: inline-block; transition: transform .2s; }
+  details[open] > .escala-sum .escala-chev i { transform: rotate(180deg); }
+  .escala-chev .fechar { display: none; }
+  details[open] > .escala-sum .escala-chev .ver { display: none; }
+  details[open] > .escala-sum .escala-chev .fechar { display: inline; }
+  .opc-bar { background: #fff7e0; border: 1px solid #f0c75a; border-left: 6px solid #f59e0b; border-radius: 8px; padding: 10px 14px; }
+  .opc-bar > span { color: #7a4b00; }
   .ct-tab .opc { display: none; }
   .ct-tab.mostra-opc .opc { display: table-cell; background: #fafcff; }
   .dsc { position: relative; margin-top: 4px; }
@@ -29,7 +41,11 @@
   </div>
 
   <details class="card shadow-sm mb-3">
-    <summary class="card-body py-2 fw-semibold" style="cursor:pointer"><i class="bi bi-rulers me-1"></i>Escala de 1 a 5 e competências</summary>
+    <summary class="escala-sum">
+      <span><i class="bi bi-rulers me-2"></i><strong>Escala de 1 a 5 e definições das competências</strong>
+        <span class="text-muted d-none d-md-inline"> · clique para ver o significado de cada nível</span></span>
+      <span class="escala-chev"><span class="ver">Abrir</span><span class="fechar">Fechar</span> <i class="bi bi-chevron-down"></i></span>
+    </summary>
     <div class="px-3 pb-3">
       {% for n, (rot, txt) in niveis.items() %}
       <div class="d-flex gap-2 align-items-start mb-1">
@@ -47,7 +63,10 @@
   <p class="text-muted small mb-2">Os campos em branco ficam por avaliar.
     {% if mom.descritores %}<strong>Opcional:</strong> em «Descritores a melhorar» pode assinalar até {{ maxd }} por aluno e competência.{% endif %}
     <strong>AUTN, RESP e COOP</strong> são avaliadas por todas as disciplinas. <strong>CCRT, RSPL, COMN e CRIA são opcionais</strong>: só se a disciplina realizou uma tarefa que as trabalhe.</p>
-  <button type="button" id="toggle-opc" class="btn btn-sm btn-outline-secondary mb-2"></button>
+  <div class="opc-bar d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <span><i class="bi bi-plus-circle-fill me-2"></i>Quer pronunciar-se também sobre <strong>CCRT, RSPL, COMN e CRIA</strong>? É opcional.</span>
+    <button type="button" id="toggle-opc" class="btn btn-primary"></button>
+  </div>
 
   <form method="post" id="form-ct">
     <input type="hidden" name="turma" value="{{ turma }}"><input type="hidden" name="disc" value="{{ disc }}">
@@ -108,8 +127,8 @@
 <script>
 const tabela = document.getElementById('tabela-ct'), btnOpc = document.getElementById('toggle-opc');
 function rotuloOpc() { btnOpc.innerHTML = tabela.classList.contains('mostra-opc')
-  ? '<i class="bi bi-eye-slash me-1"></i>Esconder as outras 4 competências (opcionais)'
-  : '<i class="bi bi-eye me-1"></i>Avaliar também as outras 4 competências (opcional)'; }
+  ? '<i class="bi bi-eye-slash me-1"></i>Esconder as outras 4 competências'
+  : '<i class="bi bi-plus-lg me-1"></i>Avaliar também as outras 4 competências'; }
 if (btnOpc) { rotuloOpc(); btnOpc.addEventListener('click', () => { tabela.classList.toggle('mostra-opc'); rotuloOpc(); }); }
 const COR = {{ cor|tojson }};
 function pintar(sel) { const c = COR[sel.value]; sel.style.background = c || ''; sel.style.color = c ? '#fff' : ''; }
