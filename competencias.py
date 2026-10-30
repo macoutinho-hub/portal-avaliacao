@@ -5,12 +5,11 @@ Definições, descritores e procedimentos retirados do «Documento Referencial d
 
 # ── Escala de níveis (1 = mínimo, 5 = máximo) ──────────────────────────────────
 NIVEIS = {
-    1: ("Inicial",            "Evidencia a competência de forma muito limitada, ou apenas quando muito orientado."),
-    2: ("Em desenvolvimento", "Evidencia alguns descritores, com falhas frequentes."),
-    3: ("Desenvolvido",       "Evidencia a maioria dos descritores de forma adequada nas situações habituais."),
-    4: ("Consolidado",        "Evidencia a competência de forma sólida e consistente, incluindo em situações novas."),
-    5: ("Avançado",           "Evidencia a competência de forma plena, ajustando-a com facilidade e segurança "
-                              "a diferentes contextos, mesmo os mais complexos ou desafiantes."),
+    1: ("Inicial",            "Encontra-se distante do definido para a competência"),
+    2: ("Em desenvolvimento", "Manifesta dificuldade em cumprir o essencial do definido para a competência"),
+    3: ("Desenvolvido",       "Cumpre o essencial do definido para a competência"),
+    4: ("Consolidado",        "Cumpre com qualidade o definido para a competência"),
+    5: ("Avançado",           "Cumpre com elevada qualidade o definido para a competência"),
 }
 # Cores, na mesma lógica das notas (vermelho < laranja < verde < azul)
 COR_NIVEL = {1: "#ef4444", 2: "#f59e0b", 3: "#22c55e", 4: "#3b82f6", 5: "#1d4ed8"}
