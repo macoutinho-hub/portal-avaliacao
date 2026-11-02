@@ -332,6 +332,8 @@
     .ap-table tr.mom-ant td { padding: 4px 6px; }
     .ap-table tr.mom-ant td.label-col { font-size: .82rem; font-weight: 600; color: rgba(255,255,255,.6); }
     .ap-table tr.mom-ant .nc { min-width: 32px; padding: 2px 6px; font-size: .8rem; font-weight: 700; }
+    .ap-table tr.colaps-toggle td { cursor: pointer; font-size: .8rem; color: rgba(255,255,255,.55); padding: 3px 14px; }
+    .ap-table tr.colaps-toggle:hover td { color: #fff; background: rgba(255,255,255,.06); }
     .ap-table tr.interc-first td { border-top: 2px solid rgba(255,255,255,.35); }
     .nc-nd  { color: rgba(255,255,255,.22); }
     .nc-txt { background: #4b5563; font-size: .75rem; }
@@ -634,7 +636,18 @@ function mostrar(i) {
 
     const inscColors = {M:'#f97316', I:'#16a34a', E:'#dc2626', PI:'#9ca3af'};
     const inscTitles = {M:'Melhoria', I:'Interno', E:'Externo', PI:'Prova de Ingresso'};
+    // 12.º ano: colapsar o 1.º semestre do 10.º e do 11.º ano (poupa altura)
+    const e12 = /^12/.test(a.turma || '');
+    const ehColapsavel = l => e12 && l.tipo === 'semestre' && /^(10|11)º Ano — 1º Sem\./.test(l.label || '');
+    const nColaps = linhas.filter(ehColapsavel).length;
+    let toggleFeito = false;
     linhas.forEach(l => {
+      if (ehColapsavel(l) && !toggleFeito) {
+        toggleFeito = true;
+        html += `<tr class="colaps-toggle" onclick="alternarAnteriores()"><td class="label-col" colspan="${discs.length + 2}">
+          <i class="bi ${expandirAnt ? 'bi-chevron-down' : 'bi-chevron-right'} me-1" id="colaps-icone"></i>1.º semestre do 10.º e do 11.º ano
+          <span style="opacity:.6">(${nColaps} linha${nColaps>1?'s':''})</span></td></tr>`;
+      }
       if (l.tipo === 'inscricao') {
         html += `<tr class="inscricao-row" style="font-size:.68rem;border-top:2px solid #818cf8">
           <td class="label-col" style="font-size:.68rem;color:#a5b4fc;font-weight:800;text-transform:uppercase;letter-spacing:.5px">Insc. Exame</td>
@@ -661,7 +674,8 @@ function mostrar(i) {
       const isSem2 = l.tipo==='semestre' && /2º\s*Sem\.?/i.test(l.label||'');
       const cls = l.tipo==='cif' ? 'cif-row' : l.tipo==='cfd' ? 'cfd-row' : l.tipo==='exame' ? 'exame-row' : l.tipo==='auto_av' ? 'auto-av-row'
         : (l.atual ? 'atual-row' : (l.tipo==='semestre' ? 'mom-ant' : ''));
-      html += `<tr class="${cls}">
+      const colaps = ehColapsavel(l);
+      html += `<tr class="${cls}${colaps ? ' colapsavel' : ''}"${colaps && !expandirAnt ? ' style="display:none"' : ''}>
         <td class="label-col">${l.label}</td>
         ${discs.map((d,i) => {
           const v = l.notas[d];
@@ -683,6 +697,13 @@ function mostrar(i) {
   document.getElementById('painel-esq').scrollTop = 0;
 }
 
+let expandirAnt = false;   // 12.º ano: mostrar o 1.º semestre do 10.º e 11.º ano
+function alternarAnteriores() {
+  expandirAnt = !expandirAnt;
+  document.querySelectorAll('.ap-table tr.colapsavel').forEach(r => r.style.display = expandirAnt ? '' : 'none');
+  const ic = document.getElementById('colaps-icone');
+  if (ic) ic.className = 'bi ' + (expandirAnt ? 'bi-chevron-down' : 'bi-chevron-right') + ' me-1';
+}
 function activarAba(id) {
   document.querySelectorAll('.notas-tab-btn').forEach(b =>
     b.classList.toggle('active', b.getAttribute('onclick').includes(`'${id}'`))
