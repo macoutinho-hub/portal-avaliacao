@@ -1199,3 +1199,92 @@ def resumo_indicadores_turma(db, turma):
 
     _cache["indicadores_turma"][turma] = resumo
     return resumo
+
+
+# ─── Relatório: previsão (antes do exame) vs. nota real de exame ───────────────
+
+def _estat_previsao(linhas):
+    """Métricas de acerto do modelo para as linhas que têm previsão e nota real."""
+    ok = [l for l in linhas if l["prevista"] is not None]
+    n = len(ok)
+    r = {"n": len(linhas), "n_prev": n, "mae": None, "rmse": None, "vies": None,
+         "dentro1": None, "dentro2": None, "corr": None}
+    if not n:
+        return r
+    des = [l["real"] - l["prevista"] for l in ok]
+    r["mae"] = round(sum(abs(d) for d in des) / n, 2)
+    r["rmse"] = round((sum(d * d for d in des) / n) ** 0.5, 2)
+    r["vies"] = round(sum(des) / n, 2)
+    r["dentro1"] = round(100 * sum(1 for d in des if abs(d) <= 1) / n)
+    r["dentro2"] = round(100 * sum(1 for d in des if abs(d) <= 2) / n)
+    if n >= 3:
+        try:
+            r["corr"] = round(statistics.correlation([l["prevista"] for l in ok],
+                                                     [l["real"] for l in ok]), 2)
+        except (statistics.StatisticsError, ValueError):
+            pass
+    return r
+
+
+def relatorio_previsao_vs_real(db, ano_letivo, fase="1"):
+    """Compara a previsão de nota de exame feita ANTES do exame (média dos períodos, CIF e média
+    histórica da disciplina) com a nota real do exame, para um ano letivo.
+    fase: "1" = 1.ª fase com prioridade (2.ª só se não houver 1.ª); "1so" = só 1.ª fase; "2" = só 2.ª fase.
+    A previsão é recalculada com os dados atuais (não foi guardada na altura)."""
+    observacoes, _ = _obter_dados_cache(db)
+    modelos = _obter_modelos_exame()
+    medias = defaultdict(list)
+    for o in observacoes:
+        if o["ano_letivo"] == ano_letivo:
+            medias[(o["aluno_id"], o["disciplina"])].append(o["nota"])
+
+    rows = db.execute(
+        """SELECT nf.aluno_id, nf.disciplina, nf.cif, nf.exame_f1, nf.exame_f2,
+                  a.numero, a.nome, a.turma
+           FROM notas_finais nf JOIN alunos a ON a.id = nf.aluno_id
+           WHERE nf.ano_letivo=? AND (nf.exame_f1 IS NOT NULL OR nf.exame_f2 IS NOT NULL)
+           ORDER BY a.turma, a.nome, nf.disciplina""", (ano_letivo,)).fetchall()
+
+    linhas, sem_modelo = [], 0
+    for r in rows:
+        f1, f2 = r["exame_f1"], r["exame_f2"]
+        if fase == "2":
+            real, usada = f2, "2.ª"
+        elif fase == "1so":
+            real, usada = f1, "1.ª"
+        else:
+            real, usada = (f1, "1.ª") if f1 is not None else (f2, "2.ª")
+        if real is None:
+            continue
+        disc_modelo = MAPA_DISC_BD_PARA_EXAME.get(r["disciplina"])
+        ns = medias.get((r["aluno_id"], r["disciplina"]))
+        media = round(statistics.mean(ns), 2) if ns else None
+        prevista, residuo = (None, None)
+        if disc_modelo:
+            prevista, residuo = prever_exame(modelos, disc_modelo, media, r["cif"])
+        else:
+            sem_modelo += 1
+        desvio = z = alerta = None
+        if prevista is not None:
+            desvio = round(real - prevista, 1)
+            z = round(desvio / residuo, 2) if residuo else 0.0
+            alerta = ("abaixo_forte" if z <= -2 else "abaixo" if z <= -1.5
+                      else "acima_forte" if z >= 2 else "acima" if z >= 1.5 else None)
+        linhas.append({
+            "aluno_id": r["aluno_id"], "numero": r["numero"], "nome": r["nome"], "turma": r["turma"],
+            "disciplina": r["disciplina"], "media": media, "cif": r["cif"], "prevista": prevista,
+            "real": real, "fase": usada, "f1": f1, "f2": f2, "desvio": desvio, "z": z, "alerta": alerta,
+        })
+
+    def agrupar(chave):
+        g = defaultdict(list)
+        for l in linhas:
+            g[l[chave]].append(l)
+        return [dict(nome=k, **_estat_previsao(v)) for k, v in sorted(g.items(), key=lambda kv: str(kv[0]))]
+
+    com_prev = [l for l in linhas if l["prevista"] is not None]
+    com_prev.sort(key=lambda l: -abs(l["desvio"]))
+    return {"ano": ano_letivo, "fase": fase, "linhas": linhas, "global": _estat_previsao(linhas),
+            "por_disciplina": agrupar("disciplina"), "por_turma": agrupar("turma"),
+            "maiores_desvios": com_prev[:15], "sem_modelo": sem_modelo,
+            "modelos_ok": modelos is not None}

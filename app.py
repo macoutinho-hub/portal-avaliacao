@@ -4431,6 +4431,49 @@ def ct_decidir(turma):
     flash(f"Decisão guardada ({n} nível(is) atribuído(s)).", "success")
     return redirect(url_for("ct_turma", turma=tb, momento=mid))
 
+@app.route("/admin/exames/previsao-vs-real")
+@login_required
+@admin_required
+def relatorio_previsao_exame():
+    """Relatório: previsão da nota de exame (antes do exame) vs. nota real, por ano letivo."""
+    db = get_db()
+    anos = [r[0] for r in db.execute("SELECT DISTINCT ano_letivo FROM notas_finais "
+                                     "WHERE exame_f1 IS NOT NULL OR exame_f2 IS NOT NULL "
+                                     "ORDER BY ano_letivo DESC")]
+    ano = request.args.get("ano") or (anos[0] if anos else ano_letivo_atual(db))
+    fase = request.args.get("fase") if request.args.get("fase") in ("1", "1so", "2") else "1"
+    rel = analytics.relatorio_previsao_vs_real(db, ano, fase)
+    if request.args.get("export") == "xlsx":
+        import io as _io
+        from flask import send_file
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Por aluno"
+        ws.append(["Ano letivo", "Turma", "Nº Interno", "Aluno", "Disciplina", "Média períodos", "CIF",
+                   "Previsão", "Exame 1.ª fase", "Exame 2.ª fase", "Nota real usada", "Fase usada",
+                   "Desvio (real − previsão)", "z"])
+        for l in rel["linhas"]:
+            ws.append([ano, l["turma"], l["numero"], l["nome"], l["disciplina"], l["media"], l["cif"],
+                       l["prevista"], l["f1"], l["f2"], l["real"], l["fase"], l["desvio"], l["z"]])
+        cab = ["Nº exames", "Com previsão", "Erro médio absoluto", "RMSE", "Viés médio (real − prev.)",
+               "% dentro de ±1", "% dentro de ±2", "Correlação"]
+        for titulo, chave in (("Por disciplina", "por_disciplina"), ("Por turma", "por_turma")):
+            w = wb.create_sheet(titulo)
+            w.append([titulo[4:].capitalize()] + cab)
+            for g in rel[chave]:
+                w.append([g["nome"], g["n"], g["n_prev"], g["mae"], g["rmse"], g["vies"],
+                          g["dentro1"], g["dentro2"], g["corr"]])
+            w.freeze_panes = "A2"
+        ws.freeze_panes = "A2"
+        buf = _io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+                         download_name=f"previsao_vs_exame_{ano.replace('/', '-')}.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return render_template("relatorio_previsao_exame.html", rel=rel, anos=anos or [ano], ano=ano, fase=fase)
+
+
 @app.route("/admin/ct/exportar")
 @login_required
 @admin_required
