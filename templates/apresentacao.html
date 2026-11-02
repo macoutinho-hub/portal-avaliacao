@@ -329,6 +329,8 @@
     .nc-mneg { background: #991b1b; }
     .ap-table tr.interc-row td.label-col { font-size: .8rem; color: #cbd5e1; }
     .ap-table tr.interc-row .nc { min-width: 36px; padding: 3px 7px; font-size: .85rem; }
+    .ap-table tr.interc-atual td { background: rgba(220,38,38,.22); }
+    .ap-table tr.interc-atual td.label-col { border-left: 5px solid #f87171; color: #fee2e2; font-weight: 800; }
     .ap-table tr.interc-first td { border-top: 2px solid rgba(255,255,255,.35); }
     .nc-nd  { color: rgba(255,255,255,.22); }
     .nc-txt { background: #4b5563; font-size: .75rem; }
@@ -644,7 +646,7 @@ function mostrar(i) {
         return;
       }
       if (l.tipo === 'intercalar') {
-        html += `<tr class="interc-row${l.primeira ? ' interc-first' : ''}">
+        html += `<tr class="interc-row${l.primeira ? ' interc-first' : ''}${l.atual ? ' interc-atual' : ''}">
           <td class="label-col">${l.label}</td>
           ${discs.map((d,i) => {
             const v = l.notas[d];
@@ -657,7 +659,7 @@ function mostrar(i) {
       }
       const isSem2 = l.tipo==='semestre' && /2º\s*Sem\.?/i.test(l.label||'');
       const cls = l.tipo==='cif' ? 'cif-row' : l.tipo==='cfd' ? 'cfd-row' : l.tipo==='exame' ? 'exame-row' : l.tipo==='auto_av' ? 'auto-av-row'
-        : [l.atual ? 'atual-row' : '', isSem2 ? 'sem2-row' : ''].filter(Boolean).join(' ');
+        : (l.atual ? 'atual-row' : '');
       html += `<tr class="${cls}">
         <td class="label-col">${l.label}</td>
         ${discs.map((d,i) => {

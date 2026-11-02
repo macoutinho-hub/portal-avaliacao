@@ -2975,7 +2975,7 @@ def apresentacao(turma):
                             titulos_i[c] = v
                     linhas.append({"label": (f"{_nivel_turma(a['turma'])}º Ano — {sem}º Sem. · " if chave == "desempenho" else "") + titulo,
                                    "tipo": "intercalar", "primeira": chave == "desempenho",
-                                   "atual": False, "notas": notas_i, "niveis": niveis_i,
+                                   "atual": sem == sem_atual_ap, "notas": notas_i, "niveis": niveis_i,
                                    "titulos": titulos_i, "media": None})
             sem_ult = max(r["semestre"] for r in _ri)
             for r in _ri:
