@@ -3809,7 +3809,8 @@ app.jinja_env.globals.update(interc_cor=INTERCALAR_COR, interc_sigla=INTERCALAR_
 # (chaves já sem acentos e em minúsculas, ver _norm_nome)
 _DISC_INTERCALAR = {
     "filo.": "Filosofia", "ed.fisica": "Educação Física", "le i-ing.": "Inglês",
-    "mat. g (a)": "Matemática Geral", "fis.quim.a": "Física e Química A",
+    "mat. g (a)": "Matemática A", "mat. g (b)": "Matemática B",
+    "mat. g (macs)": "Matemática Aplicada Ciências Sociais", "fis.quim.a": "Física e Química A",
     "geo.desc.a": "Geometria Descritiva A", "geog.a": "Geografia A",
     "religiao": "Religião", "lit.": "Literacias", "bio.": "Biologia",
     "fis.": "Física", "quim.": "Química",
@@ -3966,6 +3967,12 @@ def _tratar_intercalar(turma=None):
                 if intercalar_alerta(d, r, e):
                     n_alertas += 1
                 if aplicar:
+                    if disc in ("Matemática A", "Matemática B", "Matemática Aplicada Ciências Sociais"):
+                        # No 11.º/12.º a disciplina tem o nome de A, B ou MACS: remove a linha antiga
+                        # «Matemática Geral» que uma importação anterior possa ter gravado
+                        db.execute("DELETE FROM avaliacao_intercalar WHERE aluno_id=? AND disciplina=? "
+                                   "AND ano_letivo=? AND semestre=?",
+                                   (row["id"], "Matemática Geral", ano, semestre))
                     db.execute(
                         """INSERT INTO avaliacao_intercalar
                            (aluno_id, disciplina, ano_letivo, semestre, desempenho, ritmo, envolvimento, updated_at)
