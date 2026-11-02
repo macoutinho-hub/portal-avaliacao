@@ -299,9 +299,6 @@
   {% if interc_linhas %}
   <!-- ── AVALIAÇÃO INTERCALAR ─────────────────────────────────────────── -->
   <div class="card border-0 shadow mb-3">
-    <div class="card-header cab-card" style="background:#b45309">
-      <i class="bi bi-speedometer2 me-2"></i>Avaliação Intercalar
-    </div>
     <div class="card-body">
       <div class="table-responsive">
         <table class="tabela-perfil tab-alinhada" style="min-width:{{ 210 + interc_cols|length * 72 }}px">
@@ -337,15 +334,6 @@
           </tbody>
         </table>
       </div>
-      {% if interc_extras %}
-      <div class="small text-muted mt-2">
-        <i class="bi bi-info-circle me-1"></i>Sem coluna nas notas:
-        {% for x in interc_extras %}
-        <strong>{{ x.disciplina }}</strong> ({{ x.sem }}º sem.:
-        {% for v in x.valores %}<span class="nota-cell interc-cell {{ interc_nivel[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span> {% endfor %}){% if not loop.last %} · {% endif %}
-        {% endfor %}
-      </div>
-      {% endif %}
     </div>
   </div>
   {% endif %}
