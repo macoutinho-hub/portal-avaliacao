@@ -1273,6 +1273,11 @@ def aluno(aluno_id):
                 for c in interc_cols:
                     if ABREVIATURAS.get(c) == ab:
                         return c
+            fam = DISC_FAMILIAS.get(disc)       # ex.: Matemática Geral → coluna Matemática A/B/MACS
+            if fam:
+                for c in interc_cols:
+                    if DISC_FAMILIAS.get(c) == fam:
+                        return c
             return None
 
         for sem in sorted({r["semestre"] for r in _rows_int}):
@@ -2957,6 +2962,11 @@ def apresentacao(turma):
                 if ab:
                     for c in todas_cols:
                         if ABREVS.get(c) == ab:
+                            return c
+                fam = DISC_FAMILIAS.get(disc)   # ex.: Matemática Geral → coluna Matemática A/B/MACS
+                if fam:
+                    for c in todas_cols:
+                        if DISC_FAMILIAS.get(c) == fam:
                             return c
                 todas_cols.append(disc)      # sem coluna nas notas: acrescenta
                 return disc
