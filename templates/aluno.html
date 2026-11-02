@@ -172,7 +172,7 @@
       <div class="table-responsive">
         <table class="tabela-perfil tab-alinhada" style="min-width:{{ 210 + todas_disciplinas|length * 72 }}px">
           <colgroup>
-            <col style="width:150px">
+            <col style="width:210px">
             {% for disc in todas_disciplinas %}<col>{% endfor %}
             <col style="width:80px">
           </colgroup>
@@ -303,7 +303,7 @@
       <div class="table-responsive">
         <table class="tabela-perfil tab-alinhada" style="min-width:{{ 210 + interc_cols|length * 72 }}px">
           <colgroup>
-            <col style="width:150px">
+            <col style="width:210px">
             {% for disc in interc_cols %}<col>{% endfor %}
             <col style="width:80px">
           </colgroup>
@@ -321,7 +321,7 @@
           <tbody>
             {% for l in interc_linhas %}
             <tr {% if l.primeira %}style="border-top:2px solid #94a3b8"{% endif %}>
-              <td class="row-label">{% if l.primeira %}<strong>{{ l.sem }}º Sem.</strong> · {% endif %}{{ l.titulo }}</td>
+              <td class="row-label">{% if l.primeira %}<strong>{{ interc_ano }}º Ano — {{ l.sem }}º Sem.</strong> · {% endif %}{{ l.titulo }}</td>
               {% for disc in interc_cols %}
               {% set v = l.vals.get(disc) %}
               <td class="{% if loop.index0 == separador_idx and todas_disciplinas %}separador-col{% endif %}">

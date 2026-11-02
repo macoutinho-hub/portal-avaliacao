@@ -1292,7 +1292,7 @@ def aluno(aluno_id):
                                           "valores": [v for v in (r["desempenho"], r["ritmo"],
                                                                   r["envolvimento"]) if v]})
 
-    resp = make_response(render_template("aluno.html", aluno=a, ct_aluno=_ct_aluno(db, aluno_id, a["turma"]),
+    resp = make_response(render_template("aluno.html", aluno=a, interc_ano=_nivel_turma(a["turma"]), ct_aluno=_ct_aluno(db, aluno_id, a["turma"]),
                            interc_linhas=interc_linhas, interc_cols=interc_cols,
                            interc_extras=interc_extras,
                            todas_disciplinas=todas_disciplinas,
@@ -2973,7 +2973,7 @@ def apresentacao(turma):
                             notas_i[c] = INTERCALAR_SIGLA[v]
                             niveis_i[c] = INTERCALAR_NIVEL[v].replace("n-", "nc-")
                             titulos_i[c] = v
-                    linhas.append({"label": (f"{sem}º Sem. · " if chave == "desempenho" else "") + titulo,
+                    linhas.append({"label": (f"{_nivel_turma(a['turma'])}º Ano — {sem}º Sem. · " if chave == "desempenho" else "") + titulo,
                                    "tipo": "intercalar", "primeira": chave == "desempenho",
                                    "atual": False, "notas": notas_i, "niveis": niveis_i,
                                    "titulos": titulos_i, "media": None})
