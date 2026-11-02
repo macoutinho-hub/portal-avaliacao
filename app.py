@@ -3006,6 +3006,10 @@ def apresentacao(turma):
                     foto_url = url_for("foto_aluno", numero=a["numero"])
                     break
 
+        # 10.º e 11.º ano, fora do 2.º semestre: sem as linhas CIF e CFD
+        if _nivel_turma(a["turma"]) in (10, 11) and sem_atual_ap != 2:
+            linhas = [l for l in linhas if l["tipo"] not in ("cif", "cfd")]
+
         alunos_json.append({
             "id": a["id"], "nome": a["nome"], "numero": a["numero"] or "",
             "turma": a["turma"], "foto_url": foto_url,
