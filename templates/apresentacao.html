@@ -562,6 +562,23 @@ function mostrar(i) {
     alertEl.innerHTML += h + '</div>';
   }
 
+  // Competências Transversais (último momento com avaliação)
+  const ctA = a.ct;
+  if (ctA) {
+    const ult = ctA.momentos[ctA.momentos.length-1].id;
+    let h = `<div class="ap-alerta" style="margin-top:.6rem;background:rgba(59,130,246,.12);border-color:rgba(147,197,253,.45)"><div style="color:#93c5fd; font-weight:700; font-size:.9rem"><i class="bi bi-mortarboard me-1"></i>CT · ${ctA.ultimo}</div>`;
+    ctA.linhas.forEach(l => {
+      const c = l.cel[ult];
+      if (!c) return;
+      const cor = ctA.cor[c.nivel], rot = ctA.niveis[c.nivel][0];
+      const baixo = c.nivel <= 2;
+      h += `<div class="ap-alerta-item"><span style="font-size:.85rem; flex:1${baixo ? ';color:#fca5a5;font-weight:700' : ''}">${l.nome}</span>` +
+           `<span title="${rot}${c.prop ? ' (proposta pela média)' : ''}" style="min-width:34px;text-align:center;padding:2px 8px;border-radius:5px;font-weight:700;font-size:.82rem;` +
+           (c.prop ? `background:${cor}40;color:#fff;border:2px dashed ${cor}` : `background:${cor};color:#fff;border:2px solid ${cor}`) + `">${c.nivel}</span></div>`;
+    });
+    alertEl.innerHTML += h + '</div>';
+  }
+
   // Abas de notas
   const cats = [
     {id:'observacoes',  label:'Observações',     icon:'bi-journal-text',         cor:'#60a5fa'},

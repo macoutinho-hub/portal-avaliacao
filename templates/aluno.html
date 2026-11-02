@@ -289,6 +289,41 @@
     </div>
   </div>
 
+  {% if ct_aluno %}
+  <!-- ── COMPETÊNCIAS TRANSVERSAIS ───────────────────────────────────── -->
+  <div class="card border-0 shadow mb-4">
+    <div class="card-header py-3" style="background:#1a3c6e">
+      <h5 class="mb-0 fw-semibold text-white">
+        <i class="bi bi-mortarboard me-2"></i>Competências Transversais
+      </h5>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-2" style="max-width:760px">
+          <thead><tr><th>Competência</th>{% for m in ct_aluno.momentos %}<th class="text-center">{{ m.nome }}</th>{% endfor %}</tr></thead>
+          <tbody>
+          {% for l in ct_aluno.linhas %}
+          <tr><td class="fw-semibold">{{ l.nome }}</td>
+            {% for m in ct_aluno.momentos %}{% set c = l.cel.get(m.id) %}
+            <td class="text-center">{% if c %}
+              <span class="badge" title="{{ ct_aluno.niveis[c.nivel][0] }}{% if c.prop %} (proposta pela média; sem decisão do PT){% endif %}"
+                style="{% if c.prop %}background:#fff;color:{{ ct_aluno.cor[c.nivel] }};border:2px dashed {{ ct_aluno.cor[c.nivel] }}{% else %}background:{{ ct_aluno.cor[c.nivel] }};color:#fff;border:2px solid {{ ct_aluno.cor[c.nivel] }}{% endif %};font-size:.85rem;min-width:7.5rem">
+                {{ c.nivel }} · {{ ct_aluno.niveis[c.nivel][0] }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="small text-muted">
+        <i class="bi bi-info-circle me-1"></i>Nível decidido pelo PT (cheio). Sem decisão, mostra-se a proposta pela média das avaliações dos professores (contorno tracejado).
+        Escala: 1 Inicial · 2 Em desenvolvimento · 3 Desenvolvido · 4 Consolidado · 5 Avançado.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if interc_linhas %}
   <!-- ── AVALIAÇÃO INTERCALAR ─────────────────────────────────────────── -->
   <div class="card border-0 shadow mb-4">

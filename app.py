@@ -1292,7 +1292,7 @@ def aluno(aluno_id):
                                           "valores": [v for v in (r["desempenho"], r["ritmo"],
                                                                   r["envolvimento"]) if v]})
 
-    resp = make_response(render_template("aluno.html", aluno=a,
+    resp = make_response(render_template("aluno.html", aluno=a, ct_aluno=_ct_aluno(db, aluno_id, a["turma"]),
                            interc_linhas=interc_linhas, interc_cols=interc_cols,
                            interc_extras=interc_extras,
                            todas_disciplinas=todas_disciplinas,
@@ -3013,6 +3013,7 @@ def apresentacao(turma):
             "separador_idx": sep_idx, "linhas": linhas,
             "notas_reuniao": notas_r, "negas": negas,
             "interc_alertas": interc_alertas,
+            "ct": _ct_aluno(db, a["id"], a["turma"]),
         })
 
     slides = db.execute(
@@ -4069,6 +4070,42 @@ def _ct_turma_ativa(db, turma):
 
 app.jinja_env.globals["ct_turma_ativa"] = lambda t: _ct_turma_ativa(get_db(), t)
 app.jinja_env.globals["ano_letivo_cab"] = lambda: ano_letivo_atual(get_db())
+
+def _ct_aluno(db, aluno_id, turma):
+    """Competências Transversais de um aluno para a ficha e a apresentação (só PT e admin).
+    Por momento e por CT: o nível decidido pelo PT; sem decisão, a proposta pela média das avaliações.
+    Devolve None se a turma não tem CT neste ano ou o aluno não tem nenhuma avaliação."""
+    if session.get("role") not in ("admin", "diretor") or not _ct_turma_ativa(db, turma):
+        return None
+    medias = {}
+    for r in db.execute("SELECT momento, ct, AVG(nivel) AS m FROM ct_avaliacao WHERE aluno_id=? "
+                        "GROUP BY momento, ct", (aluno_id,)):
+        medias[(r["momento"], r["ct"])] = r["m"]
+    dec = {(r["momento"], r["ct"]): r["nivel"] for r in db.execute(
+        "SELECT momento, ct, nivel FROM ct_decisao WHERE aluno_id=?", (aluno_id,))}
+    chaves = set(medias) | set(dec)
+    if not chaves:
+        return None
+    momentos = [m for m in ct_cfg.MOMENTOS if any(k[0] == m["id"] for k in chaves)]
+    cts = [c for c in ct_cfg.CT if any(k[1] == c["id"] for k in chaves)]
+    linhas = []
+    for c in cts:
+        cel = {}
+        for m in momentos:
+            k = (m["id"], c["id"])
+            if k in dec and dec[k]:
+                cel[m["id"]] = {"nivel": dec[k], "prop": False}
+            elif k in medias:
+                cel[m["id"]] = {"nivel": ct_cfg.proposta([medias[k]])[1], "prop": True}
+        linhas.append({"id": c["id"], "nome": c["nome"], "cel": cel})
+    ult = momentos[-1]["id"]
+    baixos = [{"id": l["id"], "nome": l["nome"], "nivel": l["cel"][ult]["nivel"]}
+              for l in linhas if ult in l["cel"] and l["cel"][ult]["nivel"] <= 2]
+    return {"momentos": momentos, "linhas": linhas, "ultimo": ultimo_nome(momentos),
+            "baixos": baixos, "niveis": ct_cfg.NIVEIS, "cor": ct_cfg.COR_NIVEL}
+
+def ultimo_nome(momentos):
+    return momentos[-1]["nome"]
 
 def _ct_atribuicoes(db, nome, ano):
     """[(turma base, disciplina)] atribuídas ao docente (ligação pelo nome) em prof_disc,
