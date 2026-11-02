@@ -4102,7 +4102,9 @@ def _ct_aluno(db, aluno_id, turma):
     baixos = [{"id": l["id"], "nome": l["nome"], "nivel": l["cel"][ult]["nivel"]}
               for l in linhas if ult in l["cel"] and l["cel"][ult]["nivel"] <= 2]
     return {"momentos": momentos, "linhas": linhas, "ultimo": ultimo_nome(momentos),
-            "baixos": baixos, "niveis": ct_cfg.NIVEIS, "cor": ct_cfg.COR_NIVEL}
+            "baixos": baixos, "niveis": ct_cfg.NIVEIS, "cor": ct_cfg.COR_NIVEL,
+            "por_ct": {l["id"]: l for l in linhas},
+            "colunas": [{"id": c["id"], "nome": c["nome"], "basica": c["basica"]} for c in ct_cfg.CT]}
 
 def ultimo_nome(momentos):
     return momentos[-1]["nome"]

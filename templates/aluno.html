@@ -58,6 +58,13 @@
 {% endblock %}
 
 {% block content %}
+<style>
+  .cab-card { padding: .4rem .9rem; color: #fff; font-weight: 600; font-size: .95rem; }
+  .ct-tab th { font-size: .8rem; background: #f1f5f9; }
+  .ct-tab td, .ct-tab th { padding: .2rem .4rem; }
+  .ct-sep { border-left: 2px solid #94a3b8 !important; }
+  .ct-nivel { display: inline-block; min-width: 2rem; padding: .1rem .4rem; border-radius: 6px; font-weight: 700; font-size: .85rem; }
+</style>
 <div class="px-3">
 
   <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
@@ -96,7 +103,7 @@
     {% endif %}
   </div>
 
-  <div class="card border-0 shadow mb-4">
+  <div class="card border-0 shadow mb-3">
 
     <!-- Cabeçalho -->
     <div class="perfil-header d-flex align-items-center gap-3">
@@ -289,48 +296,11 @@
     </div>
   </div>
 
-  {% if ct_aluno %}
-  <!-- ── COMPETÊNCIAS TRANSVERSAIS ───────────────────────────────────── -->
-  <div class="card border-0 shadow mb-4">
-    <div class="card-header py-3" style="background:#1a3c6e">
-      <h5 class="mb-0 fw-semibold text-white">
-        <i class="bi bi-mortarboard me-2"></i>Competências Transversais
-      </h5>
-    </div>
-    <div class="card-body">
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-2" style="max-width:760px">
-          <thead><tr><th>Competência</th>{% for m in ct_aluno.momentos %}<th class="text-center">{{ m.nome }}</th>{% endfor %}</tr></thead>
-          <tbody>
-          {% for l in ct_aluno.linhas %}
-          <tr><td class="fw-semibold">{{ l.nome }}</td>
-            {% for m in ct_aluno.momentos %}{% set c = l.cel.get(m.id) %}
-            <td class="text-center">{% if c %}
-              <span class="badge" title="{{ ct_aluno.niveis[c.nivel][0] }}{% if c.prop %} (proposta pela média; sem decisão do PT){% endif %}"
-                style="{% if c.prop %}background:#fff;color:{{ ct_aluno.cor[c.nivel] }};border:2px dashed {{ ct_aluno.cor[c.nivel] }}{% else %}background:{{ ct_aluno.cor[c.nivel] }};color:#fff;border:2px solid {{ ct_aluno.cor[c.nivel] }}{% endif %};font-size:.85rem;min-width:7.5rem">
-                {{ c.nivel }} · {{ ct_aluno.niveis[c.nivel][0] }}</span>
-              {% else %}<span class="text-muted">—</span>{% endif %}</td>
-            {% endfor %}
-          </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <div class="small text-muted">
-        <i class="bi bi-info-circle me-1"></i>Nível decidido pelo PT (cheio). Sem decisão, mostra-se a proposta pela média das avaliações dos professores (contorno tracejado).
-        Escala: 1 Inicial · 2 Em desenvolvimento · 3 Desenvolvido · 4 Consolidado · 5 Avançado.
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
   {% if interc_linhas %}
   <!-- ── AVALIAÇÃO INTERCALAR ─────────────────────────────────────────── -->
-  <div class="card border-0 shadow mb-4">
-    <div class="card-header py-3" style="background:#1a3c6e">
-      <h5 class="mb-0 fw-semibold text-white">
-        <i class="bi bi-speedometer2 me-2"></i>Avaliação Intercalar
-      </h5>
+  <div class="card border-0 shadow mb-3">
+    <div class="card-header cab-card" style="background:#b45309">
+      <i class="bi bi-speedometer2 me-2"></i>Avaliação Intercalar
     </div>
     <div class="card-body">
       <div class="table-responsive">
@@ -376,24 +346,51 @@
         {% endfor %}
       </div>
       {% endif %}
-      <div class="small text-muted mt-2">
-        <strong>Desempenho:</strong> MB muito bom · B bom · S suficiente · I insuficiente · MI muito insuficiente &nbsp;|&nbsp;
-        <strong>Ritmo:</strong> A adequado · NA não adequado &nbsp;|&nbsp;
-        <strong>Envolvimento:</strong> MS muito satisfatório · S satisfatório · NS insatisfatório
+    </div>
+  </div>
+  {% endif %}
+
+  {% if ct_aluno %}
+  <!-- ── COMPETÊNCIAS TRANSVERSAIS (depois de todas as notas) ──────────── -->
+  <div class="card border-0 shadow mb-3">
+    <div class="card-header cab-card" style="background:#6d28d9">
+      <i class="bi bi-mortarboard me-2"></i>Competências Transversais
+    </div>
+    <div class="card-body p-2">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle text-center mb-1 ct-tab">
+          <thead><tr><th class="text-start">Momento</th>
+            {% for c in ct_aluno.colunas %}<th title="{{ c.nome }}"{% if loop.index0 == 3 %} class="ct-sep"{% endif %}>{{ c.id }}</th>{% endfor %}
+          </tr></thead>
+          <tbody>
+          {% for m in ct_aluno.momentos %}
+          <tr><td class="text-start fw-semibold">{{ m.nome }}</td>
+            {% for c in ct_aluno.colunas %}{% set l = ct_aluno.por_ct.get(c.id) %}{% set x = l.cel.get(m.id) if l else None %}
+            <td{% if loop.index0 == 3 %} class="ct-sep"{% endif %}>{% if x %}
+              <span class="ct-nivel" title="{{ c.nome }}: {{ ct_aluno.niveis[x.nivel][0] }}{% if x.prop %} (proposta pela média; sem decisão do PT){% endif %}"
+                style="{% if x.prop %}background:#fff;color:{{ ct_aluno.cor[x.nivel] }};border:2px dashed {{ ct_aluno.cor[x.nivel] }}{% else %}background:{{ ct_aluno.cor[x.nivel] }};color:#fff;border:2px solid {{ ct_aluno.cor[x.nivel] }}{% endif %}">{{ x.nivel }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="small text-muted">
+        Cheio: decidido pelo PT · tracejado: proposta pela média. 1 Inicial · 2 Em desenvolvimento · 3 Desenvolvido · 4 Consolidado · 5 Avançado.
       </div>
     </div>
   </div>
   {% endif %}
 
   <!-- ── NOTAS PARA REUNIÃO ──────────────────────────────────────────── -->
-  <div class="card border-0 shadow mb-4">
-    <div class="card-header py-3" style="background:#1a3c6e">
-      <h5 class="mb-0 fw-semibold text-white">
-        <i class="bi bi-clipboard2-pulse me-2"></i>Notas para Reunião
+  <div class="card border-0 shadow mb-3">
+    <div class="card-header cab-card" style="background:#0e7490">
+      <i class="bi bi-clipboard2-pulse me-2"></i>Notas para Reunião
         {% if not pode_editar %}
         <small class="opacity-75 fw-normal" style="font-size:.8rem">(só leitura)</small>
         {% endif %}
-      </h5>
+      
     </div>
     <div class="card-body">
       <div class="row g-3">
@@ -439,12 +436,11 @@
 
 <!-- ── Síntese Global ─────────────────────────────────────────────────── -->
 {% set sintese_nr = notas_reuniao.get('sintese', {}) %}
-<div class="card border-0 shadow mb-4">
-  <div class="card-header py-3" style="background:#1a3c6e">
-    <h5 class="mb-0 fw-semibold text-white">
-      <i class="bi bi-text-paragraph me-2"></i>Síntese Global
+<div class="card border-0 shadow mb-3">
+  <div class="card-header cab-card" style="background:#15803d">
+    <i class="bi bi-text-paragraph me-2"></i>Síntese Global
       <small class="opacity-75 fw-normal" style="font-size:.8rem"> — texto livre para a reunião</small>
-    </h5>
+    
   </div>
   <div class="card-body">
     {% if pode_editar %}
