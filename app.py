@@ -4164,7 +4164,7 @@ def _ct_alunos(db, turma, disciplina, ano):
     senão todos). Devolve (lista, filtrado)."""
     turmas_reais = turmas_base_para_sql(turma, db, ano) or [turma]
     ph = ",".join("?" * len(turmas_reais))
-    alunos = db.execute(f"SELECT id, numero, nome FROM alunos WHERE turma IN ({ph}) AND ano_letivo=? "
+    alunos = db.execute(f"SELECT id, numero, nome, turma FROM alunos WHERE turma IN ({ph}) AND ano_letivo=? "
                         "ORDER BY nome", turmas_reais + [ano]).fetchall()
     if _chave_disc(disciplina) == "projeto":
         # quem está num grupo de projeto é avaliado pelo orientador do grupo, não pelo professor da turma
@@ -4203,6 +4203,20 @@ def ct_home():
             if ids:
                 cartoes.append({"turma": turma, "disciplina": disc, "n": len(ids), "feitos": len(feitos),
                                 "grupo": None, "sub": f"Turma {turma}"})
+        por_ano = {}
+        for turma, disc in _ct_atribuicoes(db, session["nome"], ano):
+            por_ano.setdefault((disc, _nivel_turma(turma)), []).append(turma)
+        for (disc, nv), turmas_nv in sorted(por_ano.items(), key=lambda x: (x[0][1], x[0][0])):
+            if len(turmas_nv) < 2:
+                continue
+            ids = {a["id"] for t in turmas_nv for a in _ct_alunos(db, t, disc, ano)[0]}
+            feitos = {r["aluno_id"] for r in db.execute(
+                "SELECT DISTINCT aluno_id FROM ct_avaliacao WHERE ano_letivo=? AND momento=? "
+                "AND professor_id=? AND disciplina=?", (ano, mom["id"], session["user_id"], disc)).fetchall()} & ids
+            if ids:
+                cartoes.append({"turma": None, "disciplina": disc, "n": len(ids), "feitos": len(feitos),
+                                "grupo": None, "nivel": nv,
+                                "sub": f"Todos os alunos do {nv}.º ano ({', '.join(turmas_nv)})"})
         for g in _ct_grupos_orientador(db, session["nome"], ano):
             ids = {a["id"] for a in g["alunos"]}
             feitos = {r["aluno_id"] for r in db.execute(
@@ -4241,6 +4255,7 @@ def ct_avaliar():
     ano = ano_letivo_atual(db)
     mom = ct_cfg.MOMENTOS_POR_ID[_ct_momento_ativo(db)]
     gid = request.values.get("grupo", type=int)
+    nivel = request.values.get("nivel", type=int) if not gid else None
     grupo = None
     if gid:   # Projeto: o orientador avalia os alunos do seu grupo
         grupo = next((g for g in _ct_grupos_orientador(db, session["nome"], ano) if g["id"] == gid), None)
@@ -4249,6 +4264,21 @@ def ct_avaliar():
             return redirect(url_for("ct_home"))
         turma, disc = "", "Projeto"
         alunos, filtrado = list(grupo["alunos"]), True
+    elif request.values.get("nivel", type=int):   # todas as turmas do ano a que dá a disciplina
+        nivel = request.values.get("nivel", type=int)
+        disc = (request.values.get("disc") or "").strip()
+        turmas_nv = [t for t, d in _ct_atribuicoes(db, session["nome"], ano)
+                     if d == disc and _nivel_turma(t) == nivel]
+        if not turmas_nv:
+            flash("Não tem esta disciplina atribuída neste ano de escolaridade.", "danger")
+            return redirect(url_for("ct_home"))
+        turma = f"{nivel}.º ano"
+        alunos, filtrado = [], True
+        for t in turmas_nv:
+            al, f = _ct_alunos(db, t, disc, ano)
+            alunos += al
+            filtrado = filtrado and f
+        alunos.sort(key=lambda a: (a["turma"], a["nome"]))
     else:
         turma = base_turma(request.values.get("turma", ""))
         disc = (request.values.get("disc") or "").strip()
@@ -4256,7 +4286,7 @@ def ct_avaliar():
             flash("Não tem esta disciplina atribuída nesta turma (ou esta turma não tem avaliação das CT).", "danger")
             return redirect(url_for("ct_home"))
         alunos, filtrado = _ct_alunos(db, turma, disc, ano)
-    voltar = dict(grupo=gid) if gid else dict(turma=turma, disc=disc)
+    voltar = dict(grupo=gid) if gid else dict(nivel=nivel, disc=disc) if nivel else dict(turma=turma, disc=disc)
     uid = session["user_id"]
 
     if request.method == "POST":
@@ -4308,10 +4338,46 @@ def ct_avaliar():
         "AND disciplina=?", (ano, mom["id"], uid, disc))}
     tem_opc = any(not ct_cfg.CT_POR_ID[ct]["basica"] for por_ct in exist.values() for ct in por_ct)
     return render_template("ct_avaliar.html", turma=turma, disc=disc, mom=mom, alunos=alunos,
-                           grupo=grupo, tem_opc=tem_opc,
+                           grupo=grupo, nivel=nivel, tem_opc=tem_opc,
                            filtrado=filtrado, cts=[ct_cfg.CT_POR_ID[c] for c in mom["cts"]],
                            exist=exist, obs=obs, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
                            maxd=ct_cfg.MAX_DESCRITORES, ano=ano)
+
+@app.route("/ct/geral")
+@login_required
+@admin_required
+def ct_geral():
+    """Admin: todas as disciplinas de um ano de escolaridade, com todos os alunos (filtro por turma)."""
+    db = get_db()
+    ano = ano_letivo_atual(db)
+    niveis = sorted(_ct_niveis(db))
+    nivel = request.args.get("nivel", type=int) or (niveis[0] if niveis else 0)
+    mid = request.args.get("momento") if request.args.get("momento") in ct_cfg.MOMENTOS_POR_ID else _ct_momento_ativo(db)
+    turma_f = request.args.get("turma", "")
+    disc_f = request.args.get("disc", "")
+    alunos = [a for a in db.execute("SELECT id, numero, nome, turma FROM alunos WHERE ano_letivo=?", (ano,)).fetchall()
+              if _nivel_turma(a["turma"]) == nivel]
+    turmas = sorted({base_turma(a["turma"]) for a in alunos})
+    if turma_f:
+        alunos = [a for a in alunos if base_turma(a["turma"]) == turma_f]
+    alunos.sort(key=lambda a: (a["turma"], a["nome"]))
+    ids = {a["id"] for a in alunos}
+    aval, discs = {}, set()
+    for r in db.execute("SELECT c.aluno_id, c.disciplina, c.ct, c.nivel, c.professor_id, u.nome AS prof "
+                        "FROM ct_avaliacao c LEFT JOIN users u ON u.id=c.professor_id "
+                        "WHERE c.ano_letivo=? AND c.momento=?", (ano, mid)):
+        if r["aluno_id"] not in ids:
+            continue
+        discs.add(r["disciplina"])
+        if disc_f and r["disciplina"] != disc_f:
+            continue
+        d = aval.setdefault(r["aluno_id"], {}).setdefault((r["disciplina"], r["professor_id"]),
+                                                          {"prof": r["prof"] or "", "cts": {}})
+        d["cts"][r["ct"]] = r["nivel"]
+    return render_template("ct_geral.html", ano=ano, niveis_ct=niveis, nivel=nivel, mid=mid,
+                           momentos=ct_cfg.MOMENTOS, turmas=turmas, turma_f=turma_f,
+                           discs=sorted(discs), disc_f=disc_f, alunos=alunos, aval=aval,
+                           cts=ct_cfg.CT, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL)
 
 def _ct_quadro(db, tb, ano, mid):
     """Dados do quadro-resumo de uma turma para um momento."""

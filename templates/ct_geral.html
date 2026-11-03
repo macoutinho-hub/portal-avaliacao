@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}CT · Todos os alunos do ano{% endblock %}
+{% block content %}
+<div class="px-3">
+  <div class="d-flex align-items-end flex-wrap gap-3 mb-3">
+    <div>
+      <h3 class="fw-bold mb-1"><i class="bi bi-mortarboard me-2 text-primary"></i>CT · {{ nivel }}.º ano, todos os alunos</h3>
+      <p class="text-muted mb-0">{{ ano }} · avaliações de todas as disciplinas. Para avaliar em nome de um docente, use «Personificar».</p>
+    </div>
+    <form method="get" class="d-flex flex-wrap gap-2 ms-auto align-items-end">
+      <div><label class="form-label small mb-0">Ano</label>
+        <select name="nivel" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for n in niveis_ct %}<option value="{{ n }}" {% if n == nivel %}selected{% endif %}>{{ n }}.º ano</option>{% endfor %}</select></div>
+      <div><label class="form-label small mb-0">Turma</label>
+        <select name="turma" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for t in turmas %}<option value="{{ t }}" {% if t == turma_f %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+      <div><label class="form-label small mb-0">Disciplina</label>
+        <select name="disc" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for d in discs %}<option value="{{ d }}" {% if d == disc_f %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></div>
+      <div><label class="form-label small mb-0">Momento</label>
+        <select name="momento" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for m in momentos %}<option value="{{ m.id }}" {% if m.id == mid %}selected{% endif %}>{{ m.nome }}</option>{% endfor %}</select></div>
+      <a href="{{ url_for('ct_home') }}" class="btn btn-sm btn-outline-secondary">Voltar</a>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead class="table-light"><tr><th>Turma</th><th>Aluno</th><th>Disciplina</th><th>Docente</th>
+        {% for c in cts %}<th class="text-center" title="{{ c.nome }}">{{ c.id }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for a in alunos %}
+        {% set linhas = aval.get(a.id, {}) %}
+        {% if linhas %}
+          {% for (disc, pid), l in linhas.items()|sort %}
+          <tr>{% if loop.first %}<td rowspan="{{ linhas|length }}">{{ a.turma }}</td>
+              <td rowspan="{{ linhas|length }}"><a href="{{ url_for('aluno', aluno_id=a.id) }}">{{ a.nome }}</a> <span class="text-muted small">Nº {{ a.numero }}</span></td>{% endif %}
+            <td>{{ disc }}</td><td class="small text-muted">{{ l.prof }}</td>
+            {% for c in cts %}{% set n = l.cts.get(c.id) %}
+            <td class="text-center">{% if n %}<span class="badge" style="background:{{ cor[n] }}" title="{{ niveis[n][0] }}">{{ n }}</span>{% else %}<span class="text-muted">·</span>{% endif %}</td>{% endfor %}</tr>
+          {% endfor %}
+        {% else %}
+          <tr><td>{{ a.turma }}</td><td><a href="{{ url_for('aluno', aluno_id=a.id) }}">{{ a.nome }}</a> <span class="text-muted small">Nº {{ a.numero }}</span></td>
+            <td colspan="{{ 2 + cts|length }}" class="text-muted small">sem avaliações neste momento</td></tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
