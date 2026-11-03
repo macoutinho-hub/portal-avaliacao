@@ -4044,6 +4044,10 @@ def intercalar_turma(turma):
 
     semestres = sorted({r["semestre"] for r in rows if r["semestre"]})
     sem = request.args.get("semestre", type=int)
+    pode_editar = session["role"] in ("admin", "diretor")
+    editar = pode_editar and request.args.get("editar") == "1"
+    if editar:   # a introdução manual pode abrir um semestre que ainda não tem dados
+        semestres = sorted(set(semestres) | {semestre_atual(db)})
     if sem not in semestres:
         sem = semestres[-1] if semestres else semestre_atual(db)
 
@@ -4060,9 +4064,61 @@ def intercalar_turma(turma):
             al["cel"][r["disciplina"]] = r
             if intercalar_alerta(r["desempenho"], r["ritmo"], r["envolvimento"]):
                 al["alertas"] += 1
+    if editar:   # junta as disciplinas atribuídas à turma, para poder introduzir de raiz
+        for r in db.execute("SELECT turma, disciplina FROM prof_disc WHERE ano_letivo=? ORDER BY disciplina", (ano,)):
+            if base_turma(r["turma"]) == tb and r["disciplina"] not in disciplinas \
+                    and _chave_disc(r["disciplina"]) != "projeto":
+                disciplinas.append(r["disciplina"])
     return render_template("intercalar_turma.html", turma=tb, ano=ano, sem=sem,
                            semestres=semestres, disciplinas=disciplinas, alunos=alunos,
-                           total_alertas=sum(a["alertas"] for a in alunos))
+                           total_alertas=sum(a["alertas"] for a in alunos),
+                           pode_editar=pode_editar, editar=editar, opcoes=INTERCALAR_COD)
+
+@app.route("/turma/<path:turma>/intercalar/guardar", methods=["POST"])
+@login_required
+def intercalar_guardar(turma):
+    """O PT (ou o admin) altera ou introduz à mão a avaliação intercalar dos alunos da turma."""
+    db = get_db()
+    if session["role"] not in ("admin", "diretor") or not _check_turma_perm(turma):
+        flash("Não tem permissão para alterar a avaliação intercalar desta turma.", "danger")
+        return redirect(url_for("dashboard"))
+    tb = base_turma(turma)
+    ano = ano_letivo_atual(db)
+    sem = request.form.get("semestre", type=int)
+    if sem not in (1, 2):
+        flash("Semestre inválido.", "danger")
+        return redirect(url_for("intercalar_turma", turma=tb))
+    turmas_reais = turmas_base_para_sql(tb, db, ano) or [tb]
+    ph = ",".join("?" * len(turmas_reais))
+    ids = [r["id"] for r in db.execute(f"SELECT id FROM alunos WHERE turma IN ({ph}) AND ano_letivo=?",
+                                       turmas_reais + [ano])]
+    discs = request.form.getlist("disc")
+    campos = (("d", "desempenho"), ("r", "ritmo"), ("e", "envolvimento"))
+    agora, n = _ct_agora(), 0
+    for aid in ids:
+        for i, disc in enumerate(discs):
+            if f"i_{aid}_{i}_d" not in request.form:   # célula não apresentada: não mexer
+                continue
+            vals = {}
+            for k, col in campos:
+                v = request.form.get(f"i_{aid}_{i}_{k}", "")
+                vals[col] = v if v in INTERCALAR_COD[col].values() else None
+            if not any(vals.values()):
+                db.execute("DELETE FROM avaliacao_intercalar WHERE aluno_id=? AND disciplina=? "
+                           "AND ano_letivo=? AND semestre=?", (aid, disc, ano, sem))
+                continue
+            db.execute(
+                """INSERT INTO avaliacao_intercalar
+                   (aluno_id, disciplina, ano_letivo, semestre, desempenho, ritmo, envolvimento, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?)
+                   ON CONFLICT(aluno_id, disciplina, ano_letivo, semestre)
+                   DO UPDATE SET desempenho=excluded.desempenho, ritmo=excluded.ritmo,
+                                 envolvimento=excluded.envolvimento, updated_at=excluded.updated_at""",
+                (aid, disc, ano, sem, vals["desempenho"], vals["ritmo"], vals["envolvimento"], agora))
+            n += 1
+    db.commit()
+    flash(f"Avaliação intercalar guardada ({n} célula(s) com avaliação).", "success")
+    return redirect(url_for("intercalar_turma", turma=tb, semestre=sem, editar=1))
 
 
 # ─── Competências Transversais (CT) ───────────────────────────────────────────

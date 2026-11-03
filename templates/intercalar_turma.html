@@ -12,13 +12,19 @@
       {% for s in semestres %}
       <a href="?semestre={{ s }}" class="btn btn-sm {% if s == sem %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ s }}.º semestre</a>
       {% endfor %}
+      {% if pode_editar %}
+      {% if editar %}<a href="?semestre={{ sem }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye me-1"></i>Só consultar</a>
+      {% else %}<a href="?semestre={{ sem }}&editar=1" class="btn btn-sm btn-success"><i class="bi bi-pencil-square me-1"></i>Editar / introduzir</a>{% endif %}
+      {% endif %}
       <a href="{{ url_for('importar_intercalar_turma', turma=turma) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-upload me-1"></i>Importar pauta</a>
       <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Turma</a>
     </div>
   </div>
 
-  {% if not disciplinas %}
+  {% if not disciplinas and not editar %}
   <div class="alert alert-info">Ainda não há avaliação intercalar importada para esta turma neste semestre.</div>
+  {% elif not disciplinas %}
+  <div class="alert alert-warning">Esta turma não tem disciplinas atribuídas neste ano letivo, por isso não há colunas para preencher. Importe a pauta ou peça ao administrador para atribuir as disciplinas.</div>
   {% else %}
   <div class="small text-muted mb-2">
     Em cada disciplina: <strong>Desempenho</strong> (MB, B, S, I, MI) · <strong>Ritmo</strong> (A, NA) ·
@@ -39,6 +45,15 @@
     .interc-tab thead th:first-child { background-color: #f8f9fa; }
     .interc-tab tr.table-warning td:first-child { background-color: #fff3cd; }
   </style>
+  {% if editar %}
+  <form method="post" action="{{ url_for('intercalar_guardar', turma=turma) }}">
+    <input type="hidden" name="semestre" value="{{ sem }}">
+    {% for d in disciplinas %}<input type="hidden" name="disc" value="{{ d }}">{% endfor %}
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 bg-light border rounded">
+      <button class="btn btn-success"><i class="bi bi-save me-1"></i>Guardar ({{ sem }}.º semestre)</button>
+      <span class="small text-muted">Em branco = sem avaliação. As alterações substituem as anteriores (incluindo as importadas).</span>
+    </div>
+  {% endif %}
   <div class="table-responsive lista-fixa">
     <table class="table table-sm align-middle text-center mb-0 interc-tab" style="white-space:nowrap">
       <thead class="table-light">
@@ -56,7 +71,17 @@
           {% for d in disciplinas %}
           {% set r = a.cel.get(d) %}
           <td>
-            {% if r %}
+            {% if editar %}
+              {% set di = loop.index0 %}
+              <div class="d-flex gap-1">
+              {% for k, col in (('d','desempenho'), ('r','ritmo'), ('e','envolvimento')) %}
+                <select name="i_{{ a.id }}_{{ di }}_{{ k }}" class="form-select form-select-sm px-1" style="width:auto;min-width:4.2rem" title="{{ col|capitalize }}">
+                  <option value="">—</option>
+                  {% for sg, nome in opcoes[col].items() %}<option value="{{ nome }}" title="{{ nome }}" {% if r and r[col] == nome %}selected{% endif %}>{{ sg }}</option>{% endfor %}
+                </select>
+              {% endfor %}
+              </div>
+            {% elif r %}
               {% for v in (r['desempenho'], r['ritmo'], r['envolvimento']) %}
                 {% if v %}<span class="interc-cell {{ interc_nivel[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span>{% endif %}
               {% endfor %}
@@ -68,6 +93,7 @@
       </tbody>
     </table>
   </div>
+  {% if editar %}</form>{% endif %}
   {% endif %}
 </div>
 {% endblock %}
