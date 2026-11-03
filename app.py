@@ -3818,6 +3818,8 @@ _DISC_INTERCALAR = {
     "geo.desc.a": "Geometria Descritiva A", "geog.a": "Geografia A",
     "religiao": "Religião", "lit.": "Literacias", "bio.": "Biologia",
     "fis.": "Física", "quim.": "Química",
+    "fis": "Física", "quim": "Química", "cp": "Ciência Política", "ing.": "Inglês", "ing": "Inglês",
+    "proj.": "Projeto",
 }
 
 def _canon_disc_intercalar(nome, conhecidas):
@@ -3827,11 +3829,46 @@ def _canon_disc_intercalar(nome, conhecidas):
     return base
 
 def parse_intercalar_excel(ws):
+    return parse_intercalar_linhas(list(ws.iter_rows(values_only=True)))
+
+def linhas_intercalar_pdf(dados):
+    """Converte a pauta intercalar em PDF (exportada do eSchooling) na mesma grelha de linhas
+    do Excel, para o leitor `parse_intercalar_linhas`. O PDF tem o texto dos parâmetros rodado
+    (escrito ao contrário), por isso cada célula é reconhecida nos dois sentidos."""
+    import io as _io, re as _r
+    import pdfplumber
+    t = _norm_nome
+    rows = []
+    with pdfplumber.open(_io.BytesIO(dados)) as pdf:
+        for pg in pdf.pages:
+            # linhas soltas do cabeçalho da página (turma, ano letivo, semestre)
+            for ln in (pg.extract_text() or "").splitlines():
+                if _r.search(r"\d{4}\s*/\s*\d{4}", ln) or _r.search(r"sem", ln, _r.I):
+                    rows.append([ln])
+            for tab in pg.extract_tables():
+                for lin in tab:
+                    nova = []
+                    for c in lin:
+                        c = "" if c is None else str(c)
+                        for k, rot in (("Desempenho", "desempenho"), ("Ritmo de Trabalho", "ritmo"),
+                                       ("Envolvimento", "envolvimento")):
+                            if rot in t(c) or rot in t(c[::-1]):
+                                c = k
+                                break
+                        else:
+                            c = c.replace("\n", "" if len(c) <= 6 else " ").strip()
+                        nova.append(c or None)
+                    rows.append(nova)
+    return rows
+
+def parse_intercalar_pdf(dados):
+    return parse_intercalar_linhas(linhas_intercalar_pdf(dados))
+
+def parse_intercalar_linhas(rows):
     """Lê a pauta intercalar. Devolve None se o formato não for reconhecido, ou
     {ano, semestre, disciplinas: [nomes], alunos: [{numero, avals}], invalidos}.
     avals = {disciplina: {desempenho, ritmo, envolvimento}} (só o que foi avaliado)."""
     import re as _r
-    rows = list(ws.iter_rows(values_only=True))
     t = _norm_nome
 
     r_par = next((i for i, row in enumerate(rows)
@@ -3912,12 +3949,16 @@ def _tratar_intercalar(turma=None):
     if request.method == "POST":
         f = request.files.get("ficheiro")
         aplicar = request.form.get("modo") == "aplicar"
-        if not f or not f.filename.lower().endswith(".xlsx"):
-            flash("Por favor carregue um ficheiro .xlsx.", "danger")
+        nome_f = f.filename.lower() if f and f.filename else ""
+        if not nome_f.endswith((".xlsx", ".pdf")):
+            flash("Por favor carregue um ficheiro .xlsx ou .pdf.", "danger")
             return redirect(url_for(destino, **kw))
         try:
-            ws = openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True).active
-            dados = parse_intercalar_excel(ws)
+            if nome_f.endswith(".pdf"):
+                dados = parse_intercalar_pdf(f.read())
+            else:
+                ws = openpyxl.load_workbook(_io.BytesIO(f.read()), data_only=True).active
+                dados = parse_intercalar_excel(ws)
         except Exception as e:
             flash(f"Não foi possível ler o ficheiro: {e}", "danger")
             return redirect(url_for(destino, **kw))
