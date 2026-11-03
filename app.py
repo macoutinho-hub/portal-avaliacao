@@ -4193,7 +4193,7 @@ def ct_home():
     ano = ano_letivo_atual(db)
     mom = ct_cfg.MOMENTOS_POR_ID[_ct_momento_ativo(db)]
     role = session["role"]
-    cartoes, turmas_pt, visao = [], [], []
+    cartoes, turmas_pt, visao, todos_ano = [], [], [], []
     if role in ("professor", "diretor"):
         for turma, disc in _ct_atribuicoes(db, session["nome"], ano):
             ids = {a["id"] for a in _ct_alunos(db, turma, disc, ano)[0]}
@@ -4214,9 +4214,7 @@ def ct_home():
                 "SELECT DISTINCT aluno_id FROM ct_avaliacao WHERE ano_letivo=? AND momento=? "
                 "AND professor_id=? AND disciplina=?", (ano, mom["id"], session["user_id"], disc)).fetchall()} & ids
             if ids:
-                cartoes.append({"turma": None, "disciplina": disc, "n": len(ids), "feitos": len(feitos),
-                                "grupo": None, "nivel": nv,
-                                "sub": f"Todos os alunos do {nv}.º ano ({', '.join(turmas_nv)})"})
+                todos_ano.append({"disciplina": disc, "nivel": nv, "n": len(ids), "feitos": len(feitos)})
         for g in _ct_grupos_orientador(db, session["nome"], ano):
             ids = {a["id"] for a in g["alunos"]}
             feitos = {r["aluno_id"] for r in db.execute(
@@ -4244,7 +4242,7 @@ def ct_home():
                  for t, n in sorted(tot.items()) if _ct_turma_ativa(db, t)]
     sem_ct_12 = role == "diretor" and not turmas_pt and bool((session.get("turma") or "").strip())
     return render_template("ct_home.html", mom=mom, ano=ano, cartoes=cartoes, turmas_pt=turmas_pt,
-                           sem_ct_12=sem_ct_12, niveis_ct=sorted(_ct_niveis(db)),
+                           sem_ct_12=sem_ct_12, todos_ano=todos_ano, niveis_ct=sorted(_ct_niveis(db)),
                            visao=visao, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
                            momentos=ct_cfg.MOMENTOS)
 

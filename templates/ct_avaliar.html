@@ -40,6 +40,27 @@
     <a href="{{ url_for('ct_home') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>As minhas disciplinas</a>
   </div>
 
+  {% if alunos %}
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-2 bg-light border rounded">
+    <button type="submit" form="form-ct" class="btn btn-primary"><i class="bi bi-save me-1"></i>Guardar avaliação</button>
+    {% if nivel %}
+    <div class="d-flex align-items-center gap-2 ms-md-3">
+      <label for="f-turma" class="small mb-0 text-muted">Turma</label>
+      <select id="f-turma" class="form-select form-select-sm" style="width:auto">
+        <option value="">Todas</option>
+        {% for t in alunos|map(attribute='turma')|unique|list %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+      <label for="f-ordem" class="small mb-0 text-muted ms-2">Ordenar</label>
+      <select id="f-ordem" class="form-select form-select-sm" style="width:auto">
+        <option value="turma">Por turma</option>
+        <option value="nome">Por ordem alfabética</option>
+      </select>
+    </div>
+    {% endif %}
+    <span class="text-muted small ms-auto">Pode guardar várias vezes; as alterações substituem as anteriores.</span>
+  </div>
+  {% endif %}
+
   <details class="card shadow-sm mb-3">
     <summary class="escala-sum">
       <span><i class="bi bi-rulers me-2"></i><strong>Escala de 1 a 5 e definições das competências</strong>
@@ -84,7 +105,7 @@
         <tbody>
           {% for a in alunos %}
           {% set ex = exist.get(a.id, {}) %}
-          <tr>
+          <tr data-turma="{{ a.turma }}" data-nome="{{ a.nome }}">
             <td><strong>{{ a.nome }}</strong><div class="small text-muted">Nº {{ a.numero }}{% if grupo or nivel %} · {{ a.turma }}{% endif %}</div></td>
             {% for c in cts %}
             {% set e = ex.get(c.id) %}
@@ -125,6 +146,19 @@
 {% endblock %}
 {% block extra_js %}
 <script>
+(function () {
+  const ft = document.getElementById('f-turma'), fo = document.getElementById('f-ordem');
+  if (!ft) return;
+  const corpo = document.querySelector('#tabela-ct tbody');
+  function aplicar() {
+    const linhas = Array.from(corpo.rows), t = ft.value, porNome = fo.value === 'nome';
+    linhas.sort((a, b) => porNome
+      ? a.dataset.nome.localeCompare(b.dataset.nome, 'pt')
+      : a.dataset.turma.localeCompare(b.dataset.turma, 'pt') || a.dataset.nome.localeCompare(b.dataset.nome, 'pt'));
+    linhas.forEach(r => { r.hidden = !!t && r.dataset.turma !== t; corpo.appendChild(r); });
+  }
+  ft.addEventListener('change', aplicar); fo.addEventListener('change', aplicar);
+})();
 const tabela = document.getElementById('tabela-ct'), btnOpc = document.getElementById('toggle-opc');
 function rotuloOpc() { btnOpc.innerHTML = tabela.classList.contains('mostra-opc')
   ? '<i class="bi bi-eye-slash me-1"></i>Esconder as outras 4 competências'
