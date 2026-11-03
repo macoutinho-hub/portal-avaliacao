@@ -34,10 +34,8 @@
   <form method="post" action="{{ url_for('ct_decidir', turma=turma) }}">
     <input type="hidden" name="momento" value="{{ mom.id }}">
     <div class="d-flex gap-2 mb-2 flex-wrap">
-      {% if not readonly %}
       <button type="button" class="btn btn-sm btn-outline-primary" id="aceitar"><i class="bi bi-magic me-1"></i>Preencher com as propostas (onde estiver em branco)</button>
       <button class="btn btn-sm btn-primary"><i class="bi bi-save me-1"></i>Guardar decisão</button>
-      {% endif %}
     </div>
     <div class="table-responsive">
       <table class="table table-sm ct-res mb-0">
@@ -59,7 +57,7 @@
               <span class="chip" style="background:{{ cor[x.nivel] }}" title="{{ x.disc }} · {{ x.prof }} · {{ x.nivel }} ({{ niveis[x.nivel][0] }})">{{ x.abrev }} {{ x.nivel }}</span>
               {% else %}<span class="text-muted small">sem avaliações</span>{% endfor %}
               {% if cel.media %}<div class="prop">Média {{ ('%.1f'|format(cel.media))|replace('.', ',') }} → proposta <strong>{{ cel.sug }}</strong> ({{ niveis[cel.sug][0] }})</div>{% endif %}
-              <select name="dec_{{ l.id }}_{{ c.id }}" class="form-select form-select-sm dec" data-prop="{{ cel.sug or '' }}" {% if readonly %}disabled{% endif %}>
+              <select name="dec_{{ l.id }}_{{ c.id }}" class="form-select form-select-sm dec" data-prop="{{ cel.sug or '' }}">
                 <option value="">— decisão do PT —</option>
                 {% for n, (rot, txt) in niveis.items() %}
                 <option value="{{ n }}" {% if cel.dec == n %}selected{% endif %}>{{ n }} · {{ rot }}</option>

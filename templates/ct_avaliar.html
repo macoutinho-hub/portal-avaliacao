@@ -88,7 +88,7 @@
             {% for c in cts %}
             {% set e = ex.get(c.id) %}
             <td class="{{ 'opc' if not c.basica }}">
-              <select name="n_{{ a.id }}_{{ c.id }}" class="form-select form-select-sm ct-sel" {% if readonly %}disabled{% endif %}>
+              <select name="n_{{ a.id }}_{{ c.id }}" class="form-select form-select-sm ct-sel">
                 <option value="">—</option>
                 {% for n, (rot, txt) in niveis.items() %}
                 <option value="{{ n }}" {% if e and e.nivel == n %}selected{% endif %} title="{{ txt }}">{{ n }} · {{ rot }}</option>
@@ -99,23 +99,21 @@
                 <summary>Descritores a melhorar <span class="cnt">({{ e.desc|length if e else 0 }})</span></summary>
                 <div class="dsc-body" data-max="{{ maxd }}">
                   {% for cod, txt in c.descritores %}
-                  <label><input type="checkbox" name="d_{{ a.id }}_{{ c.id }}" value="{{ cod }}" {% if e and cod in e.desc %}checked{% endif %} {% if readonly %}disabled{% endif %}><span><strong>{{ cod }}</strong> {{ txt }}</span></label>
+                  <label><input type="checkbox" name="d_{{ a.id }}_{{ c.id }}" value="{{ cod }}" {% if e and cod in e.desc %}checked{% endif %}><span><strong>{{ cod }}</strong> {{ txt }}</span></label>
                   {% endfor %}
                 </div>
               </details>
               {% endif %}
             </td>
             {% endfor %}
-            <td><textarea name="o_{{ a.id }}" rows="2" maxlength="500" class="form-control form-control-sm" {% if readonly %}disabled{% endif %}>{{ obs.get(a.id, '') }}</textarea></td>
+            <td><textarea name="o_{{ a.id }}" rows="2" maxlength="500" class="form-control form-control-sm">{{ obs.get(a.id, '') }}</textarea></td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
     {% if not alunos %}<div class="alert alert-info mt-3">Esta turma não tem alunos no ano letivo atual.</div>{% endif %}
-    {% if readonly %}
-    <div class="alert alert-warning mt-3">Está em modo de personificação: só pode consultar.</div>
-    {% elif alunos %}
+    {% if alunos %}
     <div class="position-sticky bottom-0 bg-white border-top py-2 mt-2 d-flex gap-2 align-items-center">
       <button class="btn btn-primary"><i class="bi bi-save me-1"></i>Guardar avaliação</button>
       <span class="text-muted small">Pode guardar várias vezes; as alterações substituem as anteriores.</span>

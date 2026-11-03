@@ -4258,12 +4258,8 @@ def ct_avaliar():
         alunos, filtrado = _ct_alunos(db, turma, disc, ano)
     voltar = dict(grupo=gid) if gid else dict(turma=turma, disc=disc)
     uid = session["user_id"]
-    readonly = bool(session.get("original_role"))   # personificação: só consulta
 
     if request.method == "POST":
-        if readonly:
-            flash("Em modo de personificação só pode consultar.", "warning")
-            return redirect(url_for("ct_avaliar", **voltar))
         agora = _ct_agora()
         guardados = 0
         for a in alunos:
@@ -4315,7 +4311,7 @@ def ct_avaliar():
                            grupo=grupo, tem_opc=tem_opc,
                            filtrado=filtrado, cts=[ct_cfg.CT_POR_ID[c] for c in mom["cts"]],
                            exist=exist, obs=obs, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
-                           maxd=ct_cfg.MAX_DESCRITORES, readonly=readonly, ano=ano)
+                           maxd=ct_cfg.MAX_DESCRITORES, ano=ano)
 
 def _ct_quadro(db, tb, ano, mid):
     """Dados do quadro-resumo de uma turma para um momento."""
@@ -4383,8 +4379,7 @@ def ct_turma(turma):
     return render_template("ct_turma.html", turma=tb, ano=ano, mom=mom, momentos=ct_cfg.MOMENTOS,
                            ativo=_ct_momento_ativo(db), linhas=linhas,
                            cts=[ct_cfg.CT_POR_ID[c] for c in cts_mostrar],
-                           niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL, descritores=ct_cfg.DESCRITORES,
-                           readonly=bool(session.get("original_role")))
+                           niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL, descritores=ct_cfg.DESCRITORES)
 
 @app.route("/ct/turma/<path:turma>/decidir", methods=["POST"])
 @login_required
@@ -4401,9 +4396,6 @@ def ct_decidir(turma):
     mid = request.form.get("momento")
     if mid not in ct_cfg.MOMENTOS_POR_ID:
         return redirect(url_for("ct_turma", turma=tb))
-    if session.get("original_role"):
-        flash("Em modo de personificação só pode consultar.", "warning")
-        return redirect(url_for("ct_turma", turma=tb, momento=mid))
     mom = ct_cfg.MOMENTOS_POR_ID[mid]
     turmas_reais = turmas_base_para_sql(tb, db, ano) or [tb]
     ph = ",".join("?" * len(turmas_reais))
