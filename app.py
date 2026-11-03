@@ -1278,7 +1278,8 @@ def aluno(aluno_id):
                 for c in interc_cols:
                     if DISC_FAMILIAS.get(c) == fam:
                         return c
-            return None
+            interc_cols.append(disc)     # disciplina nova, sem coluna nas notas: acrescenta
+            return disc
 
         for sem in sorted({r["semestre"] for r in _rows_int}):
             do_sem = [r for r in _rows_int if r["semestre"] == sem]
@@ -1286,16 +1287,9 @@ def aluno(aluno_id):
                                   ("envolvimento", "Envolvimento")):
                 vals = {}
                 for r in do_sem:
-                    col = _coluna_interc(r["disciplina"])
-                    if col is not None:
-                        vals[col] = r[chave]
+                    vals[_coluna_interc(r["disciplina"])] = r[chave]
                 interc_linhas.append({"sem": sem, "titulo": titulo,
                                       "primeira": chave == "desempenho", "vals": vals})
-            for r in do_sem:   # disciplinas sem coluna nas notas
-                if _coluna_interc(r["disciplina"]) is None:
-                    interc_extras.append({"sem": sem, "disciplina": r["disciplina"],
-                                          "valores": [v for v in (r["desempenho"], r["ritmo"],
-                                                                  r["envolvimento"]) if v]})
 
     resp = make_response(render_template("aluno.html", aluno=a, interc_ano=_nivel_turma(a["turma"]), ct_aluno=_ct_aluno(db, aluno_id, a["turma"]),
                            interc_linhas=interc_linhas, interc_cols=interc_cols,
