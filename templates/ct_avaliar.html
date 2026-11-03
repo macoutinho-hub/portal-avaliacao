@@ -4,7 +4,7 @@
 <style>
   .ct-tab th, .ct-tab td { vertical-align: top; }
   .ct-tab th:first-child, .ct-tab td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; min-width: 190px; box-shadow: 1px 0 0 #dee2e6; }
-  .ct-tab thead th:first-child { background: #f8f9fa; }
+  .ct-tab thead th:first-child { background: #f8f9fa; z-index: 5; }
   .ct-sel { min-width: 150px; font-weight: 600; }
   .escala-sum { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
                 gap: 12px; padding: 12px 16px; background: #eaf3fa; border: 1px solid #9cc3df; border-radius: .375rem; }
@@ -96,7 +96,7 @@
     {% if grupo %}<input type="hidden" name="grupo" value="{{ grupo.id }}">
     {% elif nivel %}<input type="hidden" name="nivel" value="{{ nivel }}"><input type="hidden" name="disc" value="{{ disc }}">
     {% else %}<input type="hidden" name="turma" value="{{ turma }}"><input type="hidden" name="disc" value="{{ disc }}">{% endif %}
-    <div class="table-responsive">
+    <div class="table-responsive lista-fixa">
       <table class="table table-sm ct-tab align-top mb-0 {% if tem_opc %}mostra-opc{% endif %}" id="tabela-ct">
         <thead class="table-light">
           <tr>
