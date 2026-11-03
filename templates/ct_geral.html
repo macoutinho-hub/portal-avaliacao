@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}CT · Todos os alunos do ano{% endblock %}
+{% block extra_head %}
+<style>
+  .ct-scroll { max-height: calc(100vh - 330px); min-height: 320px; overflow: auto; }
+  .ct-scroll thead th { position: sticky; top: 0; z-index: 3; background: #f8f9fa; box-shadow: 0 1px 0 #dee2e6; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="px-3">
   <div class="d-flex align-items-end flex-wrap gap-3 mb-3">
@@ -25,7 +31,7 @@
       <a href="{{ url_for('ct_home') }}" class="btn btn-sm btn-outline-secondary">Voltar</a>
     </form>
   </div>
-  <div class="table-responsive">
+  <div class="table-responsive ct-scroll">
     <table class="table table-sm align-middle">
       <thead class="table-light"><tr><th>Turma</th><th>Aluno</th><th>Disciplina</th><th>Docente</th>
         {% for c in cts %}<th class="text-center" title="{{ c.nome }}">{{ c.id }}</th>{% endfor %}</tr></thead>
