@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}CT · Definições e descritores{% endblock %}
+{% block content %}
+<div class="container py-3" style="max-width:980px">
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="fw-bold mb-1"><i class="bi bi-book me-2 text-primary"></i>Competências Transversais</h3>
+      <p class="text-muted mb-0">Definições e descritores, segundo o Documento Referencial das CT.</p>
+    </div>
+    <a href="{{ url_for('ct_home') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Voltar às CT</a>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-white fw-semibold">Escala de 1 a 5</div>
+    <div class="card-body py-2">
+      {% for n, (rot, txt) in niveis.items() %}
+      <div class="d-flex gap-2 align-items-start my-1">
+        <span class="badge" style="background:{{ cor[n] }};min-width:2rem">{{ n }}</span><span><strong>{{ rot }}.</strong> {{ txt }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="alert alert-light border small">
+    <strong>AUTN, RESP e COOP</strong> são avaliadas por todas as disciplinas, em todos os momentos.
+    <strong>CCRT, RSPL, COMN e CRIA</strong> são opcionais: só se a disciplina realizou uma tarefa que as trabalhe.
+    {% if maxd %}Nos momentos em que se indicam descritores a melhorar, pode assinalar até {{ maxd }} por aluno e competência.{% endif %}
+  </div>
+
+  {% for c in cts %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex align-items-center gap-2 flex-wrap">
+      <span class="badge bg-primary">{{ c.id }}</span>
+      <span class="fw-bold">{{ c.nome }}</span>
+      <span class="badge {{ 'bg-success' if c.basica else 'bg-secondary' }} ms-auto">{{ 'Avaliada por todas as disciplinas' if c.basica else 'Opcional' }}</span>
+    </div>
+    <div class="card-body">
+      <p class="mb-2"><em>{{ c.def }}</em></p>
+      <div class="small text-muted text-uppercase fw-semibold mb-1" style="letter-spacing:.05em">Descritores</div>
+      <ul class="list-unstyled mb-0">
+        {% for cod, txt in c.descritores %}
+        <li class="d-flex gap-2 mb-1"><strong class="text-primary" style="min-width:3.8rem">{{ cod }}</strong><span>{{ txt }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

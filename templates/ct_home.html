@@ -8,13 +8,14 @@
       <p class="text-muted mb-0">{{ ano }} · Momento aberto: <strong>{{ mom.nome }}</strong>
         (AUTN, RESP e COOP; CCRT, RSPL, COMN e CRIA são opcionais, se a disciplina realizou uma tarefa)</p>
     </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('ct_guia') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-book me-1"></i>Definições e descritores</a>
     {% if session.role == 'admin' %}
-    <div class="d-flex gap-2">
       <a href="{{ url_for('ct_geral') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-people me-1"></i>Por ano · todos os alunos</a>
       <a href="{{ url_for('configuracoes') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-gear me-1"></i>Mudar momento</a>
       <a href="{{ url_for('ct_exportar') }}" class="btn btn-sm btn-primary"><i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel</a>
-    </div>
     {% endif %}
+    </div>
   </div>
 
   {% if turmas_pt or todos_ano %}

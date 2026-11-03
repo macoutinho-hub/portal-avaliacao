@@ -4341,6 +4341,12 @@ def ct_avaliar():
                            exist=exist, obs=obs, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
                            maxd=ct_cfg.MAX_DESCRITORES, ano=ano)
 
+@app.route("/ct/guia")
+@login_required
+def ct_guia():
+    return render_template("ct_guia.html", cts=ct_cfg.CT, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
+                           momentos=ct_cfg.MOMENTOS, maxd=ct_cfg.MAX_DESCRITORES)
+
 @app.route("/ct/geral")
 @login_required
 @admin_required
