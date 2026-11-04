@@ -1286,6 +1286,9 @@ def aluno(aluno_id):
             ex.: 'Inglês' e 'Líng. Estrang. I - Inglês' → 'Ing')."""
             if disc in interc_cols:
                 return disc
+            disc = _canon_disc_intercalar(disc, None)    # ex.: «HIST. G» guardado em bruto → História Geral
+            if disc in interc_cols:
+                return disc
             ab = ABREVIATURAS.get(disc)
             if ab:
                 for c in interc_cols:
@@ -2970,6 +2973,9 @@ def apresentacao(turma):
             def _col_ap(disc):
                 if disc in todas_cols:
                     return disc
+                disc = _canon_disc_intercalar(disc, None)
+                if disc in todas_cols:
+                    return disc
                 ab = ABREVS.get(disc)
                 if ab:
                     for c in todas_cols:
@@ -3839,7 +3845,7 @@ _DISC_INTERCALAR = {
     "religiao": "Religião", "lit.": "Literacias", "bio.": "Biologia",
     "fis.": "Física", "quim.": "Química",
     "fis": "Física", "quim": "Química", "cp": "Ciência Política", "ing.": "Inglês", "ing": "Inglês",
-    "proj.": "Projeto", "historia": "História A", "hist.": "História A", "hist": "História A",
+    "proj.": "Projeto", "c. pol": "Ciência Política", "c. pol.": "Ciência Política", "historia": "História A", "hist.": "História A", "hist": "História A",
 }
 
 def _canon_disc_intercalar(nome, conhecidas):
