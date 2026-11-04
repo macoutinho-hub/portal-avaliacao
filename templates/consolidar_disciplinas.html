@@ -42,7 +42,7 @@
             <th class="ps-3">Nome existente</th>
             <th>Nº de registos</th>
             <th style="min-width:320px">Fundir em →</th>
-            <th class="pe-3"></th>
+            <th class="pe-3 text-end">Importada por engano?</th>
           </tr>
         </thead>
         <tbody class="small">
@@ -69,7 +69,15 @@
                 </button>
               </form>
             </td>
-            <td class="pe-3"></td>
+            <td class="pe-3 text-end">
+              <form method="post" class="form-apagar d-inline" data-origem="{{ d.nome }}" data-detalhe="{{ d.detalhe }}">
+                <input type="hidden" name="acao" value="apagar">
+                <input type="hidden" name="origem" value="{{ d.nome }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Apagar esta disciplina (importada por engano)">
+                  <i class="bi bi-trash me-1"></i>Apagar
+                </button>
+              </form>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -78,6 +86,12 @@
   </div>
 
   <p class="text-muted small mt-3">
+    <i class="bi bi-trash me-1"></i><strong>Apagar</strong> serve para colunas importadas por engano
+    (por exemplo «Faltas» lida como se fosse uma disciplina). Remove a disciplina das notas, notas finais,
+    auto-avaliação, inscrições de exame, avaliação intercalar e matrículas por disciplina. Não mexe nas
+    atribuições de docentes nem nas avaliações das Competências Transversais.
+  </p>
+  <p class="text-muted small mt-3">
     <i class="bi bi-info-circle me-1"></i>Esta ação altera directamente a base de dados
     e não pode ser desfeita automaticamente — confirme sempre que os dois nomes
     correspondem mesmo à mesma disciplina antes de fundir.
@@ -85,6 +99,14 @@
 </div>
 
 <script>
+document.querySelectorAll(".form-apagar").forEach(function (form) {
+  form.addEventListener("submit", function (ev) {
+    var msg = "Apagar a disciplina \"" + form.dataset.origem + "\"?\n\n" +
+              "Vão ser removidos todos os registos desta disciplina de todos os alunos e anos (" +
+              form.dataset.detalhe + ").\n\nIsto não pode ser desfeito.";
+    if (!confirm(msg)) ev.preventDefault();
+  });
+});
 document.querySelectorAll(".form-fundir").forEach(function (form) {
   form.addEventListener("submit", function (ev) {
     var origem  = form.dataset.origem;

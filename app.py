@@ -4870,6 +4870,22 @@ def _fundir_disciplina(db, origem, destino):
     return renomeados, removidos
 
 
+# Tabelas de onde se apaga uma disciplina importada por engano (ex.: a coluna «Faltas» de uma pauta).
+# Não inclui prof_disc nem as avaliações das CT, que são introduzidas pelos docentes.
+_TABELAS_APAGAR_DISC = ["notas", "notas_finais", "auto_avaliacao", "inscricoes_exame",
+                        "avaliacao_intercalar", "aluno_disciplina"]
+
+def _contar_disciplina(db, nome):
+    return {t: db.execute(f"SELECT COUNT(*) FROM {t} WHERE disciplina=?", (nome,)).fetchone()[0]
+            for t in _TABELAS_APAGAR_DISC}
+
+def _apagar_disciplina(db, nome):
+    n = _contar_disciplina(db, nome)
+    for t in _TABELAS_APAGAR_DISC:
+        db.execute(f"DELETE FROM {t} WHERE disciplina=?", (nome,))
+    db.commit()
+    return n
+
 @app.route("/admin/consolidar-disciplinas", methods=["GET", "POST"])
 @login_required
 @admin_required
@@ -4879,6 +4895,16 @@ def consolidar_disciplinas():
     if request.method == "POST":
         origem  = (request.form.get("origem")  or "").strip()
         destino = (request.form.get("destino") or "").strip()
+
+        if request.form.get("acao") == "apagar":
+            if not origem:
+                flash("Indique a disciplina a apagar.", "warning")
+            else:
+                n = _apagar_disciplina(db, origem)
+                total = sum(n.values())
+                flash(f"✓ Disciplina «{origem}» apagada: {total} registo(s) removido(s) "
+                      f"({', '.join(f'{v} em {k}' for k, v in n.items() if v)}).", "success")
+            return redirect(url_for("consolidar_disciplinas"))
 
         if not origem or not destino:
             flash("Selecione a disciplina de origem e o nome para o qual pretende fundi-la.", "warning")
@@ -4894,6 +4920,8 @@ def consolidar_disciplinas():
         return redirect(url_for("consolidar_disciplinas"))
 
     disciplinas, nomes = _nomes_disciplina(db)
+    for d in disciplinas:
+        d["detalhe"] = ", ".join(f"{v} em {k}" for k, v in _contar_disciplina(db, d["nome"]).items() if v)
 
     return render_template("consolidar_disciplinas.html",
                            disciplinas=disciplinas, nomes=nomes)
