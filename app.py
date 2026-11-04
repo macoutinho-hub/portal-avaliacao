@@ -912,6 +912,7 @@ def aluno(aluno_id):
         "Matemática Aplicada Ciências Sociais": "MACS",
         "Filosofia A":                      "Filo A",
         "Ciência Política":                 "C. Pol",
+        "Opção: Inglês":                    "Ing Op",
         "Psicologia B":                     "Psic B",
         "Aplicações Informáticas B":        "AI B",
         "Oficinas":                         "Ofic",
@@ -938,7 +939,7 @@ def aluno(aluno_id):
         "Geografia A",
         "História Geral",
         "Matemática B", "Matemática Geral", "Matemática Aplicada Ciências Sociais",
-        "Filosofia A", "Ciência Política",
+        "Filosofia A", "Ciência Política", "Opção: Inglês",
         "Psicologia B", "Aplicações Informáticas B", "Oficinas",
         "Literatura Portuguesa", "Alemão", "Espanhol", "Francês",
         # Por último: disciplinas de gestão/apoio
@@ -2731,7 +2732,7 @@ def apresentacao(turma):
             "Geometria Descritiva A":"GDA","Economia A":"Econ A","Economia C":"Econ C",
             "Geografia A":"Geo A","História Geral":"Hist B",
             "Matemática B":"Mat B","Matemática Geral":"Mat G","Matemática Aplicada Ciências Sociais":"MACS",
-            "Filosofia A":"Filo A","Ciência Política":"C. Pol",
+            "Filosofia A":"Filo A","Ciência Política":"C. Pol","Opção: Inglês":"Ing Op",
             "Psicologia B":"Psic B","Aplicações Informáticas B":"AI B","Oficinas":"Ofic",
             "Literatura Portuguesa":"Lit. P","Alemão":"Alem","Espanhol":"Esp","Francês":"Fr",
             "Hora de PT":"PT","Tempo de Trabalho Autónomo":"TTA",
@@ -2742,7 +2743,7 @@ def apresentacao(turma):
                   "Biologia e Geologia","Biologia","Física e Química A","Física","Química",
                   "Geometria Descritiva A","Economia A","Economia C","Geografia A",
                   "História Geral","Matemática B","Matemática Geral","Matemática Aplicada Ciências Sociais",
-                  "Filosofia A","Ciência Política","Psicologia B","Aplicações Informáticas B","Oficinas",
+                  "Filosofia A","Ciência Política","Opção: Inglês","Psicologia B","Aplicações Informáticas B","Oficinas",
                   "Literatura Portuguesa","Alemão","Espanhol","Francês",
                   "Hora de PT","Tempo de Trabalho Autónomo"]
         _N_G = 8
@@ -3844,7 +3845,7 @@ _DISC_INTERCALAR = {
     "geo.desc.a": "Geometria Descritiva A", "geog.a": "Geografia A",
     "religiao": "Religião", "lit.": "Literacias", "bio.": "Biologia",
     "fis.": "Física", "quim.": "Química",
-    "fis": "Física", "quim": "Química", "cp": "Ciência Política", "ing.": "Inglês", "ing": "Inglês",
+    "fis": "Física", "quim": "Química", "cp": "Ciência Política", "ing.": "Opção: Inglês", "ing": "Opção: Inglês",
     "proj.": "Projeto", "c. pol": "Ciência Política", "c. pol.": "Ciência Política", "historia": "História A", "hist.": "História A", "hist": "História A",
 }
 
