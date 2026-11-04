@@ -18,10 +18,11 @@
     </div>
   </div>
 
-  {% if turmas_pt or todos_ano %}
+  {% if turmas_pt or todos_ano or todos_grupos %}
   <div class="d-flex gap-2 flex-wrap align-items-center mb-3 p-2 bg-light border rounded">
     {% for t in turmas_pt %}<a class="btn btn-primary" href="{{ url_for('ct_turma', turma=t) }}"><i class="bi bi-table me-1"></i>Quadro-resumo · Turma {{ t }}</a>{% endfor %}
     {% for x in todos_ano %}<a class="btn btn-success" href="{{ url_for('ct_avaliar', nivel=x.nivel, disc=x.disciplina) }}" title="{{ x.feitos }} de {{ x.n }} alunos avaliados"><i class="bi bi-people-fill me-1"></i>{{ x.disciplina }} · todos os alunos do {{ x.nivel }}.º ano</a>{% endfor %}
+    {% if todos_grupos %}<a class="btn btn-success" href="{{ url_for('ct_avaliar', grupo='todos') }}" title="{{ todos_grupos.feitos }} de {{ todos_grupos.n }} alunos avaliados"><i class="bi bi-people-fill me-1"></i>Projeto · todos os meus {{ todos_grupos.grupos }} grupos</a>{% endif %}
   </div>
   {% endif %}
 

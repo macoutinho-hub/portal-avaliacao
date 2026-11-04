@@ -4313,7 +4313,7 @@ def ct_home():
     ano = ano_letivo_atual(db)
     mom = ct_cfg.MOMENTOS_POR_ID[_ct_momento_ativo(db)]
     role = session["role"]
-    cartoes, turmas_pt, visao, todos_ano = [], [], [], []
+    cartoes, turmas_pt, visao, todos_ano, todos_grupos = [], [], [], [], None
     if role in ("professor", "diretor"):
         for turma, disc in _ct_atribuicoes(db, session["nome"], ano):
             ids = {a["id"] for a in _ct_alunos(db, turma, disc, ano)[0]}
@@ -4335,7 +4335,8 @@ def ct_home():
                 "AND professor_id=? AND disciplina=?", (ano, mom["id"], session["user_id"], disc)).fetchall()} & ids
             if ids:
                 todos_ano.append({"disciplina": disc, "nivel": nv, "n": len(ids), "feitos": len(feitos)})
-        for g in _ct_grupos_orientador(db, session["nome"], ano):
+        meus_grupos = _ct_grupos_orientador(db, session["nome"], ano)
+        for g in meus_grupos:
             ids = {a["id"] for a in g["alunos"]}
             feitos = {r["aluno_id"] for r in db.execute(
                 "SELECT DISTINCT aluno_id FROM ct_avaliacao WHERE ano_letivo=? AND momento=? "
@@ -4343,6 +4344,12 @@ def ct_home():
             sub = g["nivel"] + (f" · sala {g['sala']}" if g["sala"] else "")
             cartoes.append({"turma": None, "disciplina": f"Projeto · Grupo {g['numero']}", "n": len(ids),
                             "feitos": len(feitos), "grupo": g["id"], "sub": sub, "tema": g["tema"]})
+        if len(meus_grupos) >= 2:
+            ids = {a["id"] for g in meus_grupos for a in g["alunos"]}
+            feitos = {r["aluno_id"] for r in db.execute(
+                "SELECT DISTINCT aluno_id FROM ct_avaliacao WHERE ano_letivo=? AND momento=? "
+                "AND professor_id=? AND disciplina='Projeto'", (ano, mom["id"], session["user_id"])).fetchall()} & ids
+            todos_grupos = {"grupos": len(meus_grupos), "n": len(ids), "feitos": len(feitos)}
     if role == "diretor":
         turmas_pt = sorted({base_turma(t) for t in (session.get("turma") or "").split(",")
                             if t.strip() and _ct_turma_ativa(db, t)})
@@ -4362,7 +4369,7 @@ def ct_home():
                  for t, n in sorted(tot.items()) if _ct_turma_ativa(db, t)]
     sem_ct_12 = role == "diretor" and not turmas_pt and bool((session.get("turma") or "").strip())
     return render_template("ct_home.html", mom=mom, ano=ano, cartoes=cartoes, turmas_pt=turmas_pt,
-                           sem_ct_12=sem_ct_12, todos_ano=todos_ano, niveis_ct=sorted(_ct_niveis(db)),
+                           sem_ct_12=sem_ct_12, todos_ano=todos_ano, todos_grupos=todos_grupos, niveis_ct=sorted(_ct_niveis(db)),
                            visao=visao, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
                            momentos=ct_cfg.MOMENTOS)
 
@@ -4372,10 +4379,22 @@ def ct_avaliar():
     db = get_db()
     ano = ano_letivo_atual(db)
     mom = ct_cfg.MOMENTOS_POR_ID[_ct_momento_ativo(db)]
-    gid = request.values.get("grupo", type=int)
-    nivel = request.values.get("nivel", type=int) if not gid else None
+    todos_gr = request.values.get("grupo") == "todos"
+    gid = None if todos_gr else request.values.get("grupo", type=int)
+    nivel = request.values.get("nivel", type=int) if not gid and not todos_gr else None
     grupo = None
-    if gid:   # Projeto: o orientador avalia os alunos do seu grupo
+    if todos_gr:   # Projeto: todos os alunos de todos os grupos de que é orientador, seguidos
+        grs = _ct_grupos_orientador(db, session["nome"], ano)
+        if not grs:
+            flash("Não é orientador de nenhum grupo de projeto.", "danger")
+            return redirect(url_for("ct_home"))
+        grupo = {"id": "todos", "todos": True, "numero": "", "nivel": "", "sala": "", "tema": ""}
+        turma, disc, filtrado = "", "Projeto", True
+        alunos = []
+        for g in grs:
+            alunos += [{**dict(a), "gnum": g["numero"]} for a in g["alunos"]]
+        alunos.sort(key=lambda a: (a["turma"], a["nome"]))
+    elif gid:   # Projeto: o orientador avalia os alunos do seu grupo
         grupo = next((g for g in _ct_grupos_orientador(db, session["nome"], ano) if g["id"] == gid), None)
         if not grupo:
             flash("Não é o orientador deste grupo de projeto.", "danger")
@@ -4404,7 +4423,7 @@ def ct_avaliar():
             flash("Não tem esta disciplina atribuída nesta turma (ou esta turma não tem avaliação das CT).", "danger")
             return redirect(url_for("ct_home"))
         alunos, filtrado = _ct_alunos(db, turma, disc, ano)
-    voltar = dict(grupo=gid) if gid else dict(nivel=nivel, disc=disc) if nivel else dict(turma=turma, disc=disc)
+    voltar = dict(grupo="todos") if todos_gr else dict(grupo=gid) if gid else dict(nivel=nivel, disc=disc) if nivel else dict(turma=turma, disc=disc)
     uid = session["user_id"]
 
     if request.method == "POST":

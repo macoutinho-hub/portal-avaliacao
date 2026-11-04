@@ -34,8 +34,8 @@
 <div class="px-3">
   <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
     <div>
-      <h3 class="fw-bold mb-1"><i class="bi bi-mortarboard me-2 text-primary"></i>{% if grupo %}Projeto · Grupo {{ grupo.numero }}{% else %}{{ disc }} · {% if nivel %}Todos os alunos do {{ nivel }}.º ano{% else %}Turma {{ turma }}{% endif %}{% endif %}</h3>
-      <p class="text-muted mb-0">{{ ano }} · {{ mom.nome }}{% if grupo %} · {{ grupo.nivel }}{% if grupo.sala %} · sala {{ grupo.sala }}{% endif %}{% if grupo.tema %} · <em>{{ grupo.tema }}</em>{% endif %}{% endif %}</p>
+      <h3 class="fw-bold mb-1"><i class="bi bi-mortarboard me-2 text-primary"></i>{% if grupo %}Projeto · {% if grupo.todos %}todos os meus grupos{% else %}Grupo {{ grupo.numero }}{% endif %}{% else %}{{ disc }} · {% if nivel %}Todos os alunos do {{ nivel }}.º ano{% else %}Turma {{ turma }}{% endif %}{% endif %}</h3>
+      <p class="text-muted mb-0">{{ ano }} · {{ mom.nome }}{% if grupo and not grupo.todos %} · {{ grupo.nivel }}{% if grupo.sala %} · sala {{ grupo.sala }}{% endif %}{% if grupo.tema %} · <em>{{ grupo.tema }}</em>{% endif %}{% endif %}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <a href="{{ url_for('ct_guia') }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-book me-1"></i>Definições e descritores</a>
@@ -46,7 +46,7 @@
   {% if alunos %}
   <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-2 bg-light border rounded">
     <button type="submit" form="form-ct" class="btn btn-primary"><i class="bi bi-save me-1"></i>Guardar avaliação</button>
-    {% if nivel %}
+    {% if nivel or (grupo and grupo.todos) %}
     <div class="d-flex align-items-center gap-2 ms-md-3">
       <label for="f-turma" class="small mb-0 text-muted">Turma</label>
       <select id="f-turma" class="form-select form-select-sm" style="width:auto">
@@ -109,7 +109,7 @@
           {% for a in alunos %}
           {% set ex = exist.get(a.id, {}) %}
           <tr data-turma="{{ a.turma }}" data-nome="{{ a.nome }}">
-            <td><strong>{{ a.nome }}</strong><div class="small text-muted">Nº {{ a.numero }}{% if grupo or nivel %} · {{ a.turma }}{% endif %}</div></td>
+            <td><strong>{{ a.nome }}</strong><div class="small text-muted">Nº {{ a.numero }}{% if grupo or nivel %} · {{ a.turma }}{% endif %}{% if a.gnum %} · Grupo {{ a.gnum }}{% endif %}</div></td>
             {% for c in cts %}
             {% set e = ex.get(c.id) %}
             <td class="{{ 'opc' if not c.basica }}">
