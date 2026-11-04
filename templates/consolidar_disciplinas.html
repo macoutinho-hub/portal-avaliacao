@@ -29,6 +29,16 @@
     </ul>
   </div>
 
+  <form method="post" class="card shadow-sm mb-3">
+    <input type="hidden" name="acao" value="ignoradas">
+    <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+      <label class="fw-semibold small mb-0" for="ignoradas"><i class="bi bi-slash-circle me-1"></i>Colunas ignoradas na importação</label>
+      <input type="text" id="ignoradas" name="ignoradas" value="{{ ignoradas }}" class="form-control form-control-sm" style="max-width:320px" placeholder="FJ, …">
+      <button class="btn btn-sm btn-outline-primary">Guardar</button>
+      <span class="small text-muted">Nomes exatos de cabeçalhos que não são disciplinas (separados por vírgulas). Cada importação avisa quando ignora uma.</span>
+    </div>
+  </form>
+
   <div class="mb-3 small text-muted">
     {{ disciplinas|length }} nome(s) de disciplina distinto(s) encontrados nas notas, notas finais, avaliação intercalar, matrículas por disciplina, auto-avaliação e inscrições de exame
     (contagem de registos no total).

@@ -531,6 +531,23 @@ def get_setting(db, key, default=None):
     r = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
     return r["value"] if r else default
 
+def _disc_ignorada(nome):
+    """True se `nome` (cabeçalho de uma pauta) estiver na lista de colunas que não são disciplinas
+    (definição «disciplinas_ignoradas», por omissão FJ). Avisa uma vez por nome em cada pedido."""
+    if not nome:
+        return False
+    ign = getattr(g, "_disc_ign", None)
+    if ign is None:
+        raw = get_setting(get_db(), "disciplinas_ignoradas", "FJ")
+        ign = g._disc_ign = {_norm_nome(x) for x in raw.split(",") if x.strip()}
+        g._disc_ign_vistas = set()
+    if _norm_nome(nome) not in ign:
+        return False
+    if _norm_nome(nome) not in g._disc_ign_vistas:
+        g._disc_ign_vistas.add(_norm_nome(nome))
+        flash(f"Coluna «{str(nome).strip()}» ignorada: não é uma disciplina.", "info")
+    return True
+
 def ano_letivo_atual(db):
     """Devolve o ano letivo actual das settings (ou o mais recente na BD como fallback)."""
     s = get_setting(db, "ano_letivo_atual")
@@ -1978,7 +1995,7 @@ def importar_disciplinas_alunos():
                 v = int(v)
             num = str(v or "").strip()
             disc_o = str(row[c_disc] or "").strip() if c_disc < len(row) else ""
-            if not num.isdigit() or not disc_o:
+            if not num.isdigit() or not disc_o or _disc_ignorada(disc_o):
                 continue
             n_linhas += 1
             sit = _norm_nome(row[c_sfin]) if c_sfin is not None and c_sfin < len(row) else ""
@@ -2446,7 +2463,7 @@ def importar_excel():
             # Colunas que podem ser observações: terminam em "_obs" ou "observ"
             disc_cols = []
             for i, h in enumerate(headers):
-                if i in skip or not h:
+                if i in skip or not h or _disc_ignorada(h):
                     continue
                 disc_cols.append((i, h))
 
@@ -3352,6 +3369,8 @@ def parse_pauta_excel(ws):
         s = str(v).strip()
         if any(k in s for k in ["N.º", "Nome", "Averb", "Afixado"]):
             continue
+        if _disc_ignorada(s):
+            continue
         # É uma disciplina
         # Encontrar CF, CIF, CE, CFD nas colunas seguintes
         disc_map[s] = {}
@@ -3892,6 +3911,7 @@ def parse_intercalar_linhas(rows):
         if len(cand) >= max(1, n_desemp):
             disc_start = cand
             break
+    ignorar_ini = {c for c, v in disc_start.items() if _disc_ignorada(v)}   # colunas que não são disciplinas
     if not disc_start:
         return None
 
@@ -3931,10 +3951,11 @@ def parse_intercalar_linhas(rows):
                 invalidos.add(f"{k}: {cod}")
                 continue
             ds = max((s for s in disc_start if s <= c), default=None)
-            if ds is not None:
+            if ds is not None and ds not in ignorar_ini:
                 avals.setdefault(disc_start[ds], {})[k] = valor
         alunos.append({"numero": numero, "avals": avals})
-    return {"ano": ano, "semestre": semestre, "disciplinas": list(disc_start.values()),
+    return {"ano": ano, "semestre": semestre,
+            "disciplinas": [v for c, v in disc_start.items() if c not in ignorar_ini],
             "alunos": alunos, "invalidos": sorted(invalidos)}
 
 def _tratar_intercalar(turma=None):
@@ -4900,6 +4921,13 @@ def consolidar_disciplinas():
         origem  = (request.form.get("origem")  or "").strip()
         destino = (request.form.get("destino") or "").strip()
 
+        if request.form.get("acao") == "ignoradas":
+            nomes_ign = ", ".join(x.strip() for x in (request.form.get("ignoradas") or "").split(",") if x.strip())
+            db.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('disciplinas_ignoradas',?)", (nomes_ign,))
+            db.commit()
+            flash("Lista de colunas ignoradas na importação atualizada.", "success")
+            return redirect(url_for("consolidar_disciplinas"))
+
         if request.form.get("acao") == "apagar":
             if not origem:
                 flash("Indique a disciplina a apagar.", "warning")
@@ -4928,7 +4956,8 @@ def consolidar_disciplinas():
         d["detalhe"] = ", ".join(f"{v} em {k}" for k, v in _contar_disciplina(db, d["nome"]).items() if v)
 
     return render_template("consolidar_disciplinas.html",
-                           disciplinas=disciplinas, nomes=nomes)
+                           disciplinas=disciplinas, nomes=nomes,
+                           ignoradas=get_setting(db, "disciplinas_ignoradas", "FJ"))
 
 
 # ─── Ferramenta de auditoria de notas em falta (admin) ────────────────────────
@@ -5737,6 +5766,8 @@ def importar_notas_web():
                 turma_val = _turma_legado(turma_raw)
                 ano_val   = str(row[idx_ano]).strip() if idx_ano is not None and row[idx_ano] else ano
                 disc_raw  = str(row[idx_disc]).strip() if row[idx_disc] else ""
+                if _disc_ignorada(disc_raw):
+                    continue
                 disc_nome = _nome_disc(disc_raw)
 
                 # Encontrar ou criar aluno para este ano letivo
