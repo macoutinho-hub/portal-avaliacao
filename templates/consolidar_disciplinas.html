@@ -30,8 +30,8 @@
   </div>
 
   <div class="mb-3 small text-muted">
-    {{ disciplinas|length }} nome(s) de disciplina distinto(s) encontrados em
-    <code>notas</code> e <code>notas_finais</code> (contagem de registos no total das duas tabelas).
+    {{ disciplinas|length }} nome(s) de disciplina distinto(s) encontrados nas notas, notas finais, avaliação intercalar, matrículas por disciplina, auto-avaliação e inscrições de exame
+    (contagem de registos no total).
   </div>
 
   <div class="card shadow-sm">
@@ -119,7 +119,7 @@ document.querySelectorAll(".form-fundir").forEach(function (form) {
     }
     var msg = "Confirma que \"" + origem + "\" e \"" + destino + "\" são a MESMA disciplina?\n\n" +
               "Esta ação vai renomear (ou remover duplicados de) todos os registos de \"" +
-              origem + "\" para \"" + destino + "\", em 'notas' e 'notas_finais', " +
+              origem + "\" para \"" + destino + "\", em todas as tabelas, " +
               "e não pode ser desfeita automaticamente.";
     if (!confirm(msg)) {
       ev.preventDefault();

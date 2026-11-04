@@ -4800,8 +4800,12 @@ def importar_literacias():
 # canonizar_disciplina/DISCIPLINAS_ALIAS de importar_notas.py).
 
 _TABELAS_CONSOLIDACAO = [
-    ("notas",        ["aluno_id", "periodo"]),
-    ("notas_finais", ["aluno_id", "ano_letivo"]),
+    ("notas",                ["aluno_id", "periodo"]),
+    ("notas_finais",         ["aluno_id", "ano_letivo"]),
+    ("avaliacao_intercalar", ["aluno_id", "ano_letivo", "semestre"]),
+    ("aluno_disciplina",     ["aluno_id", "ano_letivo"]),
+    ("auto_avaliacao",       ["aluno_id", "ano_letivo"]),
+    ("inscricoes_exame",     ["aluno_id", "ano_letivo", "cod_exame"]),
 ]
 
 
@@ -4813,7 +4817,7 @@ def _nomes_disciplina(db):
     nome.
     """
     contagens = {}
-    for tabela, _cols in _TABELAS_CONSOLIDACAO:
+    for tabela in _TABELAS_APAGAR_DISC:
         for r in db.execute(
             f"SELECT disciplina, COUNT(*) AS n FROM {tabela} GROUP BY disciplina"
         ).fetchall():
