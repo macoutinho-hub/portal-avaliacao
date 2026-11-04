@@ -98,6 +98,9 @@ DISCIPLINAS_ALIAS = {
     "des. g":       "Desenho Geral",
     "des g":        "Desenho Geral",
     "des.g":        "Desenho Geral",
+    "historia":     "História A",   # 12.º ano: «História» é a História A
+    "hist.":        "História A",
+    "hist":         "História A",
     "hist. a":      "História A",
     "hist a":       "História A",
     "hist.a":       "História A",

@@ -404,6 +404,7 @@ DISC_FAMILIAS = {
     "Matemática Geral":                     "família_mat",
     "Matemática B":                         "família_mat",
     "Matemática Aplicada Ciências Sociais": "família_mat",
+    "História":                             "família_hist",   # 12.º ano
     "História A":                           "família_hist",
     "História B":                           "família_hist",
     "História Geral":                       "família_hist",
@@ -3563,7 +3564,7 @@ MAPA_DISC_GLOBAL = {
     "GEOG.A": "Geografia A",
     "HIST. G (a)": "História A",
     "HIST. G (b)": "História B",
-    "HIST.A": "História A",
+    "HIST.A": "História A", "HIST.": "História A", "HISTÓRIA": "História A",
     "DES.G": "Desenho Geral",  # substituído por Desenho A em turmas de 11º (ver importar_pauta)
     "DES.A": "Desenho A",
     "ECON.A": "Economia A", "GEO.DESC.A": "Geometria Descritiva A",
@@ -3838,7 +3839,7 @@ _DISC_INTERCALAR = {
     "religiao": "Religião", "lit.": "Literacias", "bio.": "Biologia",
     "fis.": "Física", "quim.": "Química",
     "fis": "Física", "quim": "Química", "cp": "Ciência Política", "ing.": "Inglês", "ing": "Inglês",
-    "proj.": "Projeto",
+    "proj.": "Projeto", "historia": "História A", "hist.": "História A", "hist": "História A",
 }
 
 def _canon_disc_intercalar(nome, conhecidas):
