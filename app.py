@@ -4125,7 +4125,15 @@ def intercalar_turma(turma):
             if base_turma(r["turma"]) == tb and r["disciplina"] not in disciplinas \
                     and _chave_disc(r["disciplina"]) != "projeto":
                 disciplinas.append(r["disciplina"])
-    return render_template("intercalar_turma.html", turma=tb, ano=ano, sem=sem,
+    sugestoes = []
+    if editar:   # colunas acrescentadas à mão (?extra=...) e lista de nomes conhecidos para sugerir
+        for x in request.args.getlist("extra"):
+            x = canonizar_disciplina((x or "").strip())
+            if x and not _disc_ignorada(x) and _chave_disc(x) not in {_chave_disc(d) for d in disciplinas}:
+                disciplinas.append(x)
+        sugestoes = sorted({n for n in _nomes_disciplina(db)[1] if not _disc_ignorada(n)} - set(disciplinas))
+    return render_template("intercalar_turma.html", turma=tb, ano=ano, sem=sem, sugestoes=sugestoes,
+                           extras=request.args.getlist("extra") if editar else [],
                            semestres=semestres, disciplinas=disciplinas, alunos=alunos,
                            total_alertas=sum(a["alertas"] for a in alunos),
                            pode_editar=pode_editar, editar=editar, opcoes=INTERCALAR_COD)

@@ -21,10 +21,22 @@
     </div>
   </div>
 
+  {% if editar %}
+  <form method="get" class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <input type="hidden" name="semestre" value="{{ sem }}">
+    <input type="hidden" name="editar" value="1">
+    {% for x in extras %}<input type="hidden" name="extra" value="{{ x }}">{% endfor %}
+    <label class="small fw-semibold mb-0" for="extra"><i class="bi bi-plus-circle me-1"></i>Acrescentar coluna de disciplina</label>
+    <input type="text" id="extra" name="extra" list="sug-disc" class="form-control form-control-sm" style="max-width:260px" placeholder="Nome da disciplina" required>
+    <datalist id="sug-disc">{% for n in sugestoes %}<option value="{{ n }}">{% endfor %}</datalist>
+    <button class="btn btn-sm btn-outline-primary">Acrescentar</button>
+    <span class="small text-muted">Guarde primeiro o que já preencheu: acrescentar recarrega a página.</span>
+  </form>
+  {% endif %}
   {% if not disciplinas and not editar %}
   <div class="alert alert-info">Ainda não há avaliação intercalar importada para esta turma neste semestre.</div>
   {% elif not disciplinas %}
-  <div class="alert alert-warning">Esta turma não tem disciplinas atribuídas neste ano letivo, por isso não há colunas para preencher. Importe a pauta ou peça ao administrador para atribuir as disciplinas.</div>
+  <div class="alert alert-warning">Esta turma ainda não tem colunas de disciplina. Acrescente uma acima, importe a pauta ou peça ao administrador para atribuir as disciplinas.</div>
   {% else %}
   <div class="small text-muted mb-2">
     Em cada disciplina: <strong>Desempenho</strong> (MB, B, S, I, MI) · <strong>Ritmo</strong> (A, NA) ·
