@@ -4488,6 +4488,12 @@ def ct_avaliar():
                            exist=exist, obs=obs, niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
                            maxd=ct_cfg.MAX_DESCRITORES, ano=ano)
 
+@app.route("/ct/tutorial")
+@login_required
+def ct_tutorial():
+    return render_template("ct_tutorial.html", niveis=ct_cfg.NIVEIS, cor=ct_cfg.COR_NIVEL,
+                           maxd=ct_cfg.MAX_DESCRITORES)
+
 @app.route("/ct/guia")
 @login_required
 def ct_guia():

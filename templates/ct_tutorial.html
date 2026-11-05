@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}CT · Tutorial{% endblock %}
+{% block content %}
+<div class="container py-3" style="max-width:900px">
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="fw-bold mb-1"><i class="bi bi-lightbulb me-2 text-primary"></i>Como avaliar as Competências Transversais</h3>
+      <p class="text-muted mb-0">Guia rápido para professores: cerca de 5 minutos de leitura.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('ct_guia') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-book me-1"></i>Definições e descritores</a>
+      <a href="{{ url_for('ct_home') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Voltar às CT</a>
+    </div>
+  </div>
+
+  <style>
+    .passo { display:flex; gap:14px; align-items:flex-start; }
+    .passo .num { flex:0 0 34px; height:34px; border-radius:50%; background:#0d6efd; color:#fff; font-weight:700;
+                  display:flex; align-items:center; justify-content:center; }
+    .passo h5 { margin:0 0 4px; font-size:1.05rem; }
+  </style>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h5 class="fw-bold mb-2">O essencial</h5>
+      <ul class="mb-0">
+        <li>Em cada momento, cada professor avalia <strong>os seus alunos, disciplina a disciplina</strong>, de 1 a 5.</li>
+        <li><strong>Autonomia, Responsabilidade e Cooperação</strong> (AUTN, RESP, COOP) são avaliadas por <strong>todas</strong> as disciplinas.</li>
+        <li><strong>Capacidade Crítica, Resolução de Situações Problema, Comunicação e Criatividade</strong> (CCRT, RSPL, COMN, CRIA) são <strong>opcionais</strong>: só se a disciplina realizou uma tarefa que as trabalhe.</li>
+        <li>Um campo em branco significa «por avaliar». Nada é obrigatório, e pode guardar as vezes que quiser.</li>
+        <li>No fim, o <strong>Professor Titular de Turma (PT)</strong> junta as avaliações das várias disciplinas e decide o nível final de cada aluno.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3"><div class="card-body passo">
+    <div class="num">1</div>
+    <div>
+      <h5>Entre em «Competências Transversais»</h5>
+      <p class="mb-1">No menu do portal escolha <strong>CT</strong>. No topo vê o <strong>momento aberto</strong>
+        (Intercalar do 1.º semestre, Final do 1.º semestre ou Final do 2.º semestre). É esse que está a avaliar:
+        só o administrador o muda.</p>
+      <p class="mb-0 text-muted small">Abaixo aparece um cartão por cada turma e disciplina que lhe estão atribuídas, com o número de alunos já avaliados.
+        Se faltar algum cartão, peça ao administrador para confirmar as suas atribuições.</p>
+    </div>
+  </div></div>
+
+  <div class="card shadow-sm mb-3"><div class="card-body passo">
+    <div class="num">2</div>
+    <div>
+      <h5>Abra a turma e avalie</h5>
+      <p class="mb-1">Clique em <strong>Avaliar</strong> no cartão. Aparece uma linha por aluno, com uma lista de níveis para cada competência:</p>
+      <ul class="mb-1">
+        {% for n, (rot, txt) in niveis.items() %}
+        <li><span class="badge" style="background:{{ cor[n] }}">{{ n }}</span> <strong>{{ rot }}.</strong> {{ txt }}</li>
+        {% endfor %}
+      </ul>
+      <p class="mb-0 text-muted small">Passe o rato por cima do nome da competência para ver a definição. Em «Escala de 1 a 5 e definições» tem a escala sempre à mão.</p>
+    </div>
+  </div></div>
+
+  <div class="card shadow-sm mb-3"><div class="card-body passo">
+    <div class="num">3</div>
+    <div>
+      <h5>Competências opcionais</h5>
+      <p class="mb-0">As quatro opcionais estão escondidas para não pesarem no ecrã. Se a disciplina trabalhou alguma delas,
+        use o botão <strong>«Quer pronunciar-se também sobre CCRT, RSPL, COMN e CRIA?»</strong> para as mostrar.
+        Se não trabalhou, ignore-as.</p>
+    </div>
+  </div></div>
+
+  <div class="card shadow-sm mb-3"><div class="card-body passo">
+    <div class="num">4</div>
+    <div>
+      <h5>Descritores a melhorar e observação (opcionais)</h5>
+      <p class="mb-1">Nos momentos <strong>Intercalar do 1.º semestre</strong> e <strong>Final do 1.º semestre</strong> pode ainda, por aluno e competência, abrir
+        «Descritores a melhorar» e assinalar <strong>até {{ maxd }}</strong>. Assim o aluno e a família sabem em que concentrar-se.
+        No final do 2.º semestre não há descritores.</p>
+      <p class="mb-0">A caixa <strong>Observação</strong> aceita até 500 caracteres. Fica visível ao PT no quadro-resumo.</p>
+    </div>
+  </div></div>
+
+  <div class="card shadow-sm mb-3"><div class="card-body passo">
+    <div class="num">5</div>
+    <div>
+      <h5>Guarde</h5>
+      <p class="mb-0">Use <strong>«Guardar avaliação»</strong>, que está no topo da página. Pode guardar a meio e voltar mais tarde: cada gravação substitui a anterior,
+        e se apagar um nível e guardar, a avaliação desse aluno nessa competência é retirada.</p>
+    </div>
+  </div></div>
+
+  <div class="card shadow-sm mb-3"><div class="card-body passo">
+    <div class="num">6</div>
+    <div>
+      <h5>Atalhos para avaliar mais depressa</h5>
+      <ul class="mb-0">
+        <li><strong>Todos os alunos do ano:</strong> se dá a mesma disciplina a várias turmas do mesmo ano, há um botão verde no topo que junta todos os seus alunos numa só página.
+          Pode filtrar por turma e ordenar por turma ou por ordem alfabética.</li>
+        <li><strong>Projeto:</strong> se é orientador de grupos de projeto, avalia os alunos <em>dos seus grupos</em> (um cartão por grupo, ou o botão
+          «todos os meus grupos»). Esses alunos deixam de aparecer na lista de Projeto dos outros professores.</li>
+        <li><strong>Cabeçalho fixo:</strong> ao deslocar a lista, o cabeçalho com os nomes das competências fica sempre visível.</li>
+      </ul>
+    </div>
+  </div></div>
+
+  <div class="card shadow-sm mb-3 border-primary"><div class="card-body passo">
+    <div class="num">7</div>
+    <div>
+      <h5>Se é PT: o quadro-resumo e a decisão</h5>
+      <p class="mb-1">No topo da página das CT tem o botão <strong>«Quadro-resumo · Turma …»</strong>. Aí vê, por aluno e competência, o que cada disciplina avaliou, a
+        <strong>média</strong> e o <strong>nível proposto</strong> (a média arredondada).</p>
+      <ul class="mb-1">
+        <li>Use <strong>«Preencher com as propostas»</strong> para aceitar as propostas nos campos em branco, e altere depois o que entender.</li>
+        <li>A <strong>decisão é sua</strong>: o nível final de cada aluno é o que escolher e guardar em «Guardar decisão».</li>
+        <li>Pode ver as observações e os descritores a melhorar de cada professor.</li>
+      </ul>
+    </div>
+  </div></div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h5 class="fw-bold mb-2">Dicas de avaliação</h5>
+      <ul class="mb-0">
+        <li>Avalie o que observou <strong>naquele momento</strong>, e não o percurso todo do aluno.</li>
+        <li>O nível <strong>3 (Desenvolvido)</strong> significa que cumpre o essencial. Os níveis 4 e 5 pedem qualidade, e o 1 e o 2 indicam dificuldade em cumprir o essencial.</li>
+        <li>Os descritores da página «Definições e descritores» são a referência: confirme-os se tiver dúvidas.</li>
+        <li>Na dúvida entre dois níveis, deixe em branco e volte depois, em vez de adivinhar.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="alert alert-light border small">
+    <i class="bi bi-question-circle me-1"></i><strong>Problemas?</strong> Se um aluno não aparece, se falta uma disciplina ou se o momento está errado,
+    fale com o administrador do portal: são dados que ele controla.
+  </div>
+</div>
+{% endblock %}
