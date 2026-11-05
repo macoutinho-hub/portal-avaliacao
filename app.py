@@ -4258,6 +4258,8 @@ def _ct_aluno(db, aluno_id, turma):
 def ultimo_nome(momentos):
     return momentos[-1]["nome"]
 
+_CT_SEM_AVALIACAO = {_norm_nome("Hora de PT"), _norm_nome("PT")}   # não têm avaliação das CT
+
 def _ct_atribuicoes(db, nome, ano):
     """[(turma base, disciplina)] atribuídas ao docente (ligação pelo nome) em prof_disc,
     só nas turmas dos anos em que há avaliação das CT."""
@@ -4266,7 +4268,8 @@ def _ct_atribuicoes(db, nome, ano):
     out = []
     for r in db.execute("SELECT professor, turma, disciplina FROM prof_disc WHERE ano_letivo=? "
                         "ORDER BY turma, disciplina", (ano,)).fetchall():
-        if _norm_nome(r["professor"]) == alvo and _nivel_turma(r["turma"]) in niveis:
+        if _norm_nome(r["professor"]) == alvo and _nivel_turma(r["turma"]) in niveis \
+                and _chave_disc(r["disciplina"]) not in _CT_SEM_AVALIACAO:
             par = (base_turma(r["turma"]), r["disciplina"])
             if par not in out:
                 out.append(par)
