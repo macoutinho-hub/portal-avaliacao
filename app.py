@@ -1252,6 +1252,12 @@ def aluno(aluno_id):
     turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
     pode_editar = session["role"] == "admin" or base_turma(a["turma"]) in turmas_user
 
+    matriculas = [r["disciplina"] for r in db.execute(
+        "SELECT disciplina FROM aluno_disciplina WHERE aluno_id=? AND ano_letivo=? ORDER BY disciplina",
+        (aluno_id, a["ano_letivo"]))]
+    sug_matr = sorted({n for n in _nomes_disciplina(db)[1] if not _disc_ignorada(n)} - set(matriculas)) \
+        if pode_editar else []
+
     # Lista completa de disciplinas para o modal "Adicionar Semestre"
     todas_disciplinas_possiveis = [d for d in ORDEM_TODAS if d not in ("Hora de PT", "Tempo de Trabalho Autónomo")]
 
@@ -1325,7 +1331,7 @@ def aluno(aluno_id):
                            foto_url=foto_url,
                            notas_reuniao=notas_reuniao,
                            categorias_reuniao=CATEGORIAS_REUNIAO,
-                           pode_editar=pode_editar,
+                           pode_editar=pode_editar, matriculas=matriculas, sug_matr=sug_matr,
                            aa_canonical=aa_canonical,
                            colegas=colegas,
                            aluno_anterior=aluno_anterior,
@@ -1530,6 +1536,44 @@ def apagar_semestre(aluno_id):
     flash(f"✓ {result.rowcount} nota(s) apagada(s).", "success")
     return redirect(url_for("aluno", aluno_id=aluno_id))
 
+
+@app.route("/aluno/<int:aluno_id>/matriculas", methods=["POST"])
+@login_required
+def alterar_matriculas(aluno_id):
+    """O PT da turma (ou o admin) acrescenta/retira disciplinas da lista do aluno neste ano letivo
+    (a lista que decide quem aparece em cada disciplina nas CT). Não mexe nas notas."""
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        return redirect(url_for("dashboard"))
+    turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
+    if session["role"] != "admin" and base_turma(a["turma"]) not in turmas_user:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for("aluno", aluno_id=aluno_id))
+    ano = a["ano_letivo"]
+    acao = request.form.get("acao")
+    disc = canonizar_disciplina((request.form.get("disciplina") or "").strip())
+    if acao == "acrescentar" and disc and not _disc_ignorada(disc):
+        db.execute("INSERT OR IGNORE INTO aluno_disciplina (aluno_id, disciplina, ano_letivo) VALUES (?,?,?)",
+                   (aluno_id, disc, ano))
+        flash(f"«{disc}» acrescentada às disciplinas de {a['nome']}.", "success")
+    elif acao == "retirar" and disc:
+        n = db.execute("DELETE FROM aluno_disciplina WHERE aluno_id=? AND disciplina=? AND ano_letivo=?",
+                       (aluno_id, disc, ano)).rowcount
+        flash(f"«{disc}» retirada das disciplinas de {a['nome']} (as notas não foram apagadas)." if n
+              else "Essa disciplina não estava na lista.", "success" if n else "warning")
+    elif acao == "preencher":   # cria a lista a partir das disciplinas atribuídas à turma
+        tb = base_turma(a["turma"])
+        novas = {r["disciplina"] for r in db.execute(
+            "SELECT turma, disciplina FROM prof_disc WHERE ano_letivo=?", (ano,)) if base_turma(r["turma"]) == tb}
+        for d in sorted(novas):
+            db.execute("INSERT OR IGNORE INTO aluno_disciplina (aluno_id, disciplina, ano_letivo) VALUES (?,?,?)",
+                       (aluno_id, d, ano))
+        flash(f"Lista criada com {len(novas)} disciplina(s) da turma.", "success")
+    else:
+        flash("Indique uma disciplina.", "danger")
+    db.commit()
+    return redirect(url_for("aluno", aluno_id=aluno_id, matriculas=1))
 
 @app.route("/aluno/<int:aluno_id>/adicionar-disciplina", methods=["POST"])
 @login_required

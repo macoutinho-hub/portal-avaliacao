@@ -160,6 +160,9 @@
         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modal-add-disciplina">
           <i class="bi bi-columns-gap me-1"></i>Adicionar Disciplina
         </button>
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modal-matriculas">
+          <i class="bi bi-list-check me-1"></i>Disciplinas do ano ({{ matriculas|length }})
+        </button>
         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modal-auto-av"
                 style="border-color:#9333ea; color:#7e22ce">
           <i class="bi bi-star me-1"></i>Autoavaliação
@@ -594,6 +597,55 @@
     </div>
   </div>
 </div>
+{% endif %}
+
+<!-- ── Modal: Disciplinas do ano (matrícula por disciplina) ───────────────── -->
+{% if pode_editar %}
+<div class="modal fade" id="modal-matriculas" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1a3c6e; color:white">
+        <h5 class="modal-title"><i class="bi bi-list-check me-2"></i>Disciplinas de {{ aluno.nome }} · {{ aluno.ano_letivo }}</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted">Esta lista decide em que disciplinas o aluno aparece (por exemplo, na avaliação das CT). Retirar uma disciplina <strong>não apaga as notas</strong>.</p>
+        {% if not matriculas %}
+        <div class="alert alert-warning small">Este aluno ainda não tem lista de disciplinas, por isso aparece em <strong>todas</strong> as disciplinas da turma. Ao acrescentar a primeira, passa a aparecer <strong>só</strong> nas que estiverem na lista.
+          <form method="post" action="{{ url_for('alterar_matriculas', aluno_id=aluno.id) }}" class="mt-2">
+            <input type="hidden" name="acao" value="preencher">
+            <button class="btn btn-sm btn-outline-primary">Criar a lista com as disciplinas da turma</button>
+          </form>
+        </div>
+        {% endif %}
+        <ul class="list-group mb-3">
+          {% for d in matriculas %}
+          <li class="list-group-item d-flex justify-content-between align-items-center py-1">
+            <span>{{ d }}</span>
+            <form method="post" action="{{ url_for('alterar_matriculas', aluno_id=aluno.id) }}" class="m-0">
+              <input type="hidden" name="acao" value="retirar"><input type="hidden" name="disciplina" value="{{ d }}">
+              <button class="btn btn-sm btn-outline-danger py-0" title="Retirar esta disciplina"><i class="bi bi-x-lg"></i> Retirar</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        <form method="post" action="{{ url_for('alterar_matriculas', aluno_id=aluno.id) }}" class="d-flex gap-2">
+          <input type="hidden" name="acao" value="acrescentar">
+          <input type="text" name="disciplina" class="form-control" placeholder="Acrescentar disciplina…" list="sug-matr" required>
+          <datalist id="sug-matr">{% for n in sug_matr %}<option value="{{ n }}">{% endfor %}</datalist>
+          <button class="btn btn-primary">Acrescentar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if pode_editar and request.args.get('matriculas') %}
+<script>window.addEventListener('load', function () {
+  var el = document.getElementById('modal-matriculas');
+  if (el && window.bootstrap) bootstrap.Modal.getOrCreateInstance(el).show();
+});</script>
 {% endif %}
 
 <!-- ── Modal: Adicionar Disciplina ──────────────────────────────────────── -->
