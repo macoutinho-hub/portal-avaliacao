@@ -4353,10 +4353,25 @@ def _ct_alunos(db, turma, disciplina, ano):
         for r in db.execute(f"SELECT aluno_id, disciplina FROM aluno_disciplina WHERE ano_letivo=? "
                             f"AND aluno_id IN ({ph2})", [ano] + [a["id"] for a in alunos]).fetchall():
             matr.setdefault(r["aluno_id"], set()).add(_chave_disc(r["disciplina"]))
-    if not matr:
-        return list(alunos), False
     k = _chave_disc(disciplina)
-    return [a for a in alunos if a["id"] not in matr or k in matr[a["id"]]], True
+    # alunos de outras turmas do mesmo ano com a disciplina na sua lista, quando a turma deles
+    # não tem esta disciplina atribuída (ex.: grupo de Matemática B com alunos de várias turmas)
+    extras = []
+    nv = _nivel_turma(turma)
+    if k != "projeto" and nv is not None:
+        ja = {a["id"] for a in alunos}
+        com_atrib = {base_turma(r["turma"]) for r in db.execute(
+            "SELECT turma, disciplina FROM prof_disc WHERE ano_letivo=?", (ano,)) if _chave_disc(r["disciplina"]) == k}
+        for r in db.execute("SELECT a.id, a.numero, a.nome, a.turma, d.disciplina FROM aluno_disciplina d "
+                            "JOIN alunos a ON a.id=d.aluno_id WHERE d.ano_letivo=? AND a.ano_letivo=?", (ano, ano)):
+            if r["id"] in ja or _nivel_turma(r["turma"]) != nv or base_turma(r["turma"]) in com_atrib \
+                    or _chave_disc(r["disciplina"]) != k:
+                continue
+            ja.add(r["id"])
+            extras.append({"id": r["id"], "numero": r["numero"], "nome": r["nome"], "turma": r["turma"]})
+    if not matr:
+        return list(alunos) + extras, False
+    return [a for a in alunos if a["id"] not in matr or k in matr[a["id"]]] + extras, True
 
 def _ct_agora():
     return datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -4466,9 +4481,11 @@ def ct_avaliar():
             return redirect(url_for("ct_home"))
         turma = f"{nivel}.º ano"
         alunos, filtrado = [], True
+        vistos = set()
         for t in turmas_nv:
             al, f = _ct_alunos(db, t, disc, ano)
-            alunos += al
+            alunos += [x for x in al if x["id"] not in vistos]
+            vistos |= {x["id"] for x in al}
             filtrado = filtrado and f
         alunos.sort(key=lambda a: (a["turma"], a["nome"]))
     else:
