@@ -24,7 +24,10 @@
     }
 
     /* ── Layout principal ── */
-    .ap-wrap { display: flex; flex-direction: column; height: 100vh; }
+    .ap-wrap { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+    @supports (-webkit-touch-callout: none) { .ap-wrap { height: -webkit-fill-available; } }
+    html, body { height: 100vh; height: 100dvh; }
+    .ap-body { min-height: 0; }
 
     /* ── Barra de topo ── */
     .ap-top {
@@ -239,6 +242,7 @@
       background:#0a1628; border-top:1px solid var(--borda);
       padding:.7rem 2rem; display:flex; align-items:center;
       justify-content:center; gap:1.5rem; flex-shrink:0;
+      padding-bottom:max(.7rem, env(safe-area-inset-bottom, 0px));
     }
 
     /* ── Modo projeção 16:9 ── */
@@ -261,6 +265,12 @@
 
     /* ── iPad / ecrãs até 1180px ── */
     @media (max-width: 1180px) {
+      /* Barra de navegação compacta e sempre visível; alvos grandes para o toque */
+      .ap-nav { padding-top: .45rem; padding-bottom: max(.45rem, env(safe-area-inset-bottom, 0px)); gap: .7rem; }
+      .btn-nav { min-width: 120px; padding: .6rem 1.2rem; font-size: 1rem; }
+      .btn-nav .key-hint { display: none; }
+      #select-aluno { min-width: 0; flex: 1 1 auto; max-width: 340px; font-size: 1rem; padding: .5rem .7rem; }
+      .ap-counter { white-space: nowrap; }
       .ap-left { width: 190px; padding: .8rem .7rem; }
       .ap-foto { width: 90px; height: 90px; }
       .ap-nome { font-size: 1.2rem; }
@@ -353,6 +363,9 @@
     }
     .btn-nav:hover:not(:disabled) { background: var(--azul2); transform: scale(1.03); }
     .btn-nav:disabled { opacity: .25; cursor: not-allowed; transform: none; }
+    .ap-nav { padding-bottom: max(.9rem, env(safe-area-inset-bottom, 0px));
+              padding-left: max(2rem, env(safe-area-inset-left, 0px));
+              padding-right: max(2rem, env(safe-area-inset-right, 0px)); }
     .key-hint { font-size: .62rem; opacity: .45; display: block; }
     #select-aluno {
       background: #1e3a5f; color: white; border: 1px solid rgba(255,255,255,.2);
@@ -978,6 +991,22 @@ document.addEventListener('fullscreenchange', () => {
   document.getElementById('fs-icon').className =
     document.fullscreenElement ? 'bi bi-fullscreen-exit' : 'bi bi-fullscreen';
 });
+
+// Deslizar com o dedo (iPad): esquerda = seguinte, direita = anterior
+(function () {
+  let x0 = null, y0 = null;
+  document.addEventListener('touchstart', e => {
+    const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY;
+    if (e.target.closest('select, input, textarea, button, table, .slides-panel-body')) x0 = null;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (x0 === null) return;
+    const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+    x0 = null;
+    if (document.getElementById('slide-full') && document.getElementById('slide-full').style.display !== 'none') return;
+    if (Math.abs(dx) > 90 && Math.abs(dx) > 2 * Math.abs(dy)) navegar(dx < 0 ? 1 : -1);
+  }, { passive: true });
+})();
 
 popularDropdown();
 mostrar(0);
