@@ -2116,10 +2116,35 @@ def atribuicoes():
     db = get_db()
     ano = ano_letivo_atual(db)
     filtro = base_turma(request.values.get("turma", ""))
+    f_disc = (request.values.get("f_disc") or "").strip()
+    f_prof = (request.values.get("f_prof") or "").strip()
 
     if request.method == "POST":
         acao = request.form.get("acao")
-        if acao == "adicionar":
+        if acao == "substituir":
+            novo = (request.form.get("novo_professor") or "").strip()
+            ids = [int(i) for i in request.form.getlist("ids") if i.isdigit()]
+            nomes = {_norm_nome(r["nome"]): r["nome"] for r in db.execute(
+                "SELECT nome FROM users WHERE role IN ('professor','diretor')").fetchall()}
+            if _norm_nome(novo) not in nomes:
+                flash("Professor não encontrado: escolha um nome da lista (tem de ter conta no portal).", "danger")
+            elif not ids:
+                flash("Selecione primeiro as linhas (turma e disciplina) a substituir.", "warning")
+            else:
+                novo = nomes[_norm_nome(novo)]
+                n = 0
+                for i in ids:
+                    r = db.execute("SELECT turma, disciplina FROM prof_disc WHERE id=? AND ano_letivo=?",
+                                   (i, ano)).fetchone()
+                    if not r:
+                        continue
+                    db.execute("INSERT OR IGNORE INTO prof_disc (professor, turma, disciplina, ano_letivo) "
+                               "VALUES (?,?,?,?)", (novo, r["turma"], r["disciplina"], ano))
+                    db.execute("DELETE FROM prof_disc WHERE id=? AND ano_letivo=?", (i, ano))
+                    n += 1
+                db.commit()
+                flash(f"Professor substituído por {novo} em {n} atribuição(ões).", "success")
+        elif acao == "adicionar":
             prof = (request.form.get("professor") or "").strip()
             turma = base_turma(request.form.get("turma_nova", ""))
             disc = (request.form.get("disciplina") or "").strip()
@@ -2157,7 +2182,7 @@ def atribuicoes():
                         n += 1
             db.commit()
             flash(f"«Hora de PT» atribuída ao PT de cada turma: {n} atribuição(ões).", "success")
-        return redirect(url_for("atribuicoes", turma=filtro))
+        return redirect(url_for("atribuicoes", turma=filtro, f_disc=f_disc, f_prof=f_prof))
 
     sql = "SELECT id, professor, turma, disciplina FROM prof_disc WHERE ano_letivo=?"
     args = [ano]
@@ -2165,9 +2190,13 @@ def atribuicoes():
         sql += " AND turma=?"
         args.append(filtro)
     lista = db.execute(sql + " ORDER BY turma, disciplina, professor", args).fetchall()
+    if f_disc:
+        lista = [r for r in lista if _norm_nome(f_disc) in _norm_nome(r["disciplina"])]
+    if f_prof:
+        lista = [r for r in lista if _norm_nome(f_prof) in _norm_nome(r["professor"])]
     lacunas = _lacunas_atribuicao(db, ano)
     return render_template(
-        "atribuicoes.html", ano=ano, filtro=filtro, lista=lista, lacunas=lacunas,
+        "atribuicoes.html", ano=ano, filtro=filtro, f_disc=f_disc, f_prof=f_prof, lista=lista, lacunas=lacunas,
         professores=[r["nome"] for r in db.execute(
             "SELECT nome FROM users WHERE role IN ('professor','diretor') ORDER BY nome")],
         turmas=sorted({base_turma(r["turma"]) for r in db.execute(

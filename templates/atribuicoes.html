@@ -13,7 +13,7 @@
     <div class="card-header fw-semibold">Atribuir à mão</div>
     <div class="card-body">
       <form method="post" class="row g-2 align-items-end">
-        <input type="hidden" name="acao" value="adicionar"><input type="hidden" name="turma" value="{{ filtro }}">
+        <input type="hidden" name="acao" value="adicionar"><input type="hidden" name="turma" value="{{ filtro }}"><input type="hidden" name="f_disc" value="{{ f_disc }}"><input type="hidden" name="f_prof" value="{{ f_prof }}">
         <div class="col-md-4"><label class="form-label small mb-1">Professor</label>
           <input name="professor" list="lista-profs" class="form-control form-control-sm" required placeholder="escolha da lista"></div>
         <div class="col-md-2"><label class="form-label small mb-1">Turma</label>
@@ -46,7 +46,7 @@
             <td>{{ d }}</td><td>{{ t }}</td><td class="text-end">{{ n }}</td>
             <td>
               <form method="post" class="d-flex gap-1 m-0">
-                <input type="hidden" name="acao" value="adicionar"><input type="hidden" name="turma" value="{{ filtro }}">
+                <input type="hidden" name="acao" value="adicionar"><input type="hidden" name="turma" value="{{ filtro }}"><input type="hidden" name="f_disc" value="{{ f_disc }}"><input type="hidden" name="f_prof" value="{{ f_prof }}">
                 <input type="hidden" name="turma_nova" value="{{ t }}"><input type="hidden" name="disciplina" value="{{ d }}">
                 <input name="professor" list="lista-profs" class="form-control form-control-sm" required placeholder="professor">
                 <button class="btn btn-sm btn-outline-primary">Atribuir</button>
@@ -64,31 +64,55 @@
 
   <div class="card shadow-sm">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <span class="fw-semibold">Atribuições atuais ({{ lista|length }}{% if filtro %} na turma {{ filtro }}{% endif %})</span>
-      <form method="get" class="d-flex gap-1 m-0">
-        <input name="turma" list="lista-turmas" value="{{ filtro }}" class="form-control form-control-sm" placeholder="filtrar por turma" style="width:170px">
+      <span class="fw-semibold">Atribuições atuais ({{ lista|length }}{% if filtro %} · turma {{ filtro }}{% endif %}{% if f_disc %} · {{ f_disc }}{% endif %}{% if f_prof %} · {{ f_prof }}{% endif %})</span>
+      <form method="get" class="d-flex gap-1 flex-wrap m-0">
+        <input name="turma" list="lista-turmas" value="{{ filtro }}" class="form-control form-control-sm" placeholder="turma" style="width:100px">
+        <input name="f_disc" list="lista-discs" value="{{ f_disc }}" class="form-control form-control-sm" placeholder="disciplina" style="width:170px">
+        <input name="f_prof" list="lista-profs" value="{{ f_prof }}" class="form-control form-control-sm" placeholder="professor" style="width:170px">
         <button class="btn btn-sm btn-outline-secondary">Filtrar</button>
-        {% if filtro %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('atribuicoes') }}">Limpar</a>{% endif %}
+        {% if filtro or f_disc or f_prof %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('atribuicoes') }}">Limpar</a>{% endif %}
       </form>
     </div>
-    <div class="table-responsive" style="max-height:480px;overflow:auto">
-      <table class="table table-sm align-middle mb-0">
-        <thead class="table-light"><tr><th>Turma</th><th>Disciplina</th><th>Professor</th><th></th></tr></thead>
-        <tbody>
-          {% for r in lista %}
-          <tr>
-            <td>{{ r.turma }}</td><td>{{ r.disciplina }}</td><td>{{ r.professor }}</td>
-            <td class="text-end">
-              <form method="post" class="m-0" onsubmit="return confirm('Remover esta atribuição?')">
-                <input type="hidden" name="acao" value="remover"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="turma" value="{{ filtro }}">
-                <button class="btn btn-sm btn-link text-danger p-0" title="Remover"><i class="bi bi-trash"></i></button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    <form method="post" id="form-subst">
+      <input type="hidden" name="turma" value="{{ filtro }}">
+      <input type="hidden" name="f_disc" value="{{ f_disc }}"><input type="hidden" name="f_prof" value="{{ f_prof }}">
+      <div class="card-body py-2 border-bottom d-flex gap-2 flex-wrap align-items-center bg-light">
+        <span class="small fw-semibold"><i class="bi bi-arrow-left-right me-1"></i>Substituir professor nas linhas selecionadas por</span>
+        <input name="novo_professor" list="lista-profs" class="form-control form-control-sm" style="max-width:280px" placeholder="novo professor" required>
+        <button name="acao" value="substituir" class="btn btn-sm btn-primary" onclick="return confirm('Substituir o professor nas linhas selecionadas?')">Substituir</button>
+        <span class="small text-muted" id="n-sel">0 selecionadas</span>
+      </div>
+      <div class="table-responsive" style="max-height:480px;overflow:auto">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th style="width:36px"><input type="checkbox" id="sel-todas" title="Selecionar todas as linhas visíveis"></th><th>Turma</th><th>Disciplina</th><th>Professor</th><th></th></tr></thead>
+          <tbody>
+            {% for r in lista %}
+            <tr>
+              <td><input type="checkbox" class="sel" name="ids" value="{{ r.id }}"></td>
+              <td>{{ r.turma }}</td><td>{{ r.disciplina }}</td><td>{{ r.professor }}</td>
+              <td class="text-end">
+                <button type="submit" formaction="{{ url_for('atribuicoes') }}" name="acao" value="remover" formnovalidate
+                        onclick="return removerLinha(this, {{ r.id }})" class="btn btn-sm btn-link text-danger p-0" title="Remover"><i class="bi bi-trash"></i></button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </form>
   </div>
 </div>
+<script>
+const caixas = () => document.querySelectorAll('.sel');
+function contar() { document.getElementById('n-sel').textContent = document.querySelectorAll('.sel:checked').length + ' selecionadas'; }
+document.getElementById('sel-todas').addEventListener('change', e => { caixas().forEach(c => c.checked = e.target.checked); contar(); });
+caixas().forEach(c => c.addEventListener('change', contar));
+function removerLinha(btn, id) {
+  if (!confirm('Remover esta atribuição?')) return false;
+  const f = document.getElementById('form-subst');
+  caixas().forEach(c => c.checked = false);
+  const h = document.createElement('input'); h.type = 'hidden'; h.name = 'id'; h.value = id; f.appendChild(h);
+  return true;
+}
+</script>
 {% endblock %}
