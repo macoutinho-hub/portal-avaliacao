@@ -1,0 +1,1 @@
+- [Render em Oregon, migração adiada](render-regiao-oregon-migracao-adiada.md) — mudar para Frankfurt/Azure fica para mais tarde; plano guardado
