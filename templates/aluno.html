@@ -115,7 +115,8 @@
       <div class="flex-grow-1">
         <h4 class="fw-bold mb-0">{{ aluno.nome }}</h4>
         <div class="d-flex gap-3 mt-1 opacity-75" style="font-size:.9rem">
-          <span><i class="bi bi-mortarboard me-1"></i>Turma {{ aluno.turma }}</span>
+          <span><i class="bi bi-mortarboard me-1"></i>Turma {{ aluno.turma }}
+            {% if session.role == 'admin' %}<a href="#" class="text-white ms-1" title="Mudar de turma" data-bs-toggle="modal" data-bs-target="#modal-turma"><i class="bi bi-pencil-square"></i></a>{% endif %}</span>
           {% if aluno.numero %}<span><i class="bi bi-hash me-1"></i>{{ aluno.numero }}</span>{% endif %}
           <span><i class="bi bi-calendar me-1"></i>{{ aluno.ano_letivo }}</span>
         </div>
@@ -1004,4 +1005,18 @@ async function confirmarImportarFicha() {
   </div>
 </div>
 
+
+{% if session.role == 'admin' %}
+<div class="modal fade" id="modal-turma" tabindex="-1"><div class="modal-dialog"><form method="post" action="{{ url_for('alterar_turma_aluno', aluno_id=aluno.id) }}" class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Mudar de turma</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <p class="small text-muted">Neste ano letivo ({{ aluno.ano_letivo }}). As notas, a avaliação intercalar, as CT e as disciplinas do aluno acompanham-no; nada se apaga. As atribuições de professores são por turma, por isso confirme depois que a nova turma tem professor em cada disciplina.</p>
+    <label class="form-label small mb-1">Nova turma (atual: {{ aluno.turma }})</label>
+    <input name="turma" class="form-control" value="{{ request.args.get('turma_nova', '') }}" required placeholder="ex.: 11A1">
+    {% if request.args.get('turma_nova') %}<div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="confirmar" value="1" id="conf-t"><label class="form-check-label small" for="conf-t">É uma turma nova, confirmo o nome</label></div>{% endif %}
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar</button></div>
+</form></div></div>
+{% if request.args.get('turma_nova') %}<script>document.addEventListener('DOMContentLoaded',()=>new bootstrap.Modal(document.getElementById('modal-turma')).show());</script>{% endif %}
+{% endif %}
 {% endblock %}

@@ -1537,6 +1537,33 @@ def apagar_semestre(aluno_id):
     return redirect(url_for("aluno", aluno_id=aluno_id))
 
 
+@app.route("/aluno/<int:aluno_id>/turma", methods=["POST"])
+@login_required
+@admin_required
+def alterar_turma_aluno(aluno_id):
+    """O admin muda a turma do aluno neste ano letivo (sem reimportar listagens). Notas, intercalar,
+    CT e matrículas estão ligadas ao aluno e acompanham-no."""
+    db = get_db()
+    a = db.execute("SELECT * FROM alunos WHERE id=?", (aluno_id,)).fetchone()
+    if not a:
+        return redirect(url_for("dashboard"))
+    nova = (request.form.get("turma") or "").strip().upper()
+    if not nova:
+        flash("Indique a turma.", "danger")
+    elif nova == a["turma"]:
+        flash("O aluno já está nessa turma.", "info")
+    else:
+        existe = db.execute("SELECT 1 FROM alunos WHERE turma=? AND ano_letivo=? LIMIT 1",
+                            (nova, a["ano_letivo"])).fetchone()
+        if not existe and request.form.get("confirmar") != "1":
+            flash(f"Não há alunos na turma «{nova}». Confirme se o nome está certo (ex.: 11A1) e volte a guardar.", "warning")
+            return redirect(url_for("aluno", aluno_id=aluno_id, turma_nova=nova))
+        db.execute("UPDATE alunos SET turma=? WHERE id=?", (nova, aluno_id))
+        db.commit()
+        flash(f"Turma alterada: {a['turma']} → {nova}.", "success")
+    return redirect(url_for("aluno", aluno_id=aluno_id))
+
+
 @app.route("/aluno/<int:aluno_id>/matriculas", methods=["POST"])
 @login_required
 def alterar_matriculas(aluno_id):
