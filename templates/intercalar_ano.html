@@ -18,6 +18,7 @@
   </div>
 
   <form method="get" class="card card-body shadow-sm mb-3 py-2">
+    {% if f_par %}<input type="hidden" name="p" value="{{ f_par }}"><input type="hidden" name="v" value="{{ f_val }}">{% endif %}
     <div class="row g-2 align-items-end">
       <div class="col-md-4"><label class="form-label small mb-0">Disciplina</label>
         <select name="disciplina" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -35,21 +36,22 @@
         </select></div>
       <div class="col-md-2"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="alerta" value="1" id="al" {{ 'checked' if so_alerta }} onchange="this.form.submit()"><label class="form-check-label small" for="al">Só com alerta</label></div></div>
       <div class="col-md-2 d-flex gap-1">
-        <a class="btn btn-sm btn-success flex-fill" href="{{ url_for('intercalar_ano', nivel=nivel, semestre=sem, disciplina=chave, turma=turma_f, alerta=('1' if so_alerta else ''), formato='xlsx') }}"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
+        <a class="btn btn-sm btn-success flex-fill" href="{{ url_for('intercalar_ano', nivel=nivel, semestre=sem, disciplina=chave, turma=turma_f, alerta=('1' if so_alerta else ''), p=f_par, v=f_val, formato='xlsx') }}"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('intercalar_ano', nivel=nivel) }}" title="Limpar">Limpar</a>
       </div>
     </div>
   </form>
 
+  {% if f_par %}<div class="alert alert-info py-1 small">Filtro ativo: <strong>{{ f_val }}</strong> ({{ f_par }}). Carregue no mesmo botão para o retirar.</div>{% endif %}
   {% if not linhas %}
   <div class="alert alert-warning">Não há avaliações intercalares para esta seleção. (Importe a pauta em Importar → Avaliação Intercalar ou ajuste os filtros.)</div>
   {% else %}
   <div class="row g-3 mb-3">
     <div class="col-auto"><div class="card card-body py-2 text-center"><div class="fs-4 fw-bold">{{ n_alunos }}</div><div class="small text-muted">alunos</div></div></div>
-    <div class="col-auto"><div class="card card-body py-2 text-center"><div class="fs-4 fw-bold text-danger">{{ n_alertas }}</div><div class="small text-muted">alertas</div></div></div>
+    <div class="col-auto"><a class="text-decoration-none" href="{{ url_for('intercalar_ano', nivel=nivel, semestre=sem, disciplina=chave, turma=turma_f, alerta=('' if so_alerta else '1'), p=f_par, v=f_val) }}" title="{{ 'Mostrar todos' if so_alerta else 'Mostrar só os alertas' }}"><div class="card card-body py-2 text-center {{ 'border-danger border-2' if so_alerta }}"><div class="fs-4 fw-bold text-danger">{{ n_alertas }}</div><div class="small text-muted">alertas {{ '✕' if so_alerta else '' }}</div></div></a></div>
     {% for b in resumo %}{% if b.itens %}
     <div class="col-auto"><div class="card card-body py-2"><div class="small fw-semibold mb-1">{{ b.titulo }}</div>
-      <div class="d-flex gap-2 flex-wrap">{% for v, sg, n in b.itens %}<span><span class="interc-cell {{ interc_nivel[v] }}" title="{{ v }}">{{ sg }}</span> <strong>{{ n }}</strong></span>{% endfor %}</div></div></div>
+      <div class="d-flex gap-2 flex-wrap">{% for v, sg, n in b.itens %}{% set ativo = (f_par == b.col and f_val == v) %}<a class="text-decoration-none text-body rounded px-1 {{ 'border border-2 border-dark bg-body-secondary' if ativo }}" href="{{ url_for('intercalar_ano', nivel=nivel, semestre=sem, disciplina=chave, turma=turma_f, alerta=('1' if so_alerta else ''), p=('' if ativo else b.col), v=('' if ativo else v)) }}" title="{{ 'Retirar filtro' if ativo else 'Filtrar: ' ~ v }}"><span class="interc-cell {{ interc_nivel[v] }}">{{ sg }}</span> <strong>{{ n }}</strong></a>{% endfor %}</div></div></div>
     {% endif %}{% endfor %}
   </div>
 

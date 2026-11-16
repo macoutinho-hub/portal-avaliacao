@@ -4351,8 +4351,15 @@ def intercalar_ano(nivel):
     chave = request.args.get("disciplina", "")
     turma_f = base_turma(request.args.get("turma", ""))
     so_alerta = request.args.get("alerta") == "1"
+    f_par = request.args.get("p", "")
+    f_val = request.args.get("v", "")
+    if f_par not in INTERCALAR_COD or f_val not in INTERCALAR_COD.get(f_par, {}).values():
+        f_par = f_val = ""
     linhas = [r for r in todas if (not chave or r["chave"] == chave)
               and (not turma_f or r["turma"] == turma_f) and (not so_alerta or r["alerta"])]
+    base_resumo = linhas          # o resumo não se reduz ao filtro por nível, para os botões continuarem visíveis
+    if f_par:
+        linhas = [r for r in linhas if r[f_par] == f_val]
     turmas = sorted({r["turma"] for r in todas})
     niveis = sorted({_nivel_turma(r["turma"]) for r in db.execute(
         "SELECT DISTINCT turma FROM alunos WHERE ano_letivo=?", (ano,)) if _nivel_turma(r["turma"])})
@@ -4361,17 +4368,18 @@ def intercalar_ano(nivel):
     resumo = []
     for col, titulo in (("desempenho", "Desempenho"), ("ritmo", "Ritmo de trabalho"), ("envolvimento", "Envolvimento")):
         cont = {}
-        for r in linhas:
+        for r in base_resumo:
             if r[col]:
                 cont[r[col]] = cont.get(r[col], 0) + 1
         ordem = [INTERCALAR_COD[col][sg] for sg in INTERCALAR_COD[col]]
-        resumo.append({"titulo": titulo, "itens": [(v, INTERCALAR_SIGLA[v], cont[v]) for v in ordem if v in cont]})
+        resumo.append({"col": col, "titulo": titulo, "itens": [(v, INTERCALAR_SIGLA[v], cont[v]) for v in ordem if v in cont]})
 
     if request.args.get("formato") == "xlsx":
         return _intercalar_ano_xlsx(linhas, resumo, nivel, sem, ano, por_disc.get(chave, {}).get("nome", "todas as disciplinas"))
     return render_template("intercalar_ano.html", nivel=nivel, niveis=niveis, ano=ano, sem=sem, sems=sems,
                            disciplinas=disciplinas, chave=chave, turma_f=turma_f, turmas=turmas,
-                           so_alerta=so_alerta, linhas=linhas, resumo=resumo,
+                           so_alerta=so_alerta, linhas=linhas, resumo=resumo, f_par=f_par, f_val=f_val,
+                           n_base=len({r["aluno_id"] for r in base_resumo}),
                            n_alunos=len({r["aluno_id"] for r in linhas}),
                            n_alertas=sum(1 for r in linhas if r["alerta"]),
                            nome_disc=por_disc.get(chave, {}).get("nome", ""))
