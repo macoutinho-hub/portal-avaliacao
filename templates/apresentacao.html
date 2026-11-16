@@ -402,7 +402,7 @@
           style="background:none;border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:1.2rem">
           <i class="bi bi-fullscreen" id="fs-icon"></i>
         </button>
-        <a href="{{ url_for('ver_turma', turma=turma) }}" class="ap-close" title="Sair">
+        <a href="{{ fechar_url }}" class="ap-close" title="Sair">
           <i class="bi bi-x-lg"></i>
         </a>
       </div>
@@ -505,7 +505,7 @@ function popularDropdown() {
   sel.innerHTML = '';
   ALUNOS.forEach((a, i) => {
     const o = document.createElement('option');
-    o.value = i; o.textContent = `${i+1}. ${a.nome}`;
+    o.value = i; o.textContent = `${i+1}. ${a.nome}` + ({{ 'true' if multi else 'false' }} ? ` (${a.turma})` : '');
     sel.appendChild(o);
   });
 }

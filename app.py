@@ -782,7 +782,8 @@ def dashboard():
             tb = base_turma(r["turma"])
             turmas_agrupadas[tb] = turmas_agrupadas.get(tb, 0) + r["total"]
         turmas = [{"turma": t, "total": n} for t, n in sorted(turmas_agrupadas.items())]
-        return render_template("dashboard_admin.html", turmas=turmas)
+        niveis = sorted({_nivel_turma(t["turma"]) for t in turmas if _nivel_turma(t["turma"])})
+        return render_template("dashboard_admin.html", turmas=turmas, niveis=niveis)
     else:
         # turma pode ser "12A1 AV" ou "12A1 AV,12A1 CT,12A1 SE"
         turmas_str = session.get("turma") or ""
@@ -807,6 +808,7 @@ def dashboard():
                       periodos_disponiveis=periodos_disp,
                       periodo_sel=periodo_sel,
                       comparacao_periodos=comparacao)
+        kwargs["nivel_turma"] = _nivel_turma(turma_sel)
         if len(turmas_base_lista) > 1:
             kwargs["turmas_multiplas"] = turmas_base_lista
         return render_template("dashboard.html", **kwargs)
@@ -2771,9 +2773,7 @@ def slide_img(filename):
 @app.route("/apresentacao/<path:turma>")
 @login_required
 def apresentacao(turma):
-    import json
     db = get_db()
-    sem_atual_ap = semestre_atual(db)
 
     # Verificar permissão
     turmas_user = [base_turma(t) for t in (session.get("turma") or "").split(",")]
@@ -2789,7 +2789,62 @@ def apresentacao(turma):
         f"SELECT * FROM alunos WHERE turma IN ({ph}) AND ano_letivo=? ORDER BY nome",
         turmas_reais + [ano]
     ).fetchall()
+    fechar = url_for("ver_turma", turma=turma) if session["role"] == "admin" else url_for("dashboard")
+    return _montar_apresentacao(db, alunos, turma, fechar, tb)
 
+
+@app.route("/apresentacao-ano/<int:nivel>")
+@login_required
+@admin_required
+def apresentacao_ano(nivel):
+    """O admin percorre, seguidos, todos os alunos de um ano de escolaridade (turma e nome)."""
+    db = get_db()
+    ano = ano_letivo_atual(db)
+    alunos = [a for a in db.execute(
+        "SELECT * FROM alunos WHERE ano_letivo=? ORDER BY turma, nome", (ano,)).fetchall()
+        if _nivel_turma(a["turma"]) == nivel]
+    if not alunos:
+        flash(f"Não há alunos do {nivel}.º ano.", "warning")
+        return redirect(url_for("dashboard"))
+    return _montar_apresentacao(db, alunos, f"{nivel}.º ano — todos os alunos",
+                                url_for("dashboard"), None, multi=True)
+
+
+@app.route("/apresentacao-selecao/<int:nivel>", methods=["GET", "POST"])
+@login_required
+def apresentacao_selecao(nivel):
+    """O diretor (ou o admin) escolhe alunos de várias turmas do mesmo ano e apresenta-os seguidos."""
+    if session["role"] not in ("admin", "diretor"):
+        flash("Sem permissão.", "danger")
+        return redirect(url_for("dashboard"))
+    db = get_db()
+    ano = ano_letivo_atual(db)
+    todos = [a for a in db.execute(
+        "SELECT id, nome, turma, numero FROM alunos WHERE ano_letivo=? ORDER BY turma, nome",
+        (ano,)).fetchall() if _nivel_turma(a["turma"]) == nivel]
+    if request.method == "POST":
+        ids = {int(i) for i in request.form.getlist("ids") if i.isdigit()}
+        escolhidos = [a for a in todos if a["id"] in ids]
+        if not escolhidos:
+            flash("Selecione pelo menos um aluno.", "warning")
+        else:
+            completos = db.execute(
+                f"SELECT * FROM alunos WHERE id IN ({','.join('?' * len(escolhidos))}) ORDER BY turma, nome",
+                [a["id"] for a in escolhidos]).fetchall()
+            return _montar_apresentacao(db, completos, f"{nivel}.º ano — {len(completos)} aluno(s) selecionado(s)",
+                                        url_for("apresentacao_selecao", nivel=nivel), None, multi=True)
+    por_turma = {}
+    for a in todos:
+        por_turma.setdefault(a["turma"], []).append(a)
+    niveis = sorted({_nivel_turma(r["turma"]) for r in db.execute(
+        "SELECT DISTINCT turma FROM alunos WHERE ano_letivo=?", (ano,)) if _nivel_turma(r["turma"])})
+    return render_template("apresentacao_selecao.html", nivel=nivel, niveis=niveis, por_turma=por_turma)
+
+
+def _montar_apresentacao(db, alunos, titulo, fechar_url, turma_slides, multi=False):
+    """Monta o modo apresentação para uma lista de alunos (turma, ano inteiro ou seleção)."""
+    import json
+    sem_atual_ap = semestre_atual(db)
     alunos_json = []
     for a in alunos:
         # Notas
@@ -3149,18 +3204,20 @@ def apresentacao(turma):
             "ct": _ct_aluno(db, a["id"], a["turma"]),
         })
 
-    slides = db.execute(
-        "SELECT id, titulo, conteudo, tipo, imagem FROM slides_turma WHERE turma=? ORDER BY ordem, id",
-        (tb,)
-    ).fetchall()
-    slides_json = json.dumps([{
-        "titulo": s["titulo"], "conteudo": s["conteudo"],
-        "tipo": s["tipo"],
-        "imagem_url": url_for("slide_img", filename=s["imagem"]) if s["imagem"] else None
-    } for s in slides])
+    slides_json = "[]"
+    if turma_slides:
+        slides = db.execute(
+            "SELECT id, titulo, conteudo, tipo, imagem FROM slides_turma WHERE turma=? ORDER BY ordem, id",
+            (turma_slides,)
+        ).fetchall()
+        slides_json = json.dumps([{
+            "titulo": s["titulo"], "conteudo": s["conteudo"],
+            "tipo": s["tipo"],
+            "imagem_url": url_for("slide_img", filename=s["imagem"]) if s["imagem"] else None
+        } for s in slides])
 
     return render_template("apresentacao.html",
-                           turma=turma,
+                           turma=titulo, fechar_url=fechar_url, multi=multi,
                            alunos=alunos,
                            alunos_json=json.dumps(alunos_json),
                            slides_json=slides_json)
@@ -3188,7 +3245,7 @@ def ver_turma(turma):
     except Exception:
         indicadores_analise = {}
 
-    return render_template("dashboard.html", alunos=alunos_info, turma=tb,
+    return render_template("dashboard.html", alunos=alunos_info, turma=tb, nivel_turma=_nivel_turma(tb),
                            medias_disciplinas=medias_disc,
                            periodos_disponiveis=periodos_disp,
                            periodo_sel=periodo_sel,

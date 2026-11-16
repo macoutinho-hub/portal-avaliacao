@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Escolher alunos para a reunião{% endblock %}
+{% block content %}
+<div class="container py-3" style="max-width:1000px">
+  <h3 class="fw-bold mb-1"><i class="bi bi-list-check me-2 text-primary"></i>Reunião — escolher alunos do {{ nivel }}.º ano</h3>
+  <p class="text-muted">Marque os alunos, de qualquer turma do ano, e apresente-os seguidos no modo reunião. A ordem é por turma e nome.</p>
+
+  <div class="d-flex gap-2 flex-wrap mb-3">
+    {% for n in niveis %}<a class="btn btn-sm {{ 'btn-primary' if n == nivel else 'btn-outline-primary' }}" href="{{ url_for('apresentacao_selecao', nivel=n) }}">{{ n }}.º ano</a>{% endfor %}
+  </div>
+
+  {% if not por_turma %}
+  <div class="alert alert-warning">Não há alunos neste ano.</div>
+  {% else %}
+  <form method="post" target="_blank" id="form-sel">
+    <div class="d-flex gap-2 flex-wrap align-items-center mb-3 sticky-top bg-body py-2" style="top:0;z-index:5">
+      <input type="search" id="pesq" class="form-control form-control-sm" placeholder="pesquisar aluno…" style="max-width:240px">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="marcar-vis">Marcar visíveis</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="limpar">Limpar</button>
+      <span class="small text-muted" id="n-sel">0 selecionados</span>
+      <button class="btn btn-primary btn-sm ms-auto"><i class="bi bi-projector me-1"></i>Apresentar selecionados</button>
+    </div>
+    <div class="row g-3">
+      {% for turma, lista in por_turma.items() %}
+      <div class="col-md-6 col-lg-4 bloco-turma">
+        <div class="card shadow-sm h-100">
+          <div class="card-header d-flex justify-content-between align-items-center py-1">
+            <strong>{{ turma }}</strong>
+            <label class="small mb-0"><input type="checkbox" class="sel-turma"> toda a turma</label>
+          </div>
+          <ul class="list-group list-group-flush">
+            {% for a in lista %}
+            <li class="list-group-item py-1 aluno-li">
+              <label class="d-flex gap-2 align-items-center mb-0" style="cursor:pointer">
+                <input type="checkbox" name="ids" value="{{ a.id }}" class="sel">
+                <span class="nome">{{ a.nome }}</span>
+              </label>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </form>
+  {% endif %}
+</div>
+<script>
+const todas = () => [...document.querySelectorAll('.sel')];
+const vis = () => todas().filter(c => c.closest('.aluno-li').style.display !== 'none');
+const norm = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function contar() { document.getElementById('n-sel').textContent = todas().filter(c => c.checked).length + ' selecionados'; }
+todas().forEach(c => c.addEventListener('change', contar));
+document.querySelectorAll('.sel-turma').forEach(t => t.addEventListener('change', e => {
+  e.target.closest('.bloco-turma').querySelectorAll('.sel').forEach(c => { if (c.closest('.aluno-li').style.display !== 'none') c.checked = e.target.checked; });
+  contar();
+}));
+document.getElementById('marcar-vis').onclick = () => { vis().forEach(c => c.checked = true); contar(); };
+document.getElementById('limpar').onclick = () => { todas().forEach(c => c.checked = false); contar(); };
+document.getElementById('pesq').addEventListener('input', e => {
+  const q = norm(e.target.value);
+  document.querySelectorAll('.aluno-li').forEach(li => li.style.display = norm(li.querySelector('.nome').textContent).includes(q) ? '' : 'none');
+});
+document.getElementById('form-sel').addEventListener('submit', e => {
+  if (!todas().some(c => c.checked)) { e.preventDefault(); alert('Selecione pelo menos um aluno.'); }
+});
+</script>
+{% endblock %}

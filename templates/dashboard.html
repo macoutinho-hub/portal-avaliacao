@@ -22,6 +22,11 @@
       <a href="{{ url_for('apresentacao', turma=turma) }}" class="btn btn-primary btn-sm" target="_blank">
       <i class="bi bi-projector me-1"></i>Modo Reunião
     </a>
+    {% if nivel_turma and session.role in ('admin', 'diretor') %}
+    <a href="{{ url_for('apresentacao_selecao', nivel=nivel_turma) }}" class="btn btn-outline-primary btn-sm" title="Escolher alunos de várias turmas do {{ nivel_turma }}.º ano e apresentá-los seguidos">
+      <i class="bi bi-list-check me-1"></i>Reunião: escolher alunos
+    </a>
+    {% endif %}
     <a href="{{ url_for('intercalar_turma', turma=turma) }}" class="btn btn-outline-primary btn-sm">
       <i class="bi bi-speedometer2 me-1"></i>Intercalar
     </a>

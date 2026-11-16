@@ -26,6 +26,20 @@
   </div>
   {% endif %}
 
+  {% if niveis %}
+  <div class="card shadow-sm mt-4"><div class="card-body">
+    <div class="fw-semibold mb-2"><i class="bi bi-projector me-1"></i>Modo reunião por ano (sem sair das turmas)</div>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      {% for n in niveis %}
+      <div class="btn-group btn-group-sm">
+        <a class="btn btn-primary" target="_blank" href="{{ url_for('apresentacao_ano', nivel=n) }}" title="Todos os alunos do {{ n }}.º ano, seguidos">{{ n }}.º ano — todos</a>
+        <a class="btn btn-outline-primary" href="{{ url_for('apresentacao_selecao', nivel=n) }}" title="Escolher alunos de várias turmas">Escolher…</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div></div>
+  {% endif %}
+
   <div class="mt-5 d-flex gap-2 flex-wrap">
     <a href="{{ url_for('admin_panel') }}" class="btn btn-outline-primary">
       <i class="bi bi-people me-1"></i>Gerir Utilizadores
