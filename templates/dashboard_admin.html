@@ -34,6 +34,7 @@
       <div class="btn-group btn-group-sm">
         <a class="btn btn-primary" target="_blank" href="{{ url_for('apresentacao_ano', nivel=n) }}" title="Todos os alunos do {{ n }}.º ano, seguidos">{{ n }}.º ano — todos</a>
         <a class="btn btn-outline-primary" href="{{ url_for('apresentacao_selecao', nivel=n) }}" title="Escolher alunos de várias turmas">Escolher…</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('intercalar_ano', nivel=n) }}" title="Avaliação intercalar do ano, por disciplina">Intercalar</a>
       </div>
       {% endfor %}
     </div>

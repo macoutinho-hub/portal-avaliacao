@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Intercalar por ano e disciplina{% endblock %}
+{% block content %}
+<style>
+  .n-neg  { background: #ef4444; color: white; }
+  .n-mneg { background: #b91c1c; color: white; }
+  .n-med  { background: #f59e0b; color: white; }
+  .n-bom  { background: #22c55e; color: white; }
+  .n-exc  { background: #3b82f6; color: white; }
+  .interc-cell { border-radius: 4px; padding: 2px 6px; font-weight: 600; font-size: .78rem; display: inline-block; min-width: 34px; text-align: center; }
+</style>
+<div class="container-fluid px-3 py-3">
+  <h3 class="fw-bold mb-1"><i class="bi bi-speedometer2 me-2 text-primary"></i>Avaliação intercalar — {{ nivel }}.º ano</h3>
+  <p class="text-muted">{{ ano }} · {{ sem }}.º semestre · todas as turmas do ano{% if nome_disc %} · <strong>{{ nome_disc }}</strong>{% endif %}</p>
+
+  <div class="d-flex gap-2 flex-wrap mb-3">
+    {% for n in niveis %}<a class="btn btn-sm {{ 'btn-primary' if n == nivel else 'btn-outline-primary' }}" href="{{ url_for('intercalar_ano', nivel=n, semestre=sem) }}">{{ n }}.º ano</a>{% endfor %}
+  </div>
+
+  <form method="get" class="card card-body shadow-sm mb-3 py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-4"><label class="form-label small mb-0">Disciplina</label>
+        <select name="disciplina" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">Todas as disciplinas</option>
+          {% for d in disciplinas %}<option value="{{ d.chave }}" {{ 'selected' if d.chave == chave }}>{{ d.nome }} ({{ d.n }} alunos{% if d.alertas %}, {{ d.alertas }} alertas{% endif %})</option>{% endfor %}
+        </select></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0">Semestre</label>
+        <select name="semestre" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for s in sems %}<option value="{{ s }}" {{ 'selected' if s == sem }}>{{ s }}.º</option>{% endfor %}
+        </select></div>
+      <div class="col-6 col-md-2"><label class="form-label small mb-0">Turma</label>
+        <select name="turma" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for t in turmas %}<option value="{{ t }}" {{ 'selected' if t == turma_f }}>{{ t }}</option>{% endfor %}
+        </select></div>
+      <div class="col-md-2"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="alerta" value="1" id="al" {{ 'checked' if so_alerta }} onchange="this.form.submit()"><label class="form-check-label small" for="al">Só com alerta</label></div></div>
+      <div class="col-md-2 d-flex gap-1">
+        <a class="btn btn-sm btn-success flex-fill" href="{{ url_for('intercalar_ano', nivel=nivel, semestre=sem, disciplina=chave, turma=turma_f, alerta=('1' if so_alerta else ''), formato='xlsx') }}"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('intercalar_ano', nivel=nivel) }}" title="Limpar">Limpar</a>
+      </div>
+    </div>
+  </form>
+
+  {% if not linhas %}
+  <div class="alert alert-warning">Não há avaliações intercalares para esta seleção. (Importe a pauta em Importar → Avaliação Intercalar ou ajuste os filtros.)</div>
+  {% else %}
+  <div class="row g-3 mb-3">
+    <div class="col-auto"><div class="card card-body py-2 text-center"><div class="fs-4 fw-bold">{{ n_alunos }}</div><div class="small text-muted">alunos</div></div></div>
+    <div class="col-auto"><div class="card card-body py-2 text-center"><div class="fs-4 fw-bold text-danger">{{ n_alertas }}</div><div class="small text-muted">alertas</div></div></div>
+    {% for b in resumo %}{% if b.itens %}
+    <div class="col-auto"><div class="card card-body py-2"><div class="small fw-semibold mb-1">{{ b.titulo }}</div>
+      <div class="d-flex gap-2 flex-wrap">{% for v, sg, n in b.itens %}<span><span class="interc-cell {{ interc_nivel[v] }}" title="{{ v }}">{{ sg }}</span> <strong>{{ n }}</strong></span>{% endfor %}</div></div></div>
+    {% endif %}{% endfor %}
+  </div>
+
+  <div class="table-responsive" style="max-height:70vh;overflow:auto">
+    <table class="table table-sm align-middle mb-0" style="white-space:nowrap">
+      <thead class="table-light" style="position:sticky;top:0;z-index:1">
+        <tr><th>Turma</th><th>Aluno</th>{% if not chave %}<th>Disciplina</th>{% endif %}<th class="text-center">Desempenho</th><th class="text-center">Ritmo</th><th class="text-center">Envolvimento</th></tr>
+      </thead>
+      <tbody>
+        {% for r in linhas %}
+        <tr class="{{ 'table-warning' if r.alerta }}">
+          <td>{{ r.turma }}</td>
+          <td><a href="{{ url_for('aluno', aluno_id=r.aluno_id) }}">{{ r.nome }}</a></td>
+          {% if not chave %}<td>{{ r.disciplina }}</td>{% endif %}
+          {% for v in (r.desempenho, r.ritmo, r.envolvimento) %}
+          <td class="text-center">{% if v %}<span class="interc-cell {{ interc_nivel[v] }}" title="{{ v }}">{{ interc_sigla[v] }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

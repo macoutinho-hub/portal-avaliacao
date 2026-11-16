@@ -4303,6 +4303,129 @@ def intercalar_turma(turma):
                            total_alertas=sum(a["alertas"] for a in alunos),
                            pode_editar=pode_editar, editar=editar, opcoes=INTERCALAR_COD)
 
+def _intercalar_ano_linhas(db, nivel, ano, sem):
+    """Linhas da avaliação intercalar de todos os alunos de um ano de escolaridade, num semestre.
+    Cada linha: turma, aluno, disciplina (nome canónico) e os três parâmetros."""
+    rows = db.execute(
+        """SELECT a.id AS aluno_id, a.numero, a.nome, a.turma, i.disciplina,
+                  i.desempenho, i.ritmo, i.envolvimento
+           FROM avaliacao_intercalar i JOIN alunos a ON a.id = i.aluno_id
+           WHERE a.ano_letivo=? AND i.semestre=? ORDER BY a.turma, a.nome""", (ano, sem)).fetchall()
+    out, nomes = [], {}
+    for r in rows:
+        if _nivel_turma(r["turma"]) != nivel:
+            continue
+        canon = _canon_disc_intercalar(r["disciplina"], None)
+        k = _chave_disc(canon)
+        nomes.setdefault(k, canon)
+        out.append({"aluno_id": r["aluno_id"], "numero": r["numero"], "nome": r["nome"],
+                    "turma": base_turma(r["turma"]), "chave": k, "disciplina": nomes[k],
+                    "desempenho": r["desempenho"], "ritmo": r["ritmo"], "envolvimento": r["envolvimento"],
+                    "alerta": bool(intercalar_alerta(r["desempenho"], r["ritmo"], r["envolvimento"]))})
+    return out
+
+
+@app.route("/intercalar-ano/<int:nivel>")
+@login_required
+def intercalar_ano(nivel):
+    """Avaliação intercalar de um ano inteiro, por disciplina (admin e diretor), com exportação para Excel."""
+    if session["role"] not in ("admin", "diretor"):
+        flash("Sem permissão.", "danger")
+        return redirect(url_for("dashboard"))
+    db = get_db()
+    ano = ano_letivo_atual(db)
+    sems = [r[0] for r in db.execute(
+        "SELECT DISTINCT i.semestre FROM avaliacao_intercalar i JOIN alunos a ON a.id=i.aluno_id "
+        "WHERE a.ano_letivo=? ORDER BY 1", (ano,))]
+    sem = request.args.get("semestre", type=int)
+    if sem not in sems:
+        sem = sems[-1] if sems else semestre_atual(db)
+    todas = _intercalar_ano_linhas(db, nivel, ano, sem)
+    por_disc = {}
+    for r in todas:
+        d = por_disc.setdefault(r["chave"], {"chave": r["chave"], "nome": r["disciplina"], "alunos": set(), "alertas": 0})
+        d["alunos"].add(r["aluno_id"])
+        d["alertas"] += 1 if r["alerta"] else 0
+    disciplinas = sorted(({**d, "n": len(d["alunos"])} for d in por_disc.values()),
+                         key=lambda d: _norm_nome(d["nome"]))
+    chave = request.args.get("disciplina", "")
+    turma_f = base_turma(request.args.get("turma", ""))
+    so_alerta = request.args.get("alerta") == "1"
+    linhas = [r for r in todas if (not chave or r["chave"] == chave)
+              and (not turma_f or r["turma"] == turma_f) and (not so_alerta or r["alerta"])]
+    turmas = sorted({r["turma"] for r in todas})
+    niveis = sorted({_nivel_turma(r["turma"]) for r in db.execute(
+        "SELECT DISTINCT turma FROM alunos WHERE ano_letivo=?", (ano,)) if _nivel_turma(r["turma"])})
+
+    # resumo da seleção: nº de alunos em cada valor de cada parâmetro
+    resumo = []
+    for col, titulo in (("desempenho", "Desempenho"), ("ritmo", "Ritmo de trabalho"), ("envolvimento", "Envolvimento")):
+        cont = {}
+        for r in linhas:
+            if r[col]:
+                cont[r[col]] = cont.get(r[col], 0) + 1
+        ordem = [INTERCALAR_COD[col][sg] for sg in INTERCALAR_COD[col]]
+        resumo.append({"titulo": titulo, "itens": [(v, INTERCALAR_SIGLA[v], cont[v]) for v in ordem if v in cont]})
+
+    if request.args.get("formato") == "xlsx":
+        return _intercalar_ano_xlsx(linhas, resumo, nivel, sem, ano, por_disc.get(chave, {}).get("nome", "todas as disciplinas"))
+    return render_template("intercalar_ano.html", nivel=nivel, niveis=niveis, ano=ano, sem=sem, sems=sems,
+                           disciplinas=disciplinas, chave=chave, turma_f=turma_f, turmas=turmas,
+                           so_alerta=so_alerta, linhas=linhas, resumo=resumo,
+                           n_alunos=len({r["aluno_id"] for r in linhas}),
+                           n_alertas=sum(1 for r in linhas if r["alerta"]),
+                           nome_disc=por_disc.get(chave, {}).get("nome", ""))
+
+
+def _intercalar_ano_xlsx(linhas, resumo, nivel, sem, ano, nome_disc):
+    import io as _io
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    cor = {"n-mneg": "B91C1C", "n-neg": "EF4444", "n-med": "F59E0B", "n-bom": "22C55E", "n-exc": "3B82F6"}
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Intercalar"
+    cab = ["Turma", "Nº", "Aluno", "Disciplina", "Desempenho", "Ritmo de trabalho", "Envolvimento", "Alerta"]
+    ws.append(cab)
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="0E4D7D")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+    for r in sorted(linhas, key=lambda r: (r["disciplina"], r["turma"], r["nome"])):
+        ws.append([r["turma"], r["numero"] or "", r["nome"], r["disciplina"],
+                   r["desempenho"] or "", r["ritmo"] or "", r["envolvimento"] or "", "Sim" if r["alerta"] else ""])
+        linha = ws.max_row
+        for col, idx in (("desempenho", 5), ("ritmo", 6), ("envolvimento", 7)):
+            v = r[col]
+            if v:
+                c = ws.cell(row=linha, column=idx)
+                c.fill = PatternFill("solid", fgColor=cor[INTERCALAR_NIVEL[v]])
+                c.font = Font(color="FFFFFF", bold=True)
+                c.alignment = Alignment(horizontal="center")
+    for i, w in enumerate([8, 7, 38, 34, 20, 20, 22, 8], 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:H{max(ws.max_row, 2)}"
+    rs = wb.create_sheet("Resumo")
+    rs.append([f"{nivel}.º ano · {sem}.º semestre · {ano} · {nome_disc}"])
+    rs["A1"].font = Font(bold=True, size=12)
+    rs.append([])
+    for b in resumo:
+        rs.append([b["titulo"]])
+        rs.cell(row=rs.max_row, column=1).font = Font(bold=True)
+        for v, sg, n in b["itens"]:
+            rs.append([f"{v} ({sg})", n])
+        rs.append([])
+    rs.column_dimensions["A"].width = 36
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from flask import send_file
+    base = _re_global.sub(r"[^A-Za-z0-9]+", "_", _norm_nome(nome_disc)).strip("_") or "todas"
+    return send_file(buf, as_attachment=True, download_name=f"intercalar_{nivel}ano_{sem}sem_{base}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @app.route("/turma/<path:turma>/intercalar/guardar", methods=["POST"])
 @login_required
 def intercalar_guardar(turma):
